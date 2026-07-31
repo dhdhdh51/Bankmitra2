@@ -767,6 +767,228 @@ check('non-sql rejected', BackupService::resolve('evil.php') === null);
 check('valid file resolves', BackupService::resolve($backup['file']) !== null);
 
 // ---------------------------------------------------------------------------
+section('KRM / OTS settlement report');
+
+// A settlement report is filed as a visit with report_type = 'ots' plus the
+// ots_details section. Sent with flat `ots_details[field]` keys, which is how the
+// app has to send it: the visit is multipart because it carries photos, and
+// multipart has no nesting.
+$otsLead = LoanAccount::find($leadId);
+$otsResult = VisitService::submit([
+    'loan_account_id' => $otsLead['id'],
+    'report_type'     => 'ots',
+    'customer_met'    => 1,
+    'ready_to_pay'    => 1,
+    'remarks'         => 'Borrower agreed to the OTS terms.',
+    'sp_cbc_name'     => 'S. Verma',
+    'ots_details[eligible_for_ots]'        => 1,
+    'ots_details[scheme]'                  => 'krm_ots',
+    'ots_details[relief_waiver_percent]'   => '77.5',
+    'ots_details[rlb_amount]'              => '200000',
+    'ots_details[borrower_payable_amount]' => '45000',
+    'ots_details[total_settlement_amount]' => '45000',
+    'ots_details[required_deposit_amount]' => '4500',
+    'ots_details[deposit_received]'        => 1,
+    'ots_details[deposit_amount]'          => '4500',
+    'ots_details[deposit_date]'            => date('Y-m-d'),
+    'ots_details[deposit_reference]'       => 'RCPT/2026/00191',
+    'ots_details[balance_payable]'         => '40500',
+    'ots_details[approval_status]'         => 'approved',
+    'ots_details[validity_from]'           => date('Y-m-d'),
+    'ots_details[validity_to]'             => date('Y-m-d', strtotime('+90 days')),
+    'ots_details[borrower_accepted]'       => 1,
+], $agentCtx);
+
+$otsVisitId = (int) $otsResult['visit_id'];
+check('OTS visit is created', $otsVisitId > 0);
+check('the visit is tagged report_type=ots',
+    ($db->scalar('SELECT report_type FROM visit_reports WHERE id = ?', [$otsVisitId])) === 'ots');
+
+$otsRow = VisitReport::otsDetails($otsVisitId);
+check('an ots_details row was written', $otsRow !== null);
+if ($otsRow !== null) {
+    check('scheme stored', $otsRow['scheme'] === 'krm_ots');
+    check('eligibility stored', (int) $otsRow['eligible_for_ots'] === 1);
+    check('relief percent stored', abs((float) $otsRow['relief_waiver_percent'] - 77.5) < 0.01);
+    // The figure the agent typed must survive untouched: the branch's sanction
+    // letter is the authority and a silent recalculation would misstate a
+    // settlement.
+    check('payable amount stored exactly as entered',
+        abs((float) $otsRow['borrower_payable_amount'] - 45000.0) < 0.01);
+    check('the scheme default payable percent is applied when not sent',
+        abs((float) $otsRow['payable_percent'] - 22.50) < 0.01);
+    check('the scheme default deposit percent is applied when not sent',
+        abs((float) $otsRow['initial_deposit_percent'] - 10.00) < 0.01);
+    // Deposit is EVIDENCE of a payment the borrower made to the bank; the agent
+    // never handles money.
+    check('deposit receipt reference stored', $otsRow['deposit_reference'] === 'RCPT/2026/00191');
+    check('deposit date stored', (string) $otsRow['deposit_date'] === date('Y-m-d'));
+    check('approval status stored', $otsRow['approval_status'] === 'approved');
+    check('borrower acceptance stored', (int) $otsRow['borrower_accepted'] === 1);
+    check('outstanding was snapshotted from the lead',
+        abs((float) $otsRow['outstanding_amount'] - (float) $otsLead['outstanding_amount']) < 0.01);
+}
+
+// A percentage outside 0-100 is a typo, not data.
+$clampResult = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'report_type'     => 'ots',
+    'customer_met'    => 1,
+    'ots_details[relief_waiver_percent]' => '250',
+    'ots_details[payable_percent]'       => '-5',
+], $agentCtx);
+$clamped = VisitReport::otsDetails((int) $clampResult['visit_id']);
+check('an out-of-range percent is clamped to 100', $clamped !== null
+    && abs((float) $clamped['relief_waiver_percent'] - 100.0) < 0.01);
+check('a negative percent is clamped to 0', $clamped !== null
+    && abs((float) $clamped['payable_percent'] - 0.0) < 0.01);
+
+// An unknown scheme must not be written through to the enum column.
+$badEnum = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'report_type'     => 'ots',
+    'customer_met'    => 1,
+    'ots_details[scheme]'          => 'nonsense_scheme',
+    'ots_details[approval_status]' => 'nonsense_status',
+], $agentCtx);
+$badRow = VisitReport::otsDetails((int) $badEnum['visit_id']);
+check('an unknown scheme is stored as null, not written through', $badRow !== null && $badRow['scheme'] === null);
+check('an unknown approval status falls back to pending',
+    $badRow !== null && $badRow['approval_status'] === 'pending');
+
+// A plain recovery visit must not leave an empty settlement row behind.
+$plain = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'customer_met'    => 1,
+    'not_ready'       => 1,
+], $agentCtx);
+check('a recovery visit defaults to report_type=recovery',
+    ($db->scalar('SELECT report_type FROM visit_reports WHERE id = ?', [(int) $plain['visit_id']])) === 'recovery');
+check('a recovery visit writes no ots_details row',
+    VisitReport::otsDetails((int) $plain['visit_id']) === null);
+check('a recovery visit writes no ckcc_details row',
+    VisitReport::ckccDetails((int) $plain['visit_id']) === null);
+
+// ---------------------------------------------------------------------------
+section('CKCC OD-2 renewal report');
+
+$ckccLeadId = (int) $ln1002['id'];
+$db->query(
+    'UPDATE loan_accounts
+        SET cif_number = ?, sanction_date = ?, sanction_limit = ?, drawing_power = ?,
+            interest_overdue = ?, ckcc_renewal_due_date = ?, loan_type = ?
+      WHERE id = ?',
+    ['CIF900123', '2023-06-15', 300000, 285000, 12500, date('Y-m-d', strtotime('+10 days')), 'CKCC', $ckccLeadId]
+);
+$ckccLead = LoanAccount::find($ckccLeadId);
+check('CKCC attributes are readable from the lead', (string) $ckccLead['cif_number'] === 'CIF900123');
+
+$ckccResult = VisitService::submit([
+    'loan_account_id' => $ckccLeadId,
+    'report_type'     => 'ckcc_renewal',
+    'customer_met'    => 1,
+    'borrower_alive'  => 1,
+    'same_address'    => 1,
+    'occupation'      => 'agriculture',
+    'remarks'         => 'Renewal papers collected.',
+    'ckcc_details[eligible_for_renewal]'   => 1,
+    'ckcc_details[kyc_status]'             => 'complete',
+    'ckcc_details[aadhaar_seeded]'         => 1,
+    'ckcc_details[mobile_linked]'          => 1,
+    'ckcc_details[aadhaar_auth_completed]' => 1,
+    'ckcc_details[doc_aadhaar]'            => 1,
+    'ckcc_details[doc_passbook]'           => 1,
+    'ckcc_details[doc_khasra_khatauni]'    => 1,
+    'ckcc_details[willing_to_renew]'       => 1,
+    'ckcc_details[renewal_form_signed]'    => 1,
+    'ckcc_details[ekyc_completed]'         => 1,
+    'ckcc_details[agent_observation]'      => 'Borrower cooperative, land records in order.',
+    'ckcc_details[rec_renew_immediately]'  => 1,
+    'ckcc_details[st_documents_collected]' => 1,
+], $agentCtx);
+
+$ckccVisitId = (int) $ckccResult['visit_id'];
+check('CKCC visit is created', $ckccVisitId > 0);
+check('the visit is tagged report_type=ckcc_renewal',
+    ($db->scalar('SELECT report_type FROM visit_reports WHERE id = ?', [$ckccVisitId])) === 'ckcc_renewal');
+
+$ckccRow = VisitReport::ckccDetails($ckccVisitId);
+check('a ckcc_details row was written', $ckccRow !== null);
+if ($ckccRow !== null) {
+    // Account figures are pre-filled from the lead so the agent does not copy
+    // them off a passbook by hand.
+    check('CIF was pulled from the lead', (string) $ckccRow['cif_number'] === 'CIF900123');
+    check('sanction limit was pulled from the lead',
+        abs((float) $ckccRow['sanction_limit'] - 300000.0) < 0.01);
+    check('drawing power was pulled from the lead',
+        abs((float) $ckccRow['drawing_power'] - 285000.0) < 0.01);
+    check('renewal due date was pulled from the lead',
+        (string) $ckccRow['renewal_due_date'] === date('Y-m-d', strtotime('+10 days')));
+
+    // Derived server-side, never trusted from the device: a phone with a wrong
+    // clock would otherwise write a misleading deadline into a report a branch
+    // acts on.
+    check('days remaining is computed', (int) $ckccRow['days_remaining'] === 10,
+        'got ' . var_export($ckccRow['days_remaining'], true));
+    check('expected NPA date is the day after the renewal deadline',
+        (string) $ckccRow['expected_npa_date'] === date('Y-m-d', strtotime('+11 days')));
+    check('the due bucket is derived as within_15 for 10 days out',
+        $ckccRow['renewal_due_bucket'] === 'within_15',
+        'got ' . var_export($ckccRow['renewal_due_bucket'], true));
+
+    check('KYC status stored', $ckccRow['kyc_status'] === 'complete');
+    check('document availability flags stored',
+        (int) $ckccRow['doc_aadhaar'] === 1
+        && (int) $ckccRow['doc_khasra_khatauni'] === 1
+        && (int) $ckccRow['doc_pan'] === 0);
+    check('consent flags stored',
+        (int) $ckccRow['willing_to_renew'] === 1 && (int) $ckccRow['renewal_form_signed'] === 1);
+    check('agent observation stored',
+        str_contains((string) $ckccRow['agent_observation'], 'land records in order'));
+    check('recommendation flag stored', (int) $ckccRow['rec_renew_immediately'] === 1);
+    check('report status flag stored', (int) $ckccRow['st_documents_collected'] === 1);
+
+    // No location data is captured anywhere in this system.
+    check('the CKCC section carries no location columns',
+        !array_key_exists('latitude', $ckccRow)
+        && !array_key_exists('longitude', $ckccRow)
+        && !array_key_exists('gps', $ckccRow));
+}
+
+// An overdue renewal must bucket as overdue and report negative days.
+$db->query('UPDATE loan_accounts SET ckcc_renewal_due_date = ? WHERE id = ?',
+    [date('Y-m-d', strtotime('-4 days')), (int) $ln1003['id']]);
+$overdueResult = VisitService::submit([
+    'loan_account_id' => (int) $ln1003['id'],
+    'report_type'     => 'ckcc_renewal',
+    'customer_met'    => 1,
+    'ckcc_details[eligible_for_renewal]' => 1,
+], $agentCtx);
+$overdueRow = VisitReport::ckccDetails((int) $overdueResult['visit_id']);
+check('an overdue renewal reports negative days remaining',
+    $overdueRow !== null && (int) $overdueRow['days_remaining'] === -4,
+    'got ' . var_export($overdueRow['days_remaining'] ?? null, true));
+check('an overdue renewal buckets as overdue',
+    $overdueRow !== null && $overdueRow['renewal_due_bucket'] === 'overdue');
+
+// Both sections are append-only, exactly like their parent report.
+check('visit_ots_details has no UPDATE path in the codebase',
+    !str_contains((string) file_get_contents(ROOT_PATH . '/app/Services/VisitService.php'),
+        "update('visit_ots_details'"));
+check('visit_ckcc_details has no UPDATE path in the codebase',
+    !str_contains((string) file_get_contents(ROOT_PATH . '/app/Services/VisitService.php'),
+        "update('visit_ckcc_details'"));
+
+// Deleting a visit report must take its detail rows with it.
+$db->query('DELETE FROM visit_reports WHERE id = ?', [(int) $badEnum['visit_id']]);
+check('deleting a visit cascades to its ots_details row',
+    VisitReport::otsDetails((int) $badEnum['visit_id']) === null);
+// That DELETE went behind the service's back, so the lead's derived visit_count
+// is now stale - the referential-integrity section below checks it, and caught
+// this the first time round. Rebuild it rather than leaving the fixture wrong.
+LoanAccount::refreshVisitCounters($leadId);
+
+// ---------------------------------------------------------------------------
 section('Referential integrity');
 
 check('every loan_account has a customer',

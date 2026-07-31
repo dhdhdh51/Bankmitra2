@@ -32,10 +32,17 @@ final class VisitService
 {
     /** Photo field name => photo_type enum value. */
     public const PHOTO_FIELDS = [
-        'customer_photo' => 'customer',
-        'house_photo'    => 'house',
-        'aadhaar_photo'  => 'aadhaar',
+        'customer_photo'     => 'customer',
+        'house_photo'        => 'house',
+        'aadhaar_photo'      => 'aadhaar',
+        // Evidence the CKCC renewal report asks for.
+        'land_photo'         => 'land',
+        'passbook_photo'     => 'passbook',
+        'renewal_form_photo' => 'renewal_form',
     ];
+
+    /** The three kinds of field report an agent can file. */
+    public const REPORT_TYPES = ['recovery', 'ots', 'ckcc_renewal'];
 
     /**
      * @param array<string,mixed> $input Validated form/API payload.
@@ -126,6 +133,12 @@ final class VisitService
                 'agent_name'  => (string) $agent['name'],
                 'branch_name' => (string) ($lead['branch_name'] ?? ''),
                 'village'     => self::str($input['village'] ?? $customer['village'], 150),
+                'report_type' => self::reportType($input['report_type'] ?? null),
+
+                // Declaration block, printed at the foot of the report.
+                'sp_cbc_name'     => self::str($input['sp_cbc_name'] ?? null, 150),
+                'supervisor_name' => self::str($input['supervisor_name'] ?? null, 150),
+                'supervisor_verified_at' => self::nullableDate($input['supervisor_verified_at'] ?? null),
 
                 // Borrower snapshot - copied so the signed report never changes
                 // even if the customer master is later corrected.
@@ -197,6 +210,10 @@ final class VisitService
                 'device_info' => self::str($input['device_info'] ?? null, 255),
                 'client_uuid' => $clientUuid === '' ? null : $clientUuid,
             ]);
+
+            // ---- 1b. report-type detail sections -------------------------
+            self::insertOtsDetails($visitId, $loanAccountId, $lead, $input);
+            self::insertCkccDetails($visitId, $loanAccountId, $lead, $input);
 
             // ---- 2. timeline event --------------------------------------
             Timeline::record(
@@ -532,6 +549,235 @@ final class VisitService
     // -----------------------------------------------------------------------
     // Coercion helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * KRM / OTS settlement section.
+     *
+     * Written only when the agent actually filled it in, so a plain recovery
+     * visit leaves no empty OTS row behind to confuse a report later.
+     *
+     * Every money figure is stored exactly as the agent entered it. The app
+     * suggests `payable = rlb x payable_percent`, but nothing here recalculates
+     * or "corrects" a submitted number: the branch's sanction letter is the
+     * authority, and silently rewriting a settlement figure would be far worse
+     * than storing an odd one.
+     *
+     * @param array<string,mixed> $lead
+     * @param array<string,mixed> $input
+     */
+    private static function insertOtsDetails(int $visitId, int $loanAccountId, array $lead, array $input): void
+    {
+        $section = self::section($input, 'ots_details');
+        if ($section === null) {
+            return;
+        }
+
+        Database::instance()->insert('visit_ots_details', [
+            'visit_report_id' => $visitId,
+            'loan_account_id' => $loanAccountId,
+
+            'eligible_for_ots' => self::flag($section['eligible_for_ots'] ?? null),
+            'scheme'           => self::enum($section['scheme'] ?? null, ['krm_ots', 'general_ots']),
+
+            'outstanding_amount'      => self::nullableAmount($section['outstanding_amount'] ?? $lead['outstanding_amount']),
+            'relief_waiver_percent'   => self::percent($section['relief_waiver_percent'] ?? null),
+            'rlb_amount'              => self::nullableAmount($section['rlb_amount'] ?? null),
+            'payable_percent'         => self::percent($section['payable_percent'] ?? null) ?? 22.50,
+            'borrower_payable_amount' => self::nullableAmount($section['borrower_payable_amount'] ?? null),
+            'total_settlement_amount' => self::nullableAmount($section['total_settlement_amount'] ?? null),
+
+            'initial_deposit_percent' => self::percent($section['initial_deposit_percent'] ?? null) ?? 10.00,
+            'required_deposit_amount' => self::nullableAmount($section['required_deposit_amount'] ?? null),
+            // Recorded, not collected: the borrower pays the bank and the agent
+            // copies down the bank's receipt number as evidence.
+            'deposit_received'        => self::flag($section['deposit_received'] ?? null),
+            'deposit_amount'          => self::nullableAmount($section['deposit_amount'] ?? null),
+            'deposit_date'            => self::nullableDate($section['deposit_date'] ?? null),
+            'deposit_reference'       => self::str($section['deposit_reference'] ?? null, 120),
+            'balance_payable'         => self::nullableAmount($section['balance_payable'] ?? null),
+            'proposed_final_payment_date' => self::nullableDate($section['proposed_final_payment_date'] ?? null),
+
+            'approval_status'       => self::enum($section['approval_status'] ?? null, ['pending', 'approved', 'rejected']) ?? 'pending',
+            'validity_from'         => self::nullableDate($section['validity_from'] ?? null),
+            'validity_to'           => self::nullableDate($section['validity_to'] ?? null),
+            'expected_closure_date' => self::nullableDate($section['expected_closure_date'] ?? null),
+
+            'borrower_accepted' => self::flag($section['borrower_accepted'] ?? null),
+            'rejection_reason'  => self::str($section['rejection_reason'] ?? null, 500),
+        ]);
+    }
+
+    /**
+     * CKCC OD-2 renewal section.
+     *
+     * `expected_npa_date` and `days_remaining` are derived here rather than
+     * trusted from the device: a phone with a wrong clock would otherwise write a
+     * misleading deadline into a report that a branch acts on. They are stored,
+     * not computed on read, so the report still reads the way it did on the day
+     * of the visit.
+     *
+     * @param array<string,mixed> $lead
+     * @param array<string,mixed> $input
+     */
+    private static function insertCkccDetails(int $visitId, int $loanAccountId, array $lead, array $input): void
+    {
+        $section = self::section($input, 'ckcc_details');
+        if ($section === null) {
+            return;
+        }
+
+        $dueDate = self::nullableDate($section['renewal_due_date'] ?? $lead['ckcc_renewal_due_date'] ?? null);
+
+        $daysRemaining = null;
+        $expectedNpa = null;
+        $bucket = self::enum(
+            $section['renewal_due_bucket'] ?? null,
+            ['within_30', 'within_15', 'within_7', 'overdue']
+        );
+
+        if ($dueDate !== null) {
+            $today = new \DateTimeImmutable(date('Y-m-d'));
+            $due = new \DateTimeImmutable($dueDate);
+            $daysRemaining = (int) $today->diff($due)->format('%r%a');
+
+            // An unrenewed CKCC OD account is classified NPA once the renewal
+            // deadline has passed; the bank's own date governs, so this is the
+            // agent-visible expectation, not a decision.
+            $expectedNpa = $due->modify('+1 day')->format('Y-m-d');
+
+            if ($bucket === null) {
+                $bucket = match (true) {
+                    $daysRemaining < 0  => 'overdue',
+                    $daysRemaining <= 7 => 'within_7',
+                    $daysRemaining <= 15 => 'within_15',
+                    default             => 'within_30',
+                };
+            }
+        }
+
+        Database::instance()->insert('visit_ckcc_details', [
+            'visit_report_id' => $visitId,
+            'loan_account_id' => $loanAccountId,
+
+            'cif_number'         => self::str($section['cif_number'] ?? $lead['cif_number'] ?? null, 40),
+            'sanction_date'      => self::nullableDate($section['sanction_date'] ?? $lead['sanction_date'] ?? null),
+            'sanction_limit'     => self::nullableAmount($section['sanction_limit'] ?? $lead['sanction_limit'] ?? null),
+            'drawing_power'      => self::nullableAmount($section['drawing_power'] ?? $lead['drawing_power'] ?? null),
+            'outstanding_amount' => self::nullableAmount($section['outstanding_amount'] ?? $lead['outstanding_amount']),
+            'interest_overdue'   => self::nullableAmount($section['interest_overdue'] ?? $lead['interest_overdue'] ?? null),
+            'renewal_due_date'   => $dueDate,
+            'expected_npa_date'  => $expectedNpa,
+            'days_remaining'     => $daysRemaining,
+
+            'eligible_for_renewal'   => self::flag($section['eligible_for_renewal'] ?? null),
+            'renewal_due_bucket'     => $bucket,
+            'kyc_status'             => self::enum($section['kyc_status'] ?? null, ['complete', 'pending']),
+            'aadhaar_seeded'         => self::flag($section['aadhaar_seeded'] ?? null),
+            'mobile_linked'          => self::flag($section['mobile_linked'] ?? null),
+            'aadhaar_auth_completed' => self::flag($section['aadhaar_auth_completed'] ?? null),
+
+            'doc_aadhaar'          => self::flag($section['doc_aadhaar'] ?? null),
+            'doc_pan'              => self::flag($section['doc_pan'] ?? null),
+            'doc_passbook'         => self::flag($section['doc_passbook'] ?? null),
+            'doc_land_record'      => self::flag($section['doc_land_record'] ?? null),
+            'doc_khasra_khatauni'  => self::flag($section['doc_khasra_khatauni'] ?? null),
+            'doc_photograph'       => self::flag($section['doc_photograph'] ?? null),
+            'doc_mobile_available' => self::flag($section['doc_mobile_available'] ?? null),
+            'doc_others'           => self::flag($section['doc_others'] ?? null),
+            'doc_other_text'       => self::str($section['doc_other_text'] ?? null, 255),
+
+            'willing_to_renew'      => self::flag($section['willing_to_renew'] ?? null),
+            'documents_handed_over' => self::flag($section['documents_handed_over'] ?? null),
+            'renewal_form_signed'   => self::flag($section['renewal_form_signed'] ?? null),
+            'ekyc_completed'        => self::flag($section['ekyc_completed'] ?? null),
+            'biometrics_completed'  => self::flag($section['biometrics_completed'] ?? null),
+
+            'agent_observation'         => self::text($section['agent_observation'] ?? null),
+            'rec_renew_immediately'     => self::flag($section['rec_renew_immediately'] ?? null),
+            'rec_documents_submitted'   => self::flag($section['rec_documents_submitted'] ?? null),
+            'rec_followup_required'     => self::flag($section['rec_followup_required'] ?? null),
+            'rec_not_interested'        => self::flag($section['rec_not_interested'] ?? null),
+            'rec_branch_contact_urgent' => self::flag($section['rec_branch_contact_urgent'] ?? null),
+            'rec_others'                => self::flag($section['rec_others'] ?? null),
+            'rec_other_text'            => self::str($section['rec_other_text'] ?? null, 255),
+
+            'st_customer_contacted'    => self::flag($section['st_customer_contacted'] ?? null),
+            'st_customer_verified'     => self::flag($section['st_customer_verified'] ?? null),
+            'st_documents_collected'   => self::flag($section['st_documents_collected'] ?? null),
+            'st_application_submitted' => self::flag($section['st_application_submitted'] ?? null),
+            'st_ckcc_renewed'          => self::flag($section['st_ckcc_renewed'] ?? null),
+            'st_pending_at_branch'     => self::flag($section['st_pending_at_branch'] ?? null),
+            'st_followup_required'     => self::flag($section['st_followup_required'] ?? null),
+            'st_became_npa'            => self::flag($section['st_became_npa'] ?? null),
+        ]);
+    }
+
+    /**
+     * Pulls out one detail section.
+     *
+     * Accepts either a nested array (JSON body) or `ots_details[field]` style
+     * flat keys, because the app submits the visit as multipart - it carries
+     * photos - and multipart has no nesting. Returns null when the section is
+     * absent or entirely empty, so no stray child row is written.
+     *
+     * @param  array<string,mixed> $input
+     * @return array<string,mixed>|null
+     */
+    private static function section(array $input, string $name): ?array
+    {
+        $section = [];
+
+        if (isset($input[$name]) && is_array($input[$name])) {
+            $section = $input[$name];
+        } else {
+            $prefix = $name . '[';
+            foreach ($input as $key => $value) {
+                if (is_string($key) && str_starts_with($key, $prefix) && str_ends_with($key, ']')) {
+                    $section[substr($key, strlen($prefix), -1)] = $value;
+                }
+            }
+            // Also accept a flat `ots_` / `ckcc_` prefix, e.g. ots_scheme.
+            if ($section === []) {
+                $flat = str_replace('_details', '_', $name);
+                foreach ($input as $key => $value) {
+                    if (is_string($key) && str_starts_with($key, $flat) && $key !== $flat) {
+                        $section[substr($key, strlen($flat))] = $value;
+                    }
+                }
+            }
+        }
+
+        foreach ($section as $value) {
+            if (is_string($value) ? trim($value) !== '' : $value !== null) {
+                return $section;
+            }
+        }
+        return null;
+    }
+
+    private static function reportType(mixed $value): string
+    {
+        $type = is_string($value) ? strtolower(trim($value)) : '';
+        return in_array($type, self::REPORT_TYPES, true) ? $type : 'recovery';
+    }
+
+    /**
+     * @param list<string> $allowed
+     */
+    private static function enum(mixed $value, array $allowed): ?string
+    {
+        $candidate = is_string($value) ? strtolower(trim($value)) : '';
+        return in_array($candidate, $allowed, true) ? $candidate : null;
+    }
+
+    /** DECIMAL(5,2), clamped: a percentage outside 0-100 is a typo, not data. */
+    private static function percent(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || !is_numeric($value)) {
+            return null;
+        }
+        return round(max(0.0, min(100.0, (float) $value)), 2);
+    }
 
     private static function flag(mixed $value): int
     {

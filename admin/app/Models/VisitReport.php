@@ -52,6 +52,123 @@ final class VisitReport
         'rec_others'            => 'Others',
     ];
 
+    // -----------------------------------------------------------------------
+    // Report types
+    // -----------------------------------------------------------------------
+
+    public const REPORT_TYPES = [
+        'recovery'      => 'Recovery Visit',
+        'ots'           => 'KRM / OTS Settlement',
+        'ckcc_renewal'  => 'CKCC OD-2 Renewal',
+    ];
+
+    public const OTS_SCHEMES = [
+        'krm_ots'     => 'KRM OTS',
+        'general_ots' => 'General OTS',
+    ];
+
+    public const OTS_APPROVAL_STATUSES = [
+        'pending'  => 'Pending',
+        'approved' => 'Approved',
+        'rejected' => 'Rejected',
+    ];
+
+    // -----------------------------------------------------------------------
+    // CKCC renewal
+    // -----------------------------------------------------------------------
+
+    public const CKCC_DUE_BUCKETS = [
+        'within_30' => 'Within 30 Days',
+        'within_15' => 'Within 15 Days',
+        'within_7'  => 'Within 7 Days',
+        'overdue'   => 'Overdue',
+    ];
+
+    public const CKCC_KYC_STATUSES = [
+        'complete' => 'Complete',
+        'pending'  => 'Pending',
+    ];
+
+    /** Renewal readiness checks the branch needs before it can process a renewal. */
+    public const CKCC_ELIGIBILITY_FLAGS = [
+        'eligible_for_renewal'   => 'Eligible for CKCC Renewal',
+        'aadhaar_seeded'         => 'Aadhaar Seeded',
+        'mobile_linked'          => 'Mobile Linked',
+        'aadhaar_auth_completed' => 'Aadhaar Authentication Completed',
+    ];
+
+    /**
+     * What the borrower physically had with them.
+     *
+     * Separate from uploaded documents: an agent can confirm a passbook exists
+     * without photographing it, and the branch still needs to know.
+     */
+    public const CKCC_DOCUMENT_FLAGS = [
+        'doc_aadhaar'          => 'Aadhaar Card',
+        'doc_pan'              => 'PAN Card',
+        'doc_passbook'         => 'Passbook',
+        'doc_land_record'      => 'Land Record',
+        'doc_khasra_khatauni'  => 'Khasra / Khatauni',
+        'doc_photograph'       => 'Photograph',
+        'doc_mobile_available' => 'Mobile Available',
+        'doc_others'           => 'Other',
+    ];
+
+    public const CKCC_CONSENT_FLAGS = [
+        'willing_to_renew'      => 'Borrower willing to renew CKCC',
+        'documents_handed_over' => 'Documents handed over',
+        'renewal_form_signed'   => 'Renewal Form Signed',
+        'ekyc_completed'        => 'Aadhaar e-KYC Completed',
+        'biometrics_completed'  => 'Biometrics Completed',
+    ];
+
+    public const CKCC_RECOMMENDATION_FLAGS = [
+        'rec_renew_immediately'     => 'CKCC Renewal should be processed immediately',
+        'rec_documents_submitted'   => 'Borrower has submitted all required documents',
+        'rec_followup_required'     => 'Follow-up Required',
+        'rec_not_interested'        => 'Customer not interested in renewal',
+        'rec_branch_contact_urgent' => 'Branch should contact customer urgently',
+        'rec_others'                => 'Other',
+    ];
+
+    public const CKCC_STATUS_FLAGS = [
+        'st_customer_contacted'    => 'Customer Contacted',
+        'st_customer_verified'     => 'Customer Verified',
+        'st_documents_collected'   => 'Renewal Documents Collected',
+        'st_application_submitted' => 'Renewal Application Submitted',
+        'st_ckcc_renewed'          => 'CKCC Renewed',
+        'st_pending_at_branch'     => 'Pending at Branch',
+        'st_followup_required'     => 'Follow-up Required',
+        'st_became_npa'            => 'Account Became NPA',
+    ];
+
+    /**
+     * The KRM / OTS settlement section for a visit, or null when the agent did
+     * not fill it in.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function otsDetails(int $visitReportId): ?array
+    {
+        return Database::instance()->first(
+            'SELECT * FROM visit_ots_details WHERE visit_report_id = ? LIMIT 1',
+            [$visitReportId]
+        );
+    }
+
+    /**
+     * The CKCC OD-2 renewal section for a visit, or null.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function ckccDetails(int $visitReportId): ?array
+    {
+        return Database::instance()->first(
+            'SELECT * FROM visit_ckcc_details WHERE visit_report_id = ? LIMIT 1',
+            [$visitReportId]
+        );
+    }
+
     public static function find(int $id): ?array
     {
         return Database::instance()->first(
@@ -106,7 +223,7 @@ final class VisitReport
     public static function forLoanAccount(int $loanAccountId, int $limit = 100): array
     {
         return Database::instance()->all(
-            'SELECT vr.id, vr.visit_date, vr.visit_time, vr.created_at, vr.agent_name, vr.village,
+            'SELECT vr.id, vr.report_type, vr.visit_date, vr.visit_time, vr.created_at, vr.agent_name, vr.village,
                     vr.customer_met, vr.family_member_met, vr.house_locked, vr.phone_contact,
                     vr.phone_switched_off, vr.borrower_alive, vr.same_address, vr.shifted, vr.occupation,
                     vr.ready_to_pay, vr.not_ready, vr.interest_payment, vr.ots,
@@ -135,7 +252,7 @@ final class VisitReport
 
         return Paginator::fromQuery(
             "SELECT COUNT(*) FROM visit_reports vr WHERE {$clause}",
-            "SELECT vr.id, vr.loan_account_id, vr.loan_account_number, vr.customer_name, vr.village,
+            "SELECT vr.id, vr.report_type, vr.loan_account_id, vr.loan_account_number, vr.customer_name, vr.village,
                     vr.visit_date, vr.visit_time, vr.agent_name, vr.branch_name, vr.created_at,
                     vr.customer_met, vr.house_locked, vr.ready_to_pay, vr.not_ready,
                     vr.promise_amount, vr.promise_date, vr.outstanding_amount, vr.overdue_amount,
