@@ -65,6 +65,36 @@ final class Notifier
     // Email (raw SMTP over streams - no PHPMailer, no Composer)
     // -----------------------------------------------------------------------
 
+    /**
+     * Sends a password-reset OTP by email.
+     *
+     * The code is put in the subject line as well as the body: on a phone the
+     * subject is often all that is visible in the notification, which saves
+     * opening the mail at all.
+     *
+     * Plain, unbranded HTML on purpose - heavy markup is what makes a genuine
+     * message look like a phishing attempt, and some corporate mail clients
+     * strip it anyway.
+     */
+    public static function sendOtpEmail(string $email, string $otp, int $expiryMinutes): bool
+    {
+        $appName = (string) Settings::get('app_name', 'LRMS');
+        $subject = sprintf('%s password reset code: %s', $appName, $otp);
+
+        $body = '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;color:#1c2128">'
+            . '<p>Use this code to reset your ' . htmlspecialchars($appName, ENT_QUOTES) . ' password:</p>'
+            . '<p style="font-size:28px;font-weight:700;letter-spacing:.18em;margin:18px 0">'
+            . htmlspecialchars($otp, ENT_QUOTES)
+            . '</p>'
+            . '<p>It expires in ' . $expiryMinutes . ' minute' . ($expiryMinutes === 1 ? '' : 's') . '.</p>'
+            . '<p style="color:#6b7280;font-size:13px;margin-top:22px">'
+            . 'If you did not ask to reset your password, ignore this message - your password has not changed. '
+            . 'Never share this code with anyone, including bank staff.'
+            . '</p></div>';
+
+        return self::sendMail($email, $subject, $body);
+    }
+
     public static function smtpConfigured(): bool
     {
         return Settings::get('smtp_host') !== null && Settings::get('smtp_from_email') !== null;

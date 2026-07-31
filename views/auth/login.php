@@ -11,7 +11,7 @@
     <?= csrf_field() ?>
 
     <div class="mb-3">
-        <label class="form-label" for="employee_code">Employee code or mobile <span class="req">*</span></label>
+        <label class="form-label" for="employee_code">Employee code or email <span class="req">*</span></label>
         <input type="text"
                class="form-control<?= has_error($errors, 'employee_code') ?>"
                id="employee_code"

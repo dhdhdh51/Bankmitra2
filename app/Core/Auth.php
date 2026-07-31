@@ -166,7 +166,7 @@ final class Auth
             // Constant-ish work factor so a missing user is not obviously faster.
             password_verify($password, '$2y$12$usesomesillystringfore.HAoi7bIRTBBnLzOZ4vXsFCNPGz4pO');
             self::logFailure($identifier, $ip, 'unknown identifier');
-            return ['user' => null, 'error' => 'Invalid employee code or password.'];
+            return ['user' => null, 'error' => 'Invalid credentials. Check your employee code or email address and password.'];
         }
 
         if ($user['locked_until'] !== null && strtotime((string) $user['locked_until']) > time()) {
@@ -177,7 +177,7 @@ final class Auth
         if (!password_verify($password, (string) $user['password_hash'])) {
             self::registerFailedAttempt($user);
             self::logFailure($identifier, $ip, 'bad password');
-            return ['user' => null, 'error' => 'Invalid employee code or password.'];
+            return ['user' => null, 'error' => 'Invalid credentials. Check your employee code or email address and password.'];
         }
 
         if ((string) $user['status'] !== 'active') {
@@ -350,6 +350,33 @@ final class Auth
             return $row;
         }
 
+        // Email is a first-class login identifier: office staff know their email
+        // address, not their employee code. The column collation is
+        // case-insensitive, so no normalisation is needed here.
+        if (str_contains($identifier, '@')) {
+            $matches = Database::instance()->all(
+                'SELECT u.*, r.slug AS role_slug FROM users u JOIN roles r ON r.id = u.role_id
+                  WHERE u.email = ? LIMIT 2',
+                [$identifier]
+            );
+
+            // The schema makes email unique, but a database restored from before
+            // that constraint could still hold duplicates. Refusing is the only
+            // safe answer - signing somebody into whichever row sorted first would
+            // be an authentication bug, not an inconvenience.
+            if (count($matches) > 1) {
+                error_log(sprintf(
+                    '[LRMS] refusing email login: %d accounts share the address %s',
+                    count($matches),
+                    $identifier
+                ));
+                return null;
+            }
+            if (count($matches) === 1) {
+                return $matches[0];
+            }
+        }
+
         $hash = Crypto::searchHash($identifier);
         if ($hash === null) {
             return null;
@@ -360,6 +387,110 @@ final class Auth
               WHERE u.mobile_hash = ? LIMIT 1',
             [$hash]
         );
+    }
+
+    /**
+     * Issues a password-reset OTP and delivers it.
+     *
+     * Email is tried first and SMS is the fallback. Email is the better channel
+     * here: it costs nothing, it is not silently dropped by a DND registry the way
+     * transactional SMS can be, and office staff have an address on file more
+     * often than a verified mobile.
+     *
+     * Any earlier unused OTP for the user is invalidated first, so a stale code
+     * from a previous request cannot be replayed.
+     *
+     * Shared by the panel and the API deliberately - the two had a copy each, and
+     * a fix to one would have quietly missed the other.
+     *
+     * @param  array<string,mixed> $user
+     * @return array{sent:bool, channel:string, destination:string|null, expires_in:int}
+     *         `destination` is already masked and safe to show a user.
+     */
+    public static function issuePasswordOtp(array $user, string $ip): array
+    {
+        $db = Database::instance();
+        $expiryMinutes = max(2, Settings::int('otp_expiry_minutes', 10));
+        $otp = Crypto::numericOtp(6);
+
+        $email = trim((string) ($user['email'] ?? ''));
+        $mobile = Crypto::decrypt($user['mobile_enc'] ?? null);
+
+        $useEmail = $email !== ''
+            && filter_var($email, FILTER_VALIDATE_EMAIL) !== false
+            && Notifier::smtpConfigured();
+        $useSms = !$useEmail && $mobile !== null && Notifier::smsConfigured();
+
+        if (!$useEmail && !$useSms) {
+            Logger::activity(
+                'password_reset_request',
+                'Auth',
+                sprintf(
+                    'Reset requested for user #%d but no usable channel (email=%s, sms=%s) - needs an admin reset',
+                    (int) $user['id'],
+                    $email === '' ? 'none' : (Notifier::smtpConfigured() ? 'invalid' : 'smtp not configured'),
+                    $mobile === null ? 'no mobile' : 'gateway not configured'
+                )
+            );
+            return ['sent' => false, 'channel' => 'admin', 'destination' => null, 'expires_in' => $expiryMinutes];
+        }
+
+        $db->query(
+            'UPDATE password_otps SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL',
+            [(int) $user['id']]
+        );
+
+        $channel = $useEmail ? 'email' : 'sms';
+
+        $db->insert('password_otps', [
+            'user_id'    => (int) $user['id'],
+            'otp_hash'   => hash('sha256', $otp),
+            'channel'    => $channel,
+            'expires_at' => date('Y-m-d H:i:s', time() + ($expiryMinutes * 60)),
+            'ip'         => $ip,
+        ]);
+
+        $sent = $useEmail
+            ? Notifier::sendOtpEmail($email, $otp, $expiryMinutes)
+            : Notifier::sendOtpSms((string) $mobile, $otp);
+
+        Logger::activity(
+            'password_reset_otp',
+            'Auth',
+            sprintf(
+                'OTP issued for user #%d over %s (%s)',
+                (int) $user['id'],
+                $channel,
+                $sent ? 'delivered' : 'delivery failed'
+            )
+        );
+
+        return [
+            'sent'        => $sent,
+            'channel'     => $channel,
+            'destination' => $useEmail ? self::maskEmail($email) : Crypto::maskMobile((string) $mobile),
+            'expires_in'  => $expiryMinutes,
+        ];
+    }
+
+    /**
+     * Masks an address for display: `shivam@example.com` -> `sh****@example.com`.
+     *
+     * Enough for the user to recognise which of their addresses received the code,
+     * without confirming a full address to somebody probing the reset form.
+     */
+    public static function maskEmail(string $email): string
+    {
+        $at = strrpos($email, '@');
+        if ($at === false || $at === 0) {
+            return '****';
+        }
+
+        $local = substr($email, 0, $at);
+        $domain = substr($email, $at);
+        $keep = $local === '' ? '' : substr($local, 0, min(2, strlen($local)));
+
+        return $keep . str_repeat('*', max(2, strlen($local) - strlen($keep))) . $domain;
     }
 
     private static function registerFailedAttempt(array $user): void
