@@ -253,6 +253,24 @@ foreach (['lead', 'promises', 'visits', 'timeline', 'photos', 'documents', 'sign
 check('agent receives the real mobile number for calling',
     !empty($profile['json']['data']['lead']['mobile']), 'mobile was null');
 
+// The lead LIST needs a dialable number too, not just the profile. The app
+// enables its Call button straight from the list row, and when this was null the
+// button silently never appeared - an agent had to open every lead one at a time
+// just to phone the borrower. Asserted here on the server as well as in the app's
+// contract test, because that test reads committed fixtures and would keep
+// passing against a regressed server.
+$listLead = (array) $firstLead;
+check('the lead list carries a dialable mobile for an agent',
+    !empty($listLead['mobile']), 'mobile was ' . var_export($listLead['mobile'] ?? null, true));
+check('the lead list still carries the masked mobile for display',
+    !empty($listLead['mobile_masked']));
+// Aadhaar is deliberately kept out of list responses: no list needs it, and
+// shipping it per row widens the damage from any one leaked response.
+check('the lead list does NOT bulk-expose Aadhaar',
+    empty($listLead['aadhaar']), 'aadhaar leaked into the list');
+check('the lead list still carries the masked Aadhaar',
+    !empty($listLead['aadhaar_masked']));
+
 $history = api('GET', '/customers/' . $leadId . '/history', null, $agentToken);
 check('GET /customers/{id}/history returns 200', $history['status'] === 200, 'HTTP ' . $history['status']);
 check('history includes the timeline', is_array($history['json']['data']['timeline'] ?? null));

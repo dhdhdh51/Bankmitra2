@@ -1,0 +1,84 @@
+{
+    "success": true,
+    "data": {
+        "lead": {
+            "id": 57,
+            "loan_account_number": "LN00100057",
+            "customer_id": 57,
+            "customer_name": "Prakash Meena",
+            "father_husband_name": "Father of Prakash Meena",
+            "village": "Gulabpura",
+            "address": "House 57, Gulabpura",
+            "mobile": "9876510057",
+            "mobile_masked": "XXXXXX0057",
+            "aadhaar": "123410000057",
+            "aadhaar_masked": "XXXX XXXX 0057",
+            "bc_code": "BC-002",
+            "loan_type": "KCC",
+            "outstanding_amount": 205975,
+            "overdue_amount": 32956,
+            "npa_date": "2024-10-02",
+            "is_npa": true,
+            "current_status": "pending",
+            "branch_id": 2,
+            "branch_name": "Bhilwara Main",
+            "branch_code": "BR001",
+            "assigned_agent_id": 3,
+            "agent_name": "Ramesh Kumar",
+            "visit_count": 0,
+            "last_visit_at": null,
+            "next_followup_date": null,
+            "remarks": null,
+            "created_at": "2026-07-31 13:58:42"
+        },
+        "promises": [],
+        "visits": [],
+        "timeline": [
+            {
+                "id": 106,
+                "event_type": "assigned",
+                "event_label": "Assigned",
+                "tone": "blue",
+                "event_at": "2026-07-31 13:58:42",
+                "actor_name": "System Administrator",
+                "title": "Assigned to agent",
+                "description": "Initial allocation.",
+                "visit_report_id": null,
+                "promise_id": null,
+                "photo_count": 0,
+                "signature_count": 0,
+                "promise_amount": null,
+                "promise_date": null
+            },
+            {
+                "id": 57,
+                "event_type": "lead_imported",
+                "event_label": "Lead imported",
+                "tone": "slate",
+                "event_at": "2026-07-31 13:58:42",
+                "actor_name": "System Administrator",
+                "title": "Lead imported",
+                "description": "Imported from file row 58. Outstanding 205,975.00.",
+                "visit_report_id": null,
+                "promise_id": null,
+                "photo_count": 0,
+                "signature_count": 0,
+                "promise_amount": null,
+                "promise_date": null
+            }
+        ],
+        "photos": [],
+        "documents": [],
+        "signatures": [],
+        "other_accounts": [
+            {
+                "id": 57,
+                "loan_account_number": "LN00100057",
+                "loan_type": "KCC",
+                "outstanding_amount": 205975,
+                "current_status": "pending"
+            }
+        ]
+    },
+    "message": ""
+}

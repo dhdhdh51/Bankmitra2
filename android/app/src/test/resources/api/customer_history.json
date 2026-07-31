@@ -1,0 +1,44 @@
+{
+    "success": true,
+    "data": {
+        "loan_account_number": "LN00100057",
+        "customer_name": "Prakash Meena",
+        "visit_count": 0,
+        "timeline": [
+            {
+                "id": 106,
+                "event_type": "assigned",
+                "event_label": "Assigned",
+                "tone": "blue",
+                "event_at": "2026-07-31 13:58:42",
+                "actor_name": "System Administrator",
+                "title": "Assigned to agent",
+                "description": "Initial allocation.",
+                "visit_report_id": null,
+                "promise_id": null,
+                "photo_count": 0,
+                "signature_count": 0,
+                "promise_amount": null,
+                "promise_date": null
+            },
+            {
+                "id": 57,
+                "event_type": "lead_imported",
+                "event_label": "Lead imported",
+                "tone": "slate",
+                "event_at": "2026-07-31 13:58:42",
+                "actor_name": "System Administrator",
+                "title": "Lead imported",
+                "description": "Imported from file row 58. Outstanding 205,975.00.",
+                "visit_report_id": null,
+                "promise_id": null,
+                "photo_count": 0,
+                "signature_count": 0,
+                "promise_amount": null,
+                "promise_date": null
+            }
+        ],
+        "visits": []
+    },
+    "message": ""
+}

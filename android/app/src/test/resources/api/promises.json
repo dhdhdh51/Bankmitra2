@@ -1,0 +1,30 @@
+{
+    "success": true,
+    "data": [
+        {
+            "id": 8,
+            "loan_account_id": 27,
+            "promise_amount": 20750,
+            "promise_date": "2026-08-02",
+            "status": "broken",
+            "agent_name": "Ramesh Kumar",
+            "notes": "Did not turn up.",
+            "settled_at": "2026-07-31 13:58:43",
+            "created_at": "2026-07-31 13:58:42",
+            "loan_account_number": "LN00100027",
+            "customer_name": "Sita Devi",
+            "village": "Gulabpura",
+            "days_overdue": -2
+        }
+    ],
+    "message": "",
+    "meta": {
+        "current_page": 1,
+        "per_page": 3,
+        "total": 1,
+        "last_page": 1,
+        "from": 1,
+        "to": 1,
+        "has_more": false
+    }
+}

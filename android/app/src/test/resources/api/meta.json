@@ -1,0 +1,36 @@
+{
+    "success": true,
+    "data": {
+        "villages": [
+            "Gulabpura",
+            "Kotri"
+        ],
+        "loan_types": [
+            "Crop Loan",
+            "Dairy Loan",
+            "KCC",
+            "SHG Loan",
+            "Tractor Loan"
+        ],
+        "statuses": [
+            "pending",
+            "visited",
+            "promise",
+            "followup",
+            "legal",
+            "closed"
+        ],
+        "branches": [],
+        "agents": [],
+        "promise_statuses": [
+            "pending",
+            "kept",
+            "broken",
+            "cancelled"
+        ],
+        "app_version": "1.0.0",
+        "min_version": "1.0.0",
+        "maps_key": null
+    },
+    "message": ""
+}

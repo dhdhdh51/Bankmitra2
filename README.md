@@ -319,13 +319,14 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Schema | `sh tools/verify-schema.sh` | **24** — 21 tables, 39 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **264** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **158** API |
-| Android | `sh tools/verify-android.sh` | **69** unit tests + both APKs |
+| Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **162** API |
+| Android | `sh tools/verify-android.sh` | **87** unit tests + both APKs |
+| **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **18** — real server JSON through the real DTOs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**786 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
+**808 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -419,6 +420,18 @@ Kept here because they are the reason the tests exist:
     entry points that are neither a web route nor covered by the integration
     suite. Both turned out clean, and are now covered by 20 checks — including
     that the nightly dump actually restores into a fresh database.
+22. **The Call button never appeared in the app's lead list.** `LeadAdapter`
+    enables it from `lead.mobile`, but the list endpoint only ever sent
+    `mobile_masked` — the decrypted number was attached on the *profile* endpoint
+    only. So an agent looking at the day's leads could not phone anybody without
+    opening each lead first. Gson made this invisible: a missing key just leaves
+    the field null, so there was no error anywhere. The list now attaches the
+    decrypted mobile in one extra query per page for callers holding
+    `customers.view_pii`; Aadhaar is deliberately still withheld from lists.
+23. **The Android client had never deserialised a single real server response.**
+    All 69 existing tests worked on values the tests themselves built. The new
+    `ApiContractTest` parses 19 fixtures captured from a live server through the
+    real DTOs, which is what caught #22.
 
 ---
 

@@ -1,0 +1,32 @@
+{
+    "success": true,
+    "data": {
+        "user": {
+            "id": 3,
+            "employee_code": "AGT001",
+            "name": "Ramesh Kumar",
+            "email": null,
+            "mobile_masked": "XXXXXX0001",
+            "role": "agent",
+            "role_name": "BC/DC Agent",
+            "branch_id": 2,
+            "branch_name": "Bhilwara Main",
+            "branch_code": "BR001",
+            "bc_code": "BC-001",
+            "designation": "BC/DC Agent",
+            "must_change_password": false,
+            "permissions": [
+                "dashboard.view",
+                "customers.view",
+                "customers.view_pii",
+                "visits.view",
+                "visits.create",
+                "promises.view",
+                "notifications.view"
+            ]
+        },
+        "app_version": "1.0.0",
+        "min_version": "1.0.0"
+    },
+    "message": ""
+}

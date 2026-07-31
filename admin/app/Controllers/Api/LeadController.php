@@ -29,8 +29,14 @@ final class LeadController extends Controller
 
         $page = LoanAccount::paginate($filters, $sortBy, $sortDir, $request->page(), $this->perPage($request));
 
+        // The app's Call button in the lead list is enabled from `mobile`, so the
+        // list has to carry a dialable number for anyone allowed to see PII.
+        // Aadhaar is not attached: no list needs it.
+        $withPii = Auth::can('customers.view_pii') || Auth::isAgent();
+        $items = $withPii ? LoanAccount::attachMobiles($page->items) : $page->items;
+
         Response::success(
-            array_map(fn (array $lead): array => $this->presentLead($lead), $page->items),
+            array_map(fn (array $lead): array => $this->presentLead($lead, $withPii), $items),
             '',
             [
                 'meta'          => $page->meta(),
@@ -66,8 +72,11 @@ final class LeadController extends Controller
 
         $this->logActivity('search', 'API', sprintf('Searched leads for "%s"', mb_substr($term, 0, 60)));
 
+        $withPii = Auth::can('customers.view_pii') || Auth::isAgent();
+        $items = $withPii ? LoanAccount::attachMobiles($page->items) : $page->items;
+
         Response::success(
-            array_map(fn (array $lead): array => $this->presentLead($lead), $page->items),
+            array_map(fn (array $lead): array => $this->presentLead($lead, $withPii), $items),
             '',
             ['meta' => $page->meta()]
         );

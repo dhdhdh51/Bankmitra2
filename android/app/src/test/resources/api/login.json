@@ -1,0 +1,36 @@
+{
+    "success": true,
+    "data": {
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODU0ODY1MjQsIm5iZiI6MTc4NTQ4NjUyNCwiZXhwIjoxNzg1NDkzNzI0LCJqdGkiOiJlOGM5OTQzYjFmMzFhMWE5IiwiaXNzIjoibHJtcyIsInN1YiI6Mywicm9sZSI6ImFnZW50IiwiYnJhbmNoIjoyfQ.XyZFySYZisJhQbMBT732a6xaYYSqyHpXTVeoT5Xesf8",
+        "refresh_token": "2bd57c2383a320d12790ce14fe7ef2dca417a0a08686675d3413e69e71813e63",
+        "token_type": "Bearer",
+        "expires_in": 7200,
+        "user": {
+            "id": 3,
+            "employee_code": "AGT001",
+            "name": "Ramesh Kumar",
+            "email": null,
+            "mobile_masked": "XXXXXX0001",
+            "role": "agent",
+            "role_name": "BC/DC Agent",
+            "branch_id": 2,
+            "branch_name": "Bhilwara Main",
+            "branch_code": "BR001",
+            "bc_code": "BC-001",
+            "designation": "BC/DC Agent",
+            "must_change_password": false,
+            "permissions": [
+                "dashboard.view",
+                "customers.view",
+                "customers.view_pii",
+                "visits.view",
+                "visits.create",
+                "promises.view",
+                "notifications.view"
+            ]
+        },
+        "app_version": "1.0.0",
+        "min_version": "1.0.0"
+    },
+    "message": "Signed in successfully."
+}

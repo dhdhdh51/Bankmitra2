@@ -1,0 +1,11 @@
+{
+    "success": false,
+    "data": {
+        "errors": {
+            "password": [
+                "Password is required."
+            ]
+        }
+    },
+    "message": "Password is required."
+}

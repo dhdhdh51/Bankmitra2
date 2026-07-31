@@ -1,0 +1,86 @@
+{
+    "success": true,
+    "data": {
+        "report": {
+            "id": 22,
+            "loan_account_id": 27,
+            "general": {
+                "visit_date": "2026-07-30",
+                "visit_time": "14:27:00",
+                "bc_code": "BC-001",
+                "branch": "Bhilwara Main",
+                "agent_name": "Ramesh Kumar",
+                "village": "Gulabpura"
+            },
+            "borrower": {
+                "customer_name": "Sita Devi",
+                "father_husband_name": "Father of Sita Devi",
+                "address": "House 27, Gulabpura",
+                "mobile": "9876510027",
+                "mobile_masked": "XXXXXX0027",
+                "aadhaar": "123410000027",
+                "aadhaar_masked": "XXXX XXXX 0027"
+            },
+            "loan": {
+                "loan_account_number": "LN00100027",
+                "loan_type": "KCC",
+                "outstanding_amount": 110725,
+                "overdue_amount": 17716,
+                "npa_date": "2024-04-28",
+                "current_status": "pending"
+            },
+            "contact": {
+                "customer_met": true,
+                "family_member_met": false,
+                "house_locked": false,
+                "phone_contact": false,
+                "phone_switched_off": false,
+                "family_member_name": null,
+                "family_member_relationship": null
+            },
+            "verification": {
+                "borrower_alive": true,
+                "same_address": true,
+                "shifted": false,
+                "occupation": "dairy",
+                "occupation_other_text": null
+            },
+            "recovery": {
+                "ready_to_pay": true,
+                "not_ready": false,
+                "interest_payment": false,
+                "ots": false,
+                "promise_amount": 20750,
+                "promise_date": "2026-08-02"
+            },
+            "non_payment_reason": {
+                "financial_problem": false,
+                "crop_loss": false,
+                "animal_loss": false,
+                "illness": false,
+                "unemployment": false,
+                "dispute": false,
+                "other_loan": false,
+                "others": false,
+                "other_text": null
+            },
+            "recommendation": {
+                "recovery_possible": true,
+                "regular_followup": false,
+                "legal_action": false,
+                "rc": false,
+                "ots": false,
+                "others": false,
+                "other_text": null
+            },
+            "remarks": "Customer agreed to pay after selling produce.",
+            "source": "android",
+            "app_version": "1.0.0",
+            "created_at": "2026-07-31 13:58:42"
+        },
+        "photos": [],
+        "documents": [],
+        "signatures": []
+    },
+    "message": ""
+}

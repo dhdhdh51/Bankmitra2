@@ -100,6 +100,59 @@ final class LoanAccount
      *   date_from?:string, date_to?:string
      * } $filters
      */
+    /**
+     * Fills in the decrypted `mobile` for a page of rows.
+     *
+     * The list projection deliberately carries only `mobile_masked`, so a grid
+     * never decrypts anything. But the agent app needs a dialable number in the
+     * list itself: its Call button is enabled from this field, and without it the
+     * button never appears and an agent has to open every lead one by one just to
+     * phone the borrower.
+     *
+     * Done as ONE extra query for the whole page rather than a lookup per row,
+     * and it resolves `mobile` only - Aadhaar stays out of list responses, since
+     * nothing in a list needs it and bulk-shipping it would widen the blast
+     * radius of any single leaked response for no benefit.
+     *
+     * @param  list<array<string,mixed>> $rows
+     * @return list<array<string,mixed>>
+     */
+    public static function attachMobiles(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $customerIds = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['customer_id'] ?? 0);
+            if ($id > 0) {
+                $customerIds[$id] = true;
+            }
+        }
+        if ($customerIds === []) {
+            return $rows;
+        }
+
+        $ids = array_keys($customerIds);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $encrypted = Database::instance()->all(
+            'SELECT id, mobile_enc FROM customers WHERE id IN (' . $placeholders . ')',
+            $ids
+        );
+
+        $byId = [];
+        foreach ($encrypted as $row) {
+            $byId[(int) $row['id']] = Crypto::decrypt($row['mobile_enc'] ?? null);
+        }
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['mobile'] = $byId[(int) ($row['customer_id'] ?? 0)] ?? null;
+        }
+
+        return $rows;
+    }
+
     public static function paginate(array $filters, string $sortBy, string $sortDir, int $page, int $perPage): Paginator
     {
         [$clause, $params] = self::buildWhere($filters);

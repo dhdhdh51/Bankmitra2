@@ -1,0 +1,132 @@
+{
+    "success": true,
+    "data": {
+        "occupations": [
+            {
+                "value": "agriculture",
+                "label": "Agriculture"
+            },
+            {
+                "value": "dairy",
+                "label": "Dairy"
+            },
+            {
+                "value": "business",
+                "label": "Business"
+            },
+            {
+                "value": "job",
+                "label": "Job"
+            },
+            {
+                "value": "labour",
+                "label": "Labour"
+            },
+            {
+                "value": "others",
+                "label": "Others"
+            }
+        ],
+        "contact_flags": [
+            {
+                "key": "customer_met",
+                "label": "Customer Met"
+            },
+            {
+                "key": "family_member_met",
+                "label": "Family Member Met"
+            },
+            {
+                "key": "house_locked",
+                "label": "House Locked"
+            },
+            {
+                "key": "phone_contact",
+                "label": "Phone Contact"
+            },
+            {
+                "key": "phone_switched_off",
+                "label": "Phone Switched Off"
+            }
+        ],
+        "recovery_flags": [
+            {
+                "key": "ready_to_pay",
+                "label": "Ready To Pay"
+            },
+            {
+                "key": "not_ready",
+                "label": "Not Ready"
+            },
+            {
+                "key": "interest_payment",
+                "label": "Interest Payment"
+            },
+            {
+                "key": "ots",
+                "label": "OTS"
+            }
+        ],
+        "reason_flags": [
+            {
+                "key": "reason_financial_problem",
+                "label": "Financial Problem"
+            },
+            {
+                "key": "reason_crop_loss",
+                "label": "Crop Loss"
+            },
+            {
+                "key": "reason_animal_loss",
+                "label": "Animal Loss"
+            },
+            {
+                "key": "reason_illness",
+                "label": "Illness"
+            },
+            {
+                "key": "reason_unemployment",
+                "label": "Unemployment"
+            },
+            {
+                "key": "reason_dispute",
+                "label": "Dispute"
+            },
+            {
+                "key": "reason_other_loan",
+                "label": "Other Loan"
+            },
+            {
+                "key": "reason_others",
+                "label": "Others"
+            }
+        ],
+        "recommendation_flags": [
+            {
+                "key": "rec_recovery_possible",
+                "label": "Recovery Possible"
+            },
+            {
+                "key": "rec_regular_followup",
+                "label": "Regular Follow-up"
+            },
+            {
+                "key": "rec_legal_action",
+                "label": "Legal Action"
+            },
+            {
+                "key": "rec_rc",
+                "label": "RC"
+            },
+            {
+                "key": "rec_ots",
+                "label": "OTS"
+            },
+            {
+                "key": "rec_others",
+                "label": "Others"
+            }
+        ]
+    },
+    "message": ""
+}

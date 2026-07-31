@@ -1,0 +1,30 @@
+{
+    "success": true,
+    "data": {
+        "leads": {
+            "total": 8,
+            "pending": 2,
+            "visited": 1,
+            "promise_cases": 0,
+            "followup": 4,
+            "closed": 1,
+            "npa_cases": 8,
+            "outstanding": 962000,
+            "overdue": 165540
+        },
+        "visits": {
+            "total": 6,
+            "today": 0,
+            "week": 3,
+            "month": 6
+        },
+        "promises": {
+            "pending": 0,
+            "kept": 0,
+            "broken": 1,
+            "overdue": 0,
+            "due_today": 0
+        }
+    },
+    "message": ""
+}
