@@ -443,8 +443,10 @@ Everything in the repository is covered by runnable checks.
 | Command | What it proves |
 | --- | --- |
 | `php tools/selftest-core.php` | 91 checks — crypto, JWT, XLSX, PDF, validator, paginator |
-| `sh tools/verify-schema.sh` | `schema.sql` imports cleanly into MySQL 8 |
+| `sh tools/verify-schema.sh` | 24 checks — 21 tables, 39 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
 | `sh tools/integration-test.sh` | 264 checks — import, visits, promises, reports, backup |
+| `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
+| `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
 | `sh tools/smoke-panel.sh` | 114 panel + 158 API checks over real HTTP |
 | `sh tools/verify-android.sh` | 69 unit tests, debug + release APK |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |

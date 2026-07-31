@@ -316,15 +316,16 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
 | Core unit tests | `php tools/selftest-core.php` | **91** |
-| Schema import | `sh tools/verify-schema.sh` | 21 tables, 39 FKs, seeds |
+| Schema | `sh tools/verify-schema.sh` | **24** — 21 tables, 39 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **264** |
+| Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **158** API |
 | Android | `sh tools/verify-android.sh` | **69** unit tests + both APKs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
-| **Real Apache** | `sh tools/verify-apache.sh` | **24** — `.htaccess` under `AllowOverride All` + php-fpm |
+| **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**739 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
+**786 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -394,6 +395,30 @@ Kept here because they are the reason the tests exist:
     API request it never ran. The admin panel would have worked perfectly while
     the Android app failed to authenticate against everything. Now fixed with two
     independent mechanisms and asserted end to end.
+16. **`schema.sql` destroys data and nothing said so.** Every table begins with
+    `DROP TABLE IF EXISTS`, so re-importing it deletes every customer, visit and
+    promise. "Re-import the schema to be safe" is a natural thing to try during an
+    upgrade. Now warned about in the file header, `DEPLOYMENT.md` §2.2 and §10, and
+    the hosting README — and a test inserts a canary row and asserts the re-import
+    removes it, so the behaviour is pinned rather than assumed.
+17. **`schema.sql` never re-enabled `FOREIGN_KEY_CHECKS`.** It turns them off to
+    allow any table order but never restored them, so the rest of that session — a
+    phpMyAdmin tab, an operator's shell — could write rows that break referential
+    integrity without complaint.
+18. **`verify-schema.sh` was broken while being reported as passing.** It used
+    `mysqladmin ping` for readiness, which succeeds against MySQL's temporary init
+    server, so it imported too early and failed with `Access denied`. The same bug
+    had been fixed in three other scripts; this one was missed.
+19. **That script also died silently mid-run.** Its query helper swallowed stderr,
+    so under `set -e` one bad query (`permissions.slug`; the column is
+    `permissions.code`) aborted the run with no message and no summary, hiding a
+    third of the checks.
+20. **The Auditor role shipped entirely undocumented** — `schema.sql` seeds four
+    roles, the README described three.
+21. **The cron scripts had never been executed by any test.** They are the only
+    entry points that are neither a web route nor covered by the integration
+    suite. Both turned out clean, and are now covered by 20 checks — including
+    that the nightly dump actually restores into a fresh database.
 
 ---
 

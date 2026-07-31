@@ -24,6 +24,33 @@ DB_PORT=13308
 
 [ -f "$DOCROOT/index.php" ] || { echo "!! $DOCROOT has no index.php"; exit 1; }
 
+# Resolve the binaries and the module directory up front. A missing httpd used to
+# surface as "httpd config invalid", which sends you off debugging a config file
+# that was perfectly fine.
+HTTPD=$(command -v httpd || command -v apache2 || true)
+[ -x "/usr/sbin/httpd" ] && HTTPD=${HTTPD:-/usr/sbin/httpd}
+[ -x "/usr/sbin/apache2" ] && HTTPD=${HTTPD:-/usr/sbin/apache2}
+PHPFPM=$(command -v php-fpm || command -v php-fpm8.4 || command -v php-fpm8.3 || true)
+[ -x "/usr/sbin/php-fpm" ] && PHPFPM=${PHPFPM:-/usr/sbin/php-fpm}
+
+if [ -z "$HTTPD" ] || [ -z "$PHPFPM" ]; then
+    echo '!! This harness needs a real Apache and php-fpm, which are not installed.'
+    echo '   Amazon Linux / RHEL:  dnf install -y httpd php-fpm php-mysqlnd php-mbstring php-gd php-zip'
+    echo '   Debian / Ubuntu:      apt-get install -y apache2 php-fpm php-mysql php-mbstring php-gd php-zip'
+    [ -z "$HTTPD" ] && echo '   missing: httpd/apache2'
+    [ -z "$PHPFPM" ] && echo '   missing: php-fpm'
+    exit 1
+fi
+
+MODDIR=''
+for d in /usr/lib64/httpd/modules /usr/lib/apache2/modules /usr/lib/httpd/modules; do
+    [ -f "$d/mod_rewrite.so" ] && MODDIR=$d && break
+done
+[ -n "$MODDIR" ] || { echo '!! could not find the Apache module directory (mod_rewrite.so)'; exit 1; }
+echo "==> httpd:   $HTTPD"
+echo "==> php-fpm: $PHPFPM"
+echo "==> modules: $MODDIR"
+
 PASSED=0
 FAILED=0
 pass() { PASSED=$((PASSED + 1)); printf '  PASS  %s\n' "$1"; }
@@ -112,12 +139,11 @@ php_admin_flag[log_errors] = on
 php_admin_value[session.save_path] = $WORK/sessions
 php_admin_value[upload_tmp_dir] = $WORK/uploadtmp
 FPMEOF
-php-fpm --fpm-config "$WORK/php-fpm.conf"
+"$PHPFPM" --fpm-config "$WORK/php-fpm.conf"
 
 # ---------------------------------------------------------------------------
 echo '==> Apache with AllowOverride All'
 # ---------------------------------------------------------------------------
-MODDIR=/usr/lib64/httpd/modules
 cat > "$WORK/httpd.conf" <<APEOF
 ServerName 127.0.0.1
 Listen $PORT
@@ -160,8 +186,8 @@ DocumentRoot "$DOCROOT"
 </FilesMatch>
 APEOF
 
-httpd -f "$WORK/httpd.conf" -t || { echo '!! httpd config invalid'; exit 1; }
-httpd -f "$WORK/httpd.conf"
+"$HTTPD" -f "$WORK/httpd.conf" -t || { echo '!! httpd config invalid'; exit 1; }
+"$HTTPD" -f "$WORK/httpd.conf"
 
 i=0
 while [ "$i" -lt 40 ]; do
