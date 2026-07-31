@@ -91,6 +91,64 @@ check('mask mobile', Crypto::maskMobile('9876543210') === 'XXXXXX3210', (string)
 check('mask aadhaar', Crypto::maskAadhaar('123456789012') === 'XXXX XXXX 9012', (string) Crypto::maskAadhaar('123456789012'));
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// A blank key must fail loudly, and name itself.
+//
+// A live deployment ran with empty crypto keys. config.php existed, so the app
+// booted and most of it worked; the failure only appeared when something touched
+// encryption, as a bare HTTP 500. Creating a user with a mobile number failed,
+// and so did any sign-in whose identifier contained a digit - because that falls
+// through to the mobile-hash lookup, while an identifier with no digits never
+// reaches the crypto and returned a clean 401. A fault that depends on whether
+// your text contains a digit is nearly undiagnosable from outside.
+// ---------------------------------------------------------------------------
+$withKeys = static function (array $overrides, callable $fn): array {
+    $original = [
+        'app_key'     => Config::get('app_key'),
+        'data_key'    => Config::get('data_key'),
+        'hash_pepper' => Config::get('hash_pepper'),
+    ];
+    Config::load(array_merge([
+        'db'  => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'x', 'user' => 'r', 'pass' => '', 'charset' => 'utf8mb4'],
+        'app' => ['debug' => true, 'timezone' => 'Asia/Kolkata'],
+    ], $original, $overrides));
+    Crypto::reset();
+
+    try {
+        $fn();
+        $result = ['threw' => false, 'message' => ''];
+    } catch (\Throwable $e) {
+        $result = ['threw' => true, 'message' => $e->getMessage()];
+    }
+
+    Config::load(array_merge([
+        'db'  => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'x', 'user' => 'r', 'pass' => '', 'charset' => 'utf8mb4'],
+        'app' => ['debug' => true, 'timezone' => 'Asia/Kolkata'],
+    ], $original));
+    Crypto::reset();
+    return $result;
+};
+
+$blankPepper = $withKeys(['hash_pepper' => ''], static fn () => Crypto::searchHash('9876543210'));
+check('a blank hash_pepper is refused rather than silently hashing nothing', $blankPepper['threw']);
+check('and the error names the missing key', str_contains($blankPepper['message'], 'hash_pepper'),
+    $blankPepper['message']);
+
+$blankDataKey = $withKeys(['data_key' => ''], static fn () => Crypto::encrypt('9876543210'));
+check('a blank data_key is refused', $blankDataKey['threw']);
+check('and that error names its key too', str_contains($blankDataKey['message'], 'data_key'),
+    $blankDataKey['message']);
+
+$shortKey = $withKeys(['hash_pepper' => 'tooshort'], static fn () => Crypto::searchHash('9876543210'));
+check('a key under 16 characters is refused', $shortKey['threw'], $shortKey['message']);
+
+// A passphrase is allowed, so an operator who ignores the generator is not stuck.
+$passphrase = $withKeys(
+    ['hash_pepper' => 'a-long-enough-passphrase-instead-of-hex'],
+    static fn () => Crypto::searchHash('9876543210')
+);
+check('a long passphrase is accepted and hashed', !$passphrase['threw'], $passphrase['message']);
+
 section('JWT');
 
 $token = Jwt::encode(['sub' => 42, 'role' => 'agent'], 600);

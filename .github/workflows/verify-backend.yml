@@ -74,6 +74,14 @@ jobs:
       - name: Run core self-tests
         run: php tools/selftest-core.php
 
+      # A wrong Subresource Integrity hash makes the browser refuse the file
+      # outright. Nothing server-side can see that: the HTML is correct and every
+      # panel test passes, while the actual page renders unstyled. This shipped
+      # once - the symptom was "the profile menu never closes", because the rule
+      # that hides a dropdown is Bootstrap's and Bootstrap CSS was being blocked.
+      - name: Verify CDN integrity hashes
+        run: php tools/verify-cdn-integrity.php
+
       - name: Cross-validate the generated XLSX and PDF
         run: |
           python3 -m pip install --quiet pypdf openpyxl

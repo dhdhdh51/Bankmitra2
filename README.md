@@ -342,7 +342,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Harness | Command | Checks |
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
-| Core unit tests | `php tools/selftest-core.php` | **91** |
+| Core unit tests | `php tools/selftest-core.php` | **97** |
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
@@ -352,8 +352,9 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
+| CDN integrity | `php tools/verify-cdn-integrity.php` | every SRI hash matches the file the browser fetches |
 
-**921 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
+**932 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -461,7 +462,23 @@ Kept here because they are the reason the tests exist:
     the field null, so there was no error anywhere. The list now attaches the
     decrypted mobile in one extra query per page for callers holding
     `customers.view_pii`; Aadhaar is deliberately still withheld from lists.
-24. **The Android client had never deserialised a single real server response.**
+24. **A wrong Subresource Integrity hash silently disabled all of Bootstrap CSS.**
+    The declared hash for `bootstrap.min.css` matched the real file for its first
+    fourteen characters and then diverged, in **all three layouts** — so the login
+    page too. A browser refuses a file whose hash does not match, so none of
+    Bootstrap's CSS was ever applied on the live site. The symptom reported was
+    "the profile menu never closes", which is exactly right: the rule that hides a
+    dropdown is Bootstrap's. Nothing server-side could see it — the HTML is
+    correct and all 130 panel checks pass — so `tools/verify-cdn-integrity.php`
+    now fetches each file and compares, and CI runs it.
+25. **Blank crypto keys failed late, as an unattributable 500.** A live install had
+    `config.php` present but `data_key` and `hash_pepper` empty. The app booted,
+    pages rendered and sign-in worked, yet creating a user with a mobile number
+    failed and an app login 500'd — but only when the identifier contained a
+    digit, because only then does it fall through to the mobile-hash lookup and
+    reach the crypto. Bootstrap now validates the keys at startup and names the
+    ones at fault instead of letting an unrelated action explode weeks later.
+26. **The Android client had never deserialised a single real server response.**
     All 69 existing tests worked on values the tests themselves built. The new
     `ApiContractTest` parses 19 fixtures captured from a live server through the
     real DTOs, which is what caught #22.

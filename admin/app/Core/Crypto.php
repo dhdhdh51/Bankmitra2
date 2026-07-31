@@ -30,6 +30,21 @@ final class Crypto
     private static ?string $dataKey = null;
     private static ?string $pepper  = null;
 
+    /**
+     * Drops the cached derived keys so the next call re-reads the configuration.
+     *
+     * Both keys are derived once and kept, since deriving them per call would hash
+     * on every single encrypt. That cache also means a config reload is invisible
+     * to this class - fine in a request, wrong for a test that has to prove a
+     * blank key is rejected, and wrong for the CLI tools that load one config
+     * after another.
+     */
+    public static function reset(): void
+    {
+        self::$dataKey = null;
+        self::$pepper = null;
+    }
+
     // -----------------------------------------------------------------------
     // Encryption
     // -----------------------------------------------------------------------

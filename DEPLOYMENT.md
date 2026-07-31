@@ -515,7 +515,7 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 91 checks — crypto, JWT, XLSX, PDF, validator, paginator |
+| `php tools/selftest-core.php` | 97 checks — crypto, JWT, XLSX, PDF, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 24 checks — 21 tables, 39 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
 | `sh tools/integration-test.sh` | 264 checks — import, visits, promises, reports, backup |
 | `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
