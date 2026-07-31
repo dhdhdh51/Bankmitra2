@@ -54,6 +54,10 @@ git show "$REF:schema.sql"    > "$OUT/schema.sql"
 git show "$REF:DEPLOYMENT.md" > "$OUT/DEPLOYMENT.md"
 git show "$REF:tools/hosting-README.md" > "$OUT/README.md"
 
+# A self-check page for the install, gated behind ?i-understand=1 so a crawler
+# gets nothing. Meant to be deleted once the site is up.
+git show "$REF:tools/hosting-diag.php" > "$OUT/diag.php"
+
 # Runtime directories that must exist and be writable on the host. git archive
 # carries the .gitkeep/.htaccess files, but be explicit so a missing one is a
 # build failure rather than a 500 in production.
@@ -69,7 +73,7 @@ note() { printf '  %-6s %s\n' "$1" "$2"; [ "$1" = 'ok' ] || fail=1; }
 for f in index.php .htaccess app/bootstrap.php config/config.sample.php \
          config/.htaccess views/layouts/app.php assets/css/app.css \
          cron/backup.php cron/reminders.php storage/.htaccess uploads/.htaccess \
-         schema.sql README.md DEPLOYMENT.md; do
+         schema.sql README.md DEPLOYMENT.md diag.php; do
     if [ -e "$OUT/$f" ]; then note ok "$f"; else note MISSING "$f"; fi
 done
 
