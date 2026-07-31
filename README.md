@@ -311,16 +311,17 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 109 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
 | Core unit tests | `php tools/selftest-core.php` | **91** |
 | Schema import | `sh tools/verify-schema.sh` | 21 tables, 39 FKs, seeds |
 | Integration | `sh tools/integration-test.sh` | **264** |
 | Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **158** API |
 | Android | `sh tools/verify-android.sh` | **69** unit tests + both APKs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
+| **Real Apache** | `sh tools/verify-apache.sh` | **24** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**715 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
+**739 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -379,6 +380,17 @@ Kept here because they are the reason the tests exist:
 13. **Two backups taken in the same second overwrote each other** — the filename
     only had second resolution, so double-clicking *Backup now* silently destroyed
     the first file. Colliding names now get a numeric suffix.
+14. **`.htaccess` had never been executed even once.** Every harness used PHP's
+    built-in server, which ignores `.htaccess` entirely. Running the package under
+    a real Apache with `AllowOverride All` immediately found the next item.
+15. **The whole REST API would have returned 401 in production.** Apache reserves
+    the `Authorization` header for its own authentication and does **not** forward
+    it to a FastCGI/CGI/LSAPI backend — which is how PHP runs on practically every
+    cPanel host. The `.htaccess` did carry a rewrite rule for it, but the rule sat
+    *after* `RewriteRule ^ index.php [L]`, and `[L]` ends processing, so for every
+    API request it never ran. The admin panel would have worked perfectly while
+    the Android app failed to authenticate against everything. Now fixed with two
+    independent mechanisms and asserted end to end.
 
 ---
 
