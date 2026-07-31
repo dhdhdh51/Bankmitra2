@@ -226,22 +226,22 @@ foreach ($signatures as $signature) {
 
                     <!-- The settlement figures are what the branch acts on, so they
                          are given the prominence a table row would not. -->
-                    <div class="lrms-stat-row mt-3">
-                        <div class="lrms-stat">
-                            <span class="lrms-stat-label">Borrower&rsquo;s payable
+                    <div class="lrms-figures mt-3">
+                        <div class="lrms-figure">
+                            <span class="lrms-figure-label">Borrower&rsquo;s payable
                                 <?php if ($ots['payable_percent'] !== null): ?>
                                     (<?= e(rtrim(rtrim(number_format((float) $ots['payable_percent'], 2), '0'), '.')) ?>%)
                                 <?php endif; ?>
                             </span>
-                            <span class="lrms-stat-value"><?= e(rupees($ots['borrower_payable_amount'])) ?></span>
+                            <span class="lrms-figure-value"><?= e(rupees($ots['borrower_payable_amount'])) ?></span>
                         </div>
-                        <div class="lrms-stat">
-                            <span class="lrms-stat-label">Total settlement</span>
-                            <span class="lrms-stat-value"><?= e(rupees($ots['total_settlement_amount'])) ?></span>
+                        <div class="lrms-figure">
+                            <span class="lrms-figure-label">Total settlement</span>
+                            <span class="lrms-figure-value"><?= e(rupees($ots['total_settlement_amount'])) ?></span>
                         </div>
-                        <div class="lrms-stat">
-                            <span class="lrms-stat-label">Balance payable</span>
-                            <span class="lrms-stat-value"><?= e(rupees($ots['balance_payable'])) ?></span>
+                        <div class="lrms-figure">
+                            <span class="lrms-figure-label">Balance payable</span>
+                            <span class="lrms-figure-value"><?= e(rupees($ots['balance_payable'])) ?></span>
                         </div>
                     </div>
 
