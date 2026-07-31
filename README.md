@@ -42,6 +42,16 @@ never processes a payment** — repayment always happens through the bank's own 
   assign / reassign / transfer.
 - Duplicate detection on loan account number.
 
+**Field reports — three types**
+- **Recovery visit** — the standard call: contact, verification, recovery
+  possibility, non-payment reason, recommendation.
+- **KRM / OTS settlement** — eligibility, scheme, relief %, borrower's payable
+  amount, the 10% initial deposit (recorded from the *bank's* receipt — the agent
+  never handles money), approval status, validity window, borrower's acceptance.
+- **CKCC OD-2 renewal** — account figures, renewal deadline with the **expected
+  NPA date** if it is missed, KYC/Aadhaar seeding, documents the borrower had in
+  hand, renewal consent and biometrics, agent observation and report status.
+
 **Field visits**
 - Agent opens a lead, records outcome (paid, promised, refused, not found,
   disputed, absent, …), amount promised, promise date and free-text remarks.
@@ -87,7 +97,7 @@ and no table in [`schema.sql`](schema.sql) has a latitude, longitude or attendan
 ## Repository layout
 
 ```
-schema.sql                  21-table MySQL schema + seed roles, permissions, admin user
+schema.sql                  23-table MySQL schema + seed roles, permissions, admin user
 DEPLOYMENT.md               step-by-step cPanel / shared-hosting deployment guide
 
 admin/                      web root for the panel and the API
@@ -316,8 +326,8 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
 | Core unit tests | `php tools/selftest-core.php` | **91** |
-| Schema | `sh tools/verify-schema.sh` | **24** — 21 tables, 39 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **264** |
+| Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
+| Integration | `sh tools/integration-test.sh` | **308** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **162** API |
 | Android | `sh tools/verify-android.sh` | **87** unit tests + both APKs |
@@ -326,7 +336,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**808 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
+**852 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
