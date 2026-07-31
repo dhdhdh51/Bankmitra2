@@ -95,6 +95,7 @@ class VisitReportActivity : BaseActivity() {
     // -----------------------------------------------------------------------
 
     private var leadLoanType: String = ""
+    private var leadOutstanding: Double = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,6 +124,7 @@ class VisitReportActivity : BaseActivity() {
 
         binding.toolbar.subtitle = intent.getStringExtra(EXTRA_CUSTOMER_NAME)
         leadLoanType = intent.getStringExtra(EXTRA_LOAN_TYPE).orEmpty()
+        leadOutstanding = intent.getDoubleExtra(EXTRA_OUTSTANDING, 0.0)
 
         setUpReportType()
         setUpGeneral()
@@ -228,6 +230,13 @@ class VisitReportActivity : BaseActivity() {
         ots.inputOtsPayablePercent.setText(VisitFormData.DEFAULT_PAYABLE_PERCENT)
         ots.inputOtsDepositPercent.setText(VisitFormData.DEFAULT_DEPOSIT_PERCENT)
 
+        // The residual balance starts at the account's outstanding amount, which is
+        // how the settlement is normally worked out - payable is a percentage of it.
+        // Still editable: the branch may hand over a different figure.
+        if (leadOutstanding > 0.0) {
+            ots.inputOtsRlb.setText(Formatters.plainAmount(leadOutstanding))
+        }
+
         bindText(ots.inputOtsRelief) { form.otsReliefPercent = it }
         bindText(ots.inputOtsRlb) { form.otsRlbAmount = it; refreshOtsSuggestions() }
         bindText(ots.inputOtsPayablePercent) { form.otsPayablePercent = it; refreshOtsSuggestions() }
@@ -267,6 +276,10 @@ class VisitReportActivity : BaseActivity() {
         }
         bindSuggestion(ots.textOtsBalanceHint, form.suggestedBalancePayable(), form.otsBalancePayable) {
             ots.inputOtsBalance.setText(Formatters.plainAmount(it))
+        }
+        // Relief is whatever the borrower is not paying.
+        bindSuggestion(ots.textOtsReliefHint, form.suggestedReliefPercent(), form.otsReliefPercent) {
+            ots.inputOtsRelief.setText(Formatters.plainAmount(it))
         }
     }
 
@@ -905,6 +918,7 @@ class VisitReportActivity : BaseActivity() {
         private const val EXTRA_CUSTOMER_NAME = "customer_name"
         private const val EXTRA_VILLAGE = "village"
         private const val EXTRA_LOAN_TYPE = "loan_type"
+        private const val EXTRA_OUTSTANDING = "outstanding"
 
         private const val DAY_MS = 86_400_000L
 
@@ -916,11 +930,14 @@ class VisitReportActivity : BaseActivity() {
             // Used only to suggest the CKCC renewal form for a CKCC account. The
             // agent always makes the final choice.
             loanType: String? = null,
+            // Seeds the residual-balance field on a settlement report.
+            outstanding: Double = 0.0,
         ): Intent = Intent(context, VisitReportActivity::class.java).apply {
             putExtra(EXTRA_LEAD_ID, leadId)
             putExtra(EXTRA_CUSTOMER_NAME, customerName)
             putExtra(EXTRA_VILLAGE, village)
             putExtra(EXTRA_LOAN_TYPE, loanType)
+            putExtra(EXTRA_OUTSTANDING, outstanding)
         }
     }
 }

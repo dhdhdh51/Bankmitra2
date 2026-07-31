@@ -117,6 +117,20 @@
                     android:maxLines="1" />
             </com.google.android.material.textfield.TextInputLayout>
 
+            <TextView
+                android:id="@+id/textOtsReliefHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="?attr/selectableItemBackground"
+                android:minHeight="32dp"
+                android:paddingVertical="6dp"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel"
+                android:textColor="@color/lrms_primary"
+                android:visibility="gone"
+                tools:text="Suggested: 77.5 - tap to use"
+                tools:visibility="visible" />
+
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/fieldOtsRlb"
                 android:layout_width="match_parent"

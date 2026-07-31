@@ -579,9 +579,18 @@ final class VisitService
             'eligible_for_ots' => self::flag($section['eligible_for_ots'] ?? null),
             'scheme'           => self::enum($section['scheme'] ?? null, ['krm_ots', 'general_ots']),
 
+            // Bank data, taken from the account rather than from the form. The
+            // agent cannot mistype the classification date of the very account the
+            // settlement is being offered against.
+            'npa_date'      => $lead['npa_date'],
+            'borrower_name' => self::str($lead['customer_name'] ?? null, 150),
+
             'outstanding_amount'      => self::nullableAmount($section['outstanding_amount'] ?? $lead['outstanding_amount']),
             'relief_waiver_percent'   => self::percent($section['relief_waiver_percent'] ?? null),
-            'rlb_amount'              => self::nullableAmount($section['rlb_amount'] ?? null),
+            // Defaults to the outstanding balance when the branch has not given a
+            // separate figure - which is how the worked example runs: payable is
+            // 22.50% of the outstanding amount.
+            'rlb_amount'              => self::nullableAmount($section['rlb_amount'] ?? $lead['outstanding_amount']),
             'payable_percent'         => self::percent($section['payable_percent'] ?? null) ?? 22.50,
             'borrower_payable_amount' => self::nullableAmount($section['borrower_payable_amount'] ?? null),
             'total_settlement_amount' => self::nullableAmount($section['total_settlement_amount'] ?? null),

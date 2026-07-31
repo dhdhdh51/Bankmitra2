@@ -210,6 +210,11 @@ foreach ($signatures as $signature) {
                 </div>
                 <div class="lrms-card-body">
                     <dl class="lrms-dl">
+                        <div><dt>Borrower&rsquo;s name</dt><dd><?= nullable($ots['borrower_name'] ?? $report['customer_name']) ?></dd></div>
+                        <div>
+                            <dt>NPA date</dt>
+                            <dd><?= empty($ots['npa_date']) ? '<span class="text-muted">Not classified</span>' : fmt_date($ots['npa_date']) ?></dd>
+                        </div>
                         <div><dt>Eligible for KRM / OTS</dt><dd><?= yes_no($ots['eligible_for_ots']) ?></dd></div>
                         <div><dt>Outstanding at visit</dt><dd><?= e(rupees($ots['outstanding_amount'])) ?></dd></div>
                         <div>

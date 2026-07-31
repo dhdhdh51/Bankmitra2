@@ -254,6 +254,11 @@ final class VisitController extends Controller
         $percent = static fn (string $k): ?float => $row[$k] === null ? null : round((float) $row[$k], 2);
 
         return [
+            // Snapshotted from the account, so an approved offer still reads
+            // correctly months later even if the account has since moved on.
+            'borrower_name'    => $row['borrower_name'] === null ? null : (string) $row['borrower_name'],
+            'npa_date'         => $row['npa_date'] === null ? null : (string) $row['npa_date'],
+
             'eligible_for_ots' => (int) $row['eligible_for_ots'] === 1,
             'scheme'           => $row['scheme'] === null ? null : (string) $row['scheme'],
             'scheme_label'     => $row['scheme'] === null

@@ -331,6 +331,17 @@ data class VisitFormData(
     // hands would be worse than one that suggests nothing.
     // -----------------------------------------------------------------------
 
+    /**
+     * Relief and the borrower's share are the two halves of the same 100%, which is
+     * how the worked example runs: 77.50% waived, 22.50% payable. Offered as a hint
+     * only - a scheme could define them independently.
+     */
+    fun suggestedReliefPercent(): Double? {
+        val payable = number(otsPayablePercent) ?: return null
+        if (payable < 0.0 || payable > 100.0) return null
+        return round2(100.0 - payable)
+    }
+
     /** payable = RLB x payable_percent. Null when either input is missing. */
     fun suggestedPayable(): Double? {
         val rlb = number(otsRlbAmount) ?: return null

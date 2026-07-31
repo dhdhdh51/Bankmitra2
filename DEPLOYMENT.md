@@ -241,6 +241,29 @@ edits, no re-upload.
 | Notifications | Promise reminder lead time, follow-up threshold |
 | Backup | Retention days, `mysqldump` path |
 
+### Email (SMTP) — needed for password-reset codes
+
+Settings → Integrations. With `smtp_host` and `smtp_from_email` filled in, reset
+codes go out by email; without them the system falls back to SMS, and with neither
+a reset has to be done by an administrator.
+
+| Setting | Example |
+|---|---|
+| `smtp_host` | `smtp.gmail.com` |
+| `smtp_port` | `587` |
+| `smtp_username` | the mailbox login |
+| `smtp_password` | an **app password**, not the account password |
+| `smtp_encryption` | `tls` (or `ssl` on port 465) |
+| `smtp_from_email` | `no-reply@yourbank.example` |
+| `smtp_from_name` | `LRMS` |
+
+Most shared hosts block outbound port 25 but allow 587. If cPanel provides a mail
+account on your own domain, use that — mail from your own domain is far less likely
+to be marked as spam than mail claiming to be from Gmail.
+
+Users can sign in with their employee code **or** their email address, so an
+account intended for office staff should have `email` set.
+
 ### SMS gateway
 
 The gateway is a URL template, which covers most Indian aggregators without a
@@ -448,7 +471,7 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
 | `sh tools/smoke-panel.sh` | 130 panel + 162 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 110 unit tests (incl. 20 app/API contract checks), debug + release APK |
+| `sh tools/verify-android.sh` | 112 unit tests (incl. 20 app/API contract checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |

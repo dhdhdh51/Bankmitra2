@@ -28,9 +28,9 @@ final class AuthController extends Controller
     public function login(Request $request): void
     {
         $this->validate($request, [
-            'employee_code' => 'required|max:40',
+            'employee_code' => 'required|max:190',
             'password'      => 'required',
-        ], ['employee_code' => 'Employee code']);
+        ], ['employee_code' => 'Employee code or email']);
 
         $identifier = $request->str('employee_code');
         $password = (string) $request->input('password', '');
@@ -127,7 +127,7 @@ final class AuthController extends Controller
 
     public function forgotPassword(Request $request): void
     {
-        $this->validate($request, ['employee_code' => 'required|max:40'], ['employee_code' => 'Employee code']);
+        $this->validate($request, ['employee_code' => 'required|max:190'], ['employee_code' => 'Employee code or email']);
 
         $identifier = $request->str('employee_code');
         $db = Database::instance();
@@ -146,41 +146,39 @@ final class AuthController extends Controller
 
         // Identical response either way: this endpoint must not reveal whether
         // an employee code exists.
-        $generic = 'If that account exists and has a registered mobile number, an OTP has been sent.';
+        $generic = 'If that account exists and has a registered email address or mobile number, a code has been sent.';
 
         if ($user === null || (string) $user['status'] !== 'active') {
             Response::success(['otp_sent' => false], $generic);
         }
 
-        $mobile = Crypto::decrypt($user['mobile_enc'] ?? null);
-        if ($mobile === null || !Notifier::smsConfigured()) {
+        // One shared issuer with the panel: email first, SMS as the fallback, any
+        // earlier unused code invalidated. The two surfaces had a copy each, and a
+        // fix to one would quietly have missed the other.
+        $delivery = Auth::issuePasswordOtp($user, $request->ip());
+
+        if ($delivery['channel'] === 'admin' || !$delivery['sent']) {
             Response::success(
                 ['otp_sent' => false, 'contact_admin' => true],
                 'OTP delivery is unavailable. Please ask your administrator to reset your password.'
             );
         }
 
-        $otp = Crypto::numericOtp(6);
-        $minutes = max(2, Settings::int('otp_expiry_minutes', 10));
-
-        $db->query('UPDATE password_otps SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [(int) $user['id']]);
-        $db->insert('password_otps', [
-            'user_id'    => (int) $user['id'],
-            'otp_hash'   => hash('sha256', $otp),
-            'channel'    => 'sms',
-            'expires_at' => date('Y-m-d H:i:s', time() + ($minutes * 60)),
-            'ip'         => $request->ip(),
-        ]);
-
-        Notifier::sendOtpSms($mobile, $otp);
-        Logger::activity('password_reset_otp', 'API', sprintf('OTP issued for user #%d', (int) $user['id']));
-
         Response::success([
-            'otp_sent'       => true,
-            'employee_code'  => $identifier,
-            'mobile_masked'  => Crypto::maskMobile($mobile),
-            'expires_in'     => $minutes * 60,
-        ], sprintf('An OTP has been sent. It is valid for %d minutes.', $minutes));
+            'otp_sent'      => true,
+            'employee_code' => $identifier,
+            'channel'       => $delivery['channel'],
+            // Masked, so the app can say where the code went without the endpoint
+            // confirming a full address to somebody probing it.
+            'destination'   => $delivery['destination'],
+            // Kept for older builds that read mobile_masked; null on an email send.
+            'mobile_masked' => $delivery['channel'] === 'sms' ? $delivery['destination'] : null,
+            'expires_in'    => $delivery['expires_in'] * 60,
+        ], sprintf(
+            'A code has been sent to %s. It is valid for %d minutes.',
+            $delivery['destination'] ?? 'your registered contact',
+            $delivery['expires_in']
+        ));
     }
 
     public function resetPassword(Request $request): void
@@ -188,7 +186,7 @@ final class AuthController extends Controller
         $minLength = max(6, Settings::int('password_min_length', 8));
 
         $this->validate($request, [
-            'employee_code' => 'required|max:40',
+            'employee_code' => 'required|max:190',
             'otp'           => 'required',
             'password'      => "required|min:{$minLength}",
         ], ['employee_code' => 'Employee code', 'otp' => 'OTP']);

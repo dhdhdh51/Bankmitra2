@@ -162,42 +162,22 @@ final class AuthController extends Controller
             $this->back('/forgot-password', 'info', $genericMessage);
         }
 
-        $mobile = Crypto::decrypt($user['mobile_enc'] ?? null);
+        // One shared issuer for the panel and the API: email first, SMS as the
+        // fallback, earlier codes invalidated. Both surfaces had their own copy of
+        // this and a fix to one would have missed the other.
+        $delivery = Auth::issuePasswordOtp($user, $request->ip());
 
-        if ($mobile === null || !Notifier::smsConfigured()) {
-            Logger::activity(
-                'password_reset_request',
-                'Auth',
-                sprintf('Reset requested for user #%d but SMS/mobile unavailable - needs admin reset', (int) $user['id'])
-            );
+        if ($delivery['channel'] === 'admin' || !$delivery['sent']) {
+            // Never reveal whether the account exists or which channel failed.
             $this->back('/forgot-password', 'info', $genericMessage);
         }
 
-        $otp = Crypto::numericOtp(6);
-        $expiryMinutes = max(2, Settings::int('otp_expiry_minutes', 10));
-
-        // Invalidate any earlier unused OTPs for this user.
-        $db->query(
-            'UPDATE password_otps SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL',
-            [(int) $user['id']]
-        );
-
-        $db->insert('password_otps', [
-            'user_id'    => (int) $user['id'],
-            'otp_hash'   => hash('sha256', $otp),
-            'channel'    => 'sms',
-            'expires_at' => date('Y-m-d H:i:s', time() + ($expiryMinutes * 60)),
-            'ip'         => $request->ip(),
-        ]);
-
-        Notifier::sendOtpSms($mobile, $otp);
-        Logger::activity('password_reset_otp', 'Auth', sprintf('OTP issued for user #%d', (int) $user['id']));
-
         Session::set('_reset_user_id', (int) $user['id']);
         Session::flash('success', sprintf(
-            'An OTP has been sent to the mobile number ending %s. It is valid for %d minutes.',
-            substr(Crypto::maskMobile($mobile) ?? '', -4),
-            $expiryMinutes
+            'A code has been sent to %s. It is valid for %d minute%s.',
+            $delivery['destination'] ?? 'your registered contact',
+            $delivery['expires_in'],
+            $delivery['expires_in'] === 1 ? '' : 's'
         ));
         Response::redirect('/reset-password');
     }

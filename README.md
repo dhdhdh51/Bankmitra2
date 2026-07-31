@@ -157,6 +157,17 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # -> jwt_secret
 # 3. Upload admin/ to public_html (or point a vhost at it) and open it in a browser.
 ```
 
+Sign in with **either an employee code or an email address** — office staff know
+their address, field agents know their code. Email is unique in the schema because
+it is a login identifier; if a restored database somehow holds two accounts on one
+address, sign-in is refused rather than guessing which person it meant.
+
+Password resets send a 6-digit code **by email when SMTP is configured**, falling
+back to SMS. Email is preferred: it costs nothing and is not silently dropped by a
+DND registry the way transactional SMS can be. Only a SHA-256 hash of the code is
+stored, requesting a new code retires the previous one, and the address shown back
+to the user is masked (`ra****@example.com`).
+
 First login is seeded by the schema:
 
 | Employee ID | Password | Role |
@@ -327,16 +338,16 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
 | Core unit tests | `php tools/selftest-core.php` | **91** |
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **308** |
+| Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **130** panel + **162** API |
-| Android | `sh tools/verify-android.sh` | **110** unit tests + both APKs |
+| Android | `sh tools/verify-android.sh` | **112** unit tests + both APKs |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**891 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
+**915 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 

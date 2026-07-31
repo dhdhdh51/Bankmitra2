@@ -151,7 +151,8 @@ $managerId = User::create([
 ], 'Manager@123', '9811111111');
 
 $agent1Id = User::create([
-    'employee_code' => 'AGT001', 'name' => 'Ramesh Agent', 'role_id' => 3,
+    // An email address, because it is now a login identifier in its own right.
+    'employee_code' => 'AGT001', 'name' => 'Ramesh Agent', 'email' => 'ramesh.agent@example.com', 'role_id' => 3,
     'branch_id' => $branchAId, 'bc_code' => 'BC-001', 'status' => 'active', 'must_change_password' => 0,
 ], 'Agent@123', '9822222222');
 
@@ -825,9 +826,30 @@ if ($otsRow !== null) {
     check('deposit date stored', (string) $otsRow['deposit_date'] === date('Y-m-d'));
     check('approval status stored', $otsRow['approval_status'] === 'approved');
     check('borrower acceptance stored', (int) $otsRow['borrower_accepted'] === 1);
+    // Bank data, taken from the account: an agent cannot mistype the very date
+    // the settlement is being offered against.
+    check('the NPA date is snapshotted from the lead',
+        (string) ($otsRow['npa_date'] ?? '') === (string) ($otsLead['npa_date'] ?? ''),
+        'got ' . var_export($otsRow['npa_date'] ?? null, true));
+    check('the borrower name is snapshotted so the offer reads standalone',
+        (string) ($otsRow['borrower_name'] ?? '') === (string) $otsLead['customer_name']);
     check('outstanding was snapshotted from the lead',
         abs((float) $otsRow['outstanding_amount'] - (float) $otsLead['outstanding_amount']) < 0.01);
 }
+
+// RLB falls back to the outstanding balance, which is how the worked example runs:
+// payable is a percentage of the outstanding amount.
+$rlbDefault = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'report_type'     => 'ots',
+    'customer_met'    => 1,
+    'ots_details[eligible_for_ots]' => 1,
+], $agentCtx);
+$rlbRow = VisitReport::otsDetails((int) $rlbDefault['visit_id']);
+check('RLB defaults to the outstanding balance when not supplied',
+    $rlbRow !== null
+    && abs((float) $rlbRow['rlb_amount'] - (float) $otsLead['outstanding_amount']) < 0.01,
+    'got ' . var_export($rlbRow['rlb_amount'] ?? null, true));
 
 // A percentage outside 0-100 is a typo, not data.
 $clampResult = VisitService::submit([
@@ -987,6 +1009,90 @@ check('deleting a visit cascades to its ots_details row',
 // is now stale - the referential-integrity section below checks it, and caught
 // this the first time round. Rebuild it rather than leaving the fixture wrong.
 LoanAccount::refreshVisitCounters($leadId);
+
+// ---------------------------------------------------------------------------
+section('Email login and email OTP');
+
+$emailUser = User::find($agent1Id);
+$emailAddress = (string) ($emailUser['email'] ?? '');
+check('the seeded agent has an email address', $emailAddress !== '');
+
+if ($emailAddress !== '') {
+    // Office staff know their email address, not their employee code.
+    $byEmail = Auth::attempt($emailAddress, 'Agent@123', '127.0.0.1');
+    check('an agent can sign in with their email address',
+        ($byEmail['user']['id'] ?? 0) === $agent1Id,
+        (string) ($byEmail['error'] ?? ''));
+
+    // Case must not matter - a phone keyboard capitalises the first letter.
+    $mixedCase = Auth::attempt(strtoupper($emailAddress), 'Agent@123', '127.0.0.1');
+    check('email sign-in is case-insensitive', ($mixedCase['user']['id'] ?? 0) === $agent1Id);
+
+    $stillCode = Auth::attempt((string) $emailUser['employee_code'], 'Agent@123', '127.0.0.1');
+    check('the employee code still works', ($stillCode['user']['id'] ?? 0) === $agent1Id);
+
+    $wrong = Auth::attempt($emailAddress, 'not-the-password', '127.0.0.1');
+    check('a wrong password is still refused for an email sign-in', $wrong['user'] === null);
+    check('the error names both accepted identifiers',
+        str_contains((string) $wrong['error'], 'employee code or email'),
+        (string) $wrong['error']);
+}
+
+check('an unknown email is refused', Auth::attempt('nobody@example.com', 'x', '127.0.0.1')['user'] === null);
+
+// Email is a login identifier, so the schema must stop two accounts sharing one.
+$dupBlocked = false;
+try {
+    $db->query('UPDATE users SET email = ? WHERE id = ?', [$emailAddress, $agent2Id]);
+} catch (\Throwable $e) {
+    $dupBlocked = true;
+}
+check('the database refuses two accounts with the same email', $dupBlocked,
+    'a duplicate address was accepted - email sign-in could resolve to the wrong person');
+
+// ---- OTP delivery ----------------------------------------------------------
+$db->query('DELETE FROM password_otps');
+Settings::updateMany(['smtp_host' => '', 'smtp_from_email' => '']);
+Settings::flush();
+
+$noChannel = Auth::issuePasswordOtp($emailUser, '127.0.0.1');
+check('with no SMTP and no SMS gateway the reset falls back to an admin reset',
+    $noChannel['channel'] === 'admin' && $noChannel['sent'] === false);
+check('and no OTP row is written when nothing can deliver it',
+    (int) $db->scalar('SELECT COUNT(*) FROM password_otps') === 0);
+
+// Configure SMTP. Delivery itself will fail (no mail server here), but the row
+// and the chosen channel are what matter.
+Settings::updateMany(['smtp_host' => 'localhost', 'smtp_from_email' => 'noreply@example.com']);
+Settings::flush();
+
+$viaEmail = Auth::issuePasswordOtp($emailUser, '127.0.0.1');
+check('email is chosen over SMS when SMTP is configured', $viaEmail['channel'] === 'email');
+check('the OTP row records the email channel',
+    $db->scalar('SELECT channel FROM password_otps WHERE user_id = ? ORDER BY id DESC LIMIT 1', [$agent1Id]) === 'email');
+check('the destination shown to the user is masked',
+    $viaEmail['destination'] !== null
+    && str_contains((string) $viaEmail['destination'], '*')
+    && $viaEmail['destination'] !== $emailAddress,
+    (string) $viaEmail['destination']);
+check('the masked address keeps its domain so the user can recognise it',
+    str_contains((string) $viaEmail['destination'], substr($emailAddress, strrpos($emailAddress, '@'))));
+
+// The OTP itself must never be stored in the clear.
+$stored = (string) $db->scalar('SELECT otp_hash FROM password_otps WHERE user_id = ? ORDER BY id DESC LIMIT 1', [$agent1Id]);
+check('only a SHA-256 hash of the code is stored', strlen($stored) === 64 && ctype_xdigit($stored));
+
+// Requesting a second code must retire the first, or an old one stays valid.
+$before = (int) $db->scalar('SELECT id FROM password_otps WHERE user_id = ? ORDER BY id DESC LIMIT 1', [$agent1Id]);
+Auth::issuePasswordOtp($emailUser, '127.0.0.1');
+check('requesting a new code invalidates the previous one',
+    $db->scalar('SELECT used_at FROM password_otps WHERE id = ?', [$before]) !== null);
+check('exactly one unused code remains',
+    (int) $db->scalar('SELECT COUNT(*) FROM password_otps WHERE user_id = ? AND used_at IS NULL', [$agent1Id]) === 1);
+
+check('masked local parts are short but not empty', Auth::maskEmail('a@b.com') === 'a**@b.com',
+    Auth::maskEmail('a@b.com'));
+check('a malformed address masks to nothing useful', Auth::maskEmail('not-an-email') === '****');
 
 // ---------------------------------------------------------------------------
 section('Referential integrity');

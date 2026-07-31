@@ -135,6 +135,10 @@ CREATE TABLE `users` (
   `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_employee_code` (`employee_code`),
+  -- Email is a login identifier, so it has to be unique or a sign-in could
+  -- resolve to the wrong person. MySQL allows any number of NULLs under a UNIQUE
+  -- key, so users without an email are unaffected.
+  UNIQUE KEY `uq_users_email` (`email`),
   KEY `idx_users_mobile_hash` (`mobile_hash`),
   KEY `idx_users_role` (`role_id`),
   KEY `idx_users_branch_status` (`branch_id`, `status`),
@@ -450,6 +454,12 @@ CREATE TABLE `visit_ots_details` (
   -- values (payable = rlb_amount x payable_percent) but never overwrites what
   -- the agent typed: the branch's sanction letter is the authority, not our
   -- arithmetic, and a silent recalculation would misstate a settlement.
+  -- Snapshotted from the loan account, not entered by the agent: the NPA date is
+  -- the bank's own classification date and an agent retyping it in the field is
+  -- just a chance to get it wrong. It sits on the settlement record because an
+  -- OTS offer is read and approved against it.
+  `npa_date`                  DATE          DEFAULT NULL,
+  `borrower_name`             VARCHAR(150)  DEFAULT NULL COMMENT 'snapshot, so the offer reads standalone',
   `outstanding_amount`        DECIMAL(15,2) DEFAULT NULL COMMENT 'snapshot at visit time',
   `relief_waiver_percent`     DECIMAL(5,2)  DEFAULT NULL,
   `rlb_amount`                DECIMAL(15,2) DEFAULT NULL COMMENT 'Residual Loan Balance the payable % applies to',

@@ -539,4 +539,38 @@ class VisitFormDataTest {
         assertFalse(blank.hasUnsavedInput())
         assertTrue(blank.copy(reportType = VisitFormData.REPORT_CKCC).hasUnsavedInput())
     }
+
+    @Test
+    fun `relief is suggested as whatever the borrower is not paying`() {
+        // The worked example: 22.50% payable, so 77.50% waived.
+        val form = otsForm().apply { otsPayablePercent = "22.5" }
+        assertEquals(77.5, form.suggestedReliefPercent()!!, 0.01)
+
+        assertEquals(0.0, otsForm().apply { otsPayablePercent = "100" }.suggestedReliefPercent()!!, 0.01)
+        // Blank explicitly: the field defaults to the scheme's 22.5%, so a fresh
+        // form already has enough to suggest from.
+        assertNull(otsForm().apply { otsPayablePercent = "" }.suggestedReliefPercent())
+        // Nonsense in, nothing out - better than suggesting a negative waiver.
+        assertNull(otsForm().apply { otsPayablePercent = "140" }.suggestedReliefPercent())
+    }
+
+    @Test
+    fun `the worked settlement example reproduces end to end`() {
+        // Outstanding 2,50,000 at 22.50% payable, 10% initial deposit:
+        // payable 56,250 -> deposit 5,625 -> balance 50,625.
+        val form = otsForm().apply {
+            otsRlbAmount = "250000"
+            otsPayablePercent = "22.5"
+            otsDepositPercent = "10"
+        }
+        assertEquals(56250.0, form.suggestedPayable()!!, 0.01)
+
+        form.otsPayableAmount = "56250"
+        assertEquals(5625.0, form.suggestedRequiredDeposit()!!, 0.01)
+        assertEquals(77.5, form.suggestedReliefPercent()!!, 0.01)
+
+        form.otsTotalSettlement = "56250"
+        form.otsDepositAmount = "5625"
+        assertEquals(50625.0, form.suggestedBalancePayable()!!, 0.01)
+    }
 }
