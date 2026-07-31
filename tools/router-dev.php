@@ -16,7 +16,16 @@ declare(strict_types=1);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $path = is_string($path) ? $path : '/';
 
-$root = __DIR__ . '/../admin';
+// Use the document root the server was actually started with (`php -S -t DIR`),
+// so this router can front any tree - the repository's admin/ during normal
+// development, or a built hosting package when verifying a release. Hardcoding
+// admin/ here silently served the repo's front controller no matter what -t
+// said, which made a package test look catastrophically broken when the package
+// was fine.
+$root = $_SERVER['DOCUMENT_ROOT'] ?? '';
+if (!is_string($root) || $root === '' || !is_file($root . '/index.php')) {
+    $root = __DIR__ . '/../admin';
+}
 $file = realpath($root . $path);
 
 // Mirror the production deny rules for application internals.

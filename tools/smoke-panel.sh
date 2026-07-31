@@ -83,6 +83,10 @@ return [
 PHPEOF
 
 echo "==> seeding demo data"
+# LRMS_APP_ROOT so the seeder loads the same config.php - and therefore the same
+# data_key and hash_pepper - as the server under test. Without it the seeder
+# invents random keys and every encrypted field reads back as null.
+LRMS_APP_ROOT="$DOCROOT" \
 LRMS_DB_HOST=127.0.0.1 LRMS_DB_PORT="$DB_PORT" LRMS_DB_NAME=lrms \
 LRMS_DB_USER=root LRMS_DB_PASS=root \
 php "$ROOT_DIR/tools/seed-demo.php"

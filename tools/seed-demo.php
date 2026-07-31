@@ -10,7 +10,14 @@
 
 declare(strict_types=1);
 
-$root = dirname(__DIR__) . '/admin';
+// Which application tree to seed against. Overridable so the same seeder can
+// target a built hosting package, not just the repository's admin/ directory.
+$root = getenv('LRMS_APP_ROOT') ?: dirname(__DIR__) . '/admin';
+$root = rtrim($root, '/');
+if (!is_file($root . '/app/Core/helpers.php')) {
+    fwrite(STDERR, "seed-demo: '$root' is not an LRMS application root\n");
+    exit(1);
+}
 define('APP_PATH', $root . '/app');
 define('ROOT_PATH', $root);
 
@@ -41,6 +48,27 @@ $configFile = $root . '/config/config.php';
 if (is_file($configFile)) {
     Config::load(require $configFile);
 } else {
+    // The crypto keys matter as much as the database credentials here. Mobile
+    // numbers, Aadhaar numbers and addresses are encrypted with data_key and
+    // indexed with hash_pepper, so seeding with keys the application does not
+    // share produces a dataset whose PII silently reads back as null - which is
+    // exactly how this fallback was caught. Take them from the environment when
+    // offered, and say plainly what happens when they are not.
+    $appKey = getenv('LRMS_APP_KEY') ?: null;
+    $dataKey = getenv('LRMS_DATA_KEY') ?: null;
+    $pepper = getenv('LRMS_HASH_PEPPER') ?: null;
+
+    if ($dataKey === null || $pepper === null) {
+        fwrite(
+            STDERR,
+            "seed-demo: no config.php and no LRMS_DATA_KEY/LRMS_HASH_PEPPER, so random keys\n"
+            . "           will be used. Encrypted fields (mobile, Aadhaar, address) will read\n"
+            . "           back as null in any app configured with different keys. Point\n"
+            . "           LRMS_APP_ROOT at the tree whose config.php you are using, or pass\n"
+            . "           LRMS_APP_KEY / LRMS_DATA_KEY / LRMS_HASH_PEPPER.\n"
+        );
+    }
+
     Config::load([
         'db' => [
             'host'    => getenv('LRMS_DB_HOST') ?: '127.0.0.1',
@@ -50,9 +78,9 @@ if (is_file($configFile)) {
             'pass'    => getenv('LRMS_DB_PASS') ?: 'root',
             'charset' => 'utf8mb4',
         ],
-        'app_key'     => bin2hex(random_bytes(32)),
-        'data_key'    => bin2hex(random_bytes(32)),
-        'hash_pepper' => bin2hex(random_bytes(32)),
+        'app_key'     => $appKey ?? bin2hex(random_bytes(32)),
+        'data_key'    => $dataKey ?? bin2hex(random_bytes(32)),
+        'hash_pepper' => $pepper ?? bin2hex(random_bytes(32)),
         'app'         => ['debug' => true, 'timezone' => 'Asia/Kolkata'],
         'paths'       => ['uploads' => $root . '/uploads', 'storage' => $root . '/storage'],
         'uploads'     => [
