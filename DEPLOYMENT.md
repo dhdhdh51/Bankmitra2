@@ -162,7 +162,20 @@ cd public_html/config
 cp config.sample.php config.php
 ```
 
-Generate three independent keys:
+Fill in the database credentials (below), then set the three keys. If you have no
+shell, the packaged helper does it for you in a browser:
+
+```
+https://your-domain.com/setup-keys.php?generate=1
+```
+
+It writes only keys that are currently blank, backs up the previous
+`config/config.php`, validates the rewritten file before swapping it in, and
+never prints a key. Delete it afterwards. A blank key is provably unused —
+`Crypto::deriveKey()` throws on one, so nothing could have been encrypted with it
+— which is why filling a blank in is safe while overwriting a set key is not.
+
+By hand, generate three independent keys:
 
 ```bash
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # run three times
@@ -394,16 +407,36 @@ The launcher icon is an **adaptive icon** built from vectors:
 | File | Layer |
 |---|---|
 | `res/values/ic_launcher_background.xml` | flat navy background |
-| `res/drawable/ic_launcher_foreground.xml` | D2 mark, bar chart, arrow, shield |
+| `res/drawable/ic_launcher_foreground.xml` | D2 mark, bar chart, rising arrow |
 | `res/drawable/ic_launcher_monochrome.xml` | silhouette for Android 13+ themed icons |
-| `res/mipmap-anydpi-v26/ic_launcher.xml` | ties the three together |
+| `res/mipmap-anydpi-v26/ic_launcher.xml` | ties the three together, Android 8+ |
+| `res/mipmap-anydpi/ic_launcher.xml` | flat fallback for Android 7.0 / 7.1 |
 
 It is drawn as vector rather than shipped as a PNG because a launcher masks the
 icon into its own shape — circle, squircle, rounded square or teardrop — and
 shifts the layers for parallax. A square raster gets its corners cropped by those
 masks, and it needs five files, one per density, regenerated on every change.
-Everything in the foreground stays inside the central 66dp of the 108dp canvas,
-which is the area no mask can cut.
+
+> **The `-v26` qualifier excludes Android 7.** With only the adaptive icon
+> declared, `@mipmap/ic_launcher` resolved to nothing on API 24 and 25 and those
+> phones showed no icon at all. The `mipmap-anydpi/` files are the fallback; they
+> reuse the same two layers rather than duplicating the artwork. Delete them only
+> if you raise `minSdk` to 26.
+
+**The safe zone is a circle, not a square.** Only a 66dp circle in the middle of
+the 108dp canvas — radius 33 from the centre — is guaranteed to survive every
+mask. A bounding box that looks comfortable can still have corners far outside it:
+the original mark reached r=42 and lost the top of its "2" on any circular
+launcher. After editing the artwork, run:
+
+```bash
+python3 tools/check-icon-safezone.py     # fails if any point leaves the circle
+python3 tools/render-brand-preview.py    # PNGs of the icon and launch screen
+```
+
+The second one writes `docs/previews/`, which is the only way to review the
+artwork without installing the app — worth doing, since a mask problem is
+invisible in the XML.
 
 **To use an exact raster instead**, put your PNG at these sizes and delete
 `mipmap-anydpi-v26/ic_launcher.xml` and `ic_launcher_round.xml`:
@@ -419,6 +452,34 @@ res/mipmap-xxxhdpi/ic_launcher.png   192x192
 Keep the important part within the middle ~66% or the launcher mask will clip it,
 and add a 512x512 copy for a Play Store listing. You lose themed-icon support
 this way, since a raster cannot be tinted meaningfully.
+
+### 6.3.2 Launch screen
+
+The splash is the `androidx.core:core-splashscreen` compat screen, so one
+declaration covers API 24 to 36 — the library draws it below API 31 and hands the
+same values to the platform above it.
+
+| File | Role |
+|---|---|
+| `res/values/themes.xml` → `Theme.LRMS.Splash` | parent `Theme.SplashScreen`; background, icon, `postSplashScreenTheme` |
+| `res/drawable/ic_splash_logo.xml` | the D2 mark, re-centred to fill the icon slot |
+| `res/layout/activity_splash.xml` | same navy behind the splash, with a spinner |
+| `ui/splash/SplashActivity.kt` | `installSplashScreen()`, then routes the user |
+
+Three things matter if you change it:
+
+- **`installSplashScreen()` must run before `super.onCreate()`.** That call is
+  what swaps the launch theme for `postSplashScreenTheme`.
+- **A splash theme whose parent is not `Theme.SplashScreen` silently does
+  nothing** beyond setting a background colour. That is how this app shipped with
+  no visible splash at all.
+- **`Theme.LRMS.Loading` must keep the same background** as the splash. The
+  session is confirmed against the server at launch, and on a weak connection that
+  outlasts the splash; a different background makes the brand flash to white.
+
+The splash is held for at least 600 ms so it does not flicker on a cached session,
+and released after 2.5 s regardless so an unreachable server cannot freeze the
+launch. `SplashBrandingTest` pins all of the above.
 
 ### 6.4 Signing a release build
 
@@ -582,7 +643,16 @@ self-check page. Open `https://your-domain.com/diag.php?i-understand=1`. It
 verifies the PHP version and extensions, the upload layout, file permissions,
 `mod_rewrite`, the config keys, and the database connection and table count, then
 prints the specific fix for whatever is wrong. It never prints credentials or
-keys. **Delete `diag.php` once the site works.**
+keys. **Delete `diag.php` and `setup-keys.php` once the site works.**
+
+**"Configuration incomplete" / login returns HTTP 500 / a user cannot be created**
+The three keys in `config/config.php` are blank. Open
+`https://your-domain.com/setup-keys.php?generate=1` and reload the panel. Blank
+keys are the single most common broken install: the panel appears to work because
+pages render and sign-in succeeds, while anything that encrypts — user creation
+with a mobile number, lead import, an app login falling through to a mobile
+lookup — throws. Startup validation now blocks the panel instead of letting it
+half-work.
 
 **403 Forbidden on every page**
 Permissions, in almost every case. The web server must be able to read files and

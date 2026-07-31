@@ -53,14 +53,30 @@ File Manager or FTP.
 cp config/config.sample.php config/config.php
 ```
 
-Fill in the database name, user and password, set `app.url` to your domain, and
-generate the three secrets:
+Fill in the database name, user and password, and set `app.url` to your domain.
+
+Then set the three cryptographic keys. **Easiest way — open this in a browser:**
+
+```
+https://your-domain.com/setup-keys.php?generate=1
+```
+
+It generates the missing keys and writes them into `config/config.php` for you,
+keeps a backup of the previous file, and refuses to touch any key that is
+already set. **Delete `setup-keys.php` afterwards.**
+
+Doing it by hand instead — run this three times and paste the results:
 
 ```bash
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # app_key
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # data_key
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"   # hash_pepper
 ```
+
+> **Leaving these blank does not fail loudly at first.** Pages load and sign-in
+> looks fine, but every feature that touches encryption — creating a user with a
+> mobile number, importing leads, an app login — dies with a server error. The
+> panel now refuses to start until they are set, which is how you should find out.
 
 > **`data_key` and `hash_pepper` can never be changed** once real customer data
 > exists. `data_key` decrypts stored mobile numbers, Aadhaar numbers and
@@ -74,6 +90,10 @@ by PHP:
 ```bash
 chmod -R 755 storage uploads
 ```
+
+On cPanel/LiteSpeed hosts PHP runs as your own account, so a `750` document root
+is fine too — `diag.php` detects which case you are in rather than insisting on
+`755`.
 
 **5. Log in** at `https://your-domain.com/` with `ADMIN001` / `Admin@123`. You
 are forced to set a new password immediately. Do that before anything else.
@@ -89,7 +109,7 @@ It checks the PHP version and extensions, the upload layout, file permissions,
 the database and see all the tables — then prints the specific fix for anything
 that is wrong. It never prints your credentials or keys.
 
-**Delete `diag.php` once the site works.**
+**Delete `diag.php` and `setup-keys.php` once the site works.**
 
 ### If you get 403 Forbidden
 

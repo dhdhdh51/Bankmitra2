@@ -141,6 +141,11 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.fragment.ktx)
 
+    // One branded launch screen across API 24-36. Without it the splash theme is
+    // only a window background: Android 12+ draws its own icon over it and
+    // everything older shows a blank colour flash.
+    implementation(libs.androidx.core.splashscreen)
+
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.retrofit)

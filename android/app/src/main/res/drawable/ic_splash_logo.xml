@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The D2 mark for the launch screen.
+
+    Same geometry as ic_launcher_foreground.xml, with one difference: the launcher
+    foreground must keep everything inside a 66dp circle in the middle of a 108dp
+    canvas because launchers mask the icon, so reusing it here would render the
+    mark at two thirds size inside a large empty square. This file keeps the
+    identical path data and shifts the viewport onto the artwork's own bounding
+    box (x 32..77.2, y 30..77.3, centre 54.6/53.65) so the mark fills the space
+    the splash gives it.
+
+    The path data is deliberately identical to ic_launcher_foreground.xml.
+    SplashBrandingTest compares the two files and fails if they drift apart, so
+    edit both together - or neither.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="56"
+    android:viewportHeight="56">
+
+    <!-- Centres the 108-canvas artwork in this 56 viewport. -->
+    <group
+        android:translateX="-26.6"
+        android:translateY="-25.65">
+
+        <!-- Recovery arrow: rising bar plus head. -->
+        <path
+            android:fillColor="#F2B21C"
+            android:pathData="M34,73L66,64L67.3,68.3L35.3,77.3Z" />
+        <path
+            android:fillColor="#F2B21C"
+            android:pathData="M77.2,63.2L68,71L65.3,61.3Z" />
+
+        <group
+            android:scaleX="0.714"
+            android:scaleY="0.714"
+            android:translateX="12"
+            android:translateY="11.4">
+
+            <!-- White D, bowl cut out by the second subpath. -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M28,26h14c12,0 20,8 20,21c0,13 -8,21 -20,21h-14V26zM36,34v26h5c8,0 13,-5 13,-13c0,-8 -5,-13 -13,-13z" />
+
+            <!-- Bar chart inside the bowl of the D. -->
+            <path
+                android:fillColor="#2C6BD4"
+                android:pathData="M39,52h3v8h-3zM44,47h3v13h-3zM49,41h3v19h-3z" />
+
+            <!-- Gold 2 -->
+            <path
+                android:fillColor="#F2B21C"
+                android:pathData="M64,34c2,-5 7,-8 13,-8c8,0 13,5 13,12c0,5 -3,9 -8,14l-10,10h19v6H63v-5l15,-15c4,-4 5,-6 5,-9c0,-4 -3,-6 -6,-6c-4,0 -6,2 -7,6z" />
+        </group>
+    </group>
+</vector>

@@ -347,14 +347,18 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **130** panel + **162** API |
-| Android | `sh tools/verify-android.sh` | **118** unit tests + both APKs |
+| Android | `sh tools/verify-android.sh` | **126** unit tests + both APKs + adaptive-icon safe zone |
+| Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
+| Brand previews | `python3 tools/render-brand-preview.py` | renders the real vectors to `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 | CDN integrity | `php tools/verify-cdn-integrity.php` | every SRI hash matches the file the browser fetches |
+| **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
+| **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**932 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
+**1,003 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -482,6 +486,38 @@ Kept here because they are the reason the tests exist:
     All 69 existing tests worked on values the tests themselves built. The new
     `ApiContractTest` parses 19 fixtures captured from a live server through the
     real DTOs, which is what caught #22.
+27. **The diagnostic invented a problem.** `diag.php` demanded a world-readable
+    document root, so on the live cPanel/LiteSpeed host it reported the `0750`
+    root as the cause of a 403 — on a site that was serving traffic perfectly.
+    There, PHP and the static handler both run as the account owner, which makes
+    `0750` sufficient and in fact tighter than the `0755` it was recommending. A
+    tool whose whole job is diagnosis has to be trusted, so the check now
+    resolves who actually serves the request; `verify-hosting-diag.sh` pins both
+    the suexec and the mod_php verdicts.
+28. **The app had no splash screen at all.** `Theme.LRMS.Splash` set a navy
+    `windowBackground` and nothing else, which is not a launch screen: Android 7
+    to 11 showed a blank colour flash and Android 12+ ignored it and drew its own
+    default icon over the top. The brand never appeared on any version. Fixed by
+    parenting the theme on `Theme.SplashScreen` from `androidx.core:core-splashscreen`
+    and holding the splash across the session check, with the same navy behind it
+    so a slow connection reads as loading rather than a hang.
+29. **No launcher icon at all on Android 7.** `ic_launcher` existed only in
+    `mipmap-anydpi-v26`, but `minSdk` is 24, so on 7.0 and 7.1 the resource
+    resolved to nothing. `aapt2 dump resources` on the shipped APK confirmed a
+    single `(anydpi-v26)` configuration. A `mipmap-anydpi/` fallback now composes
+    the same two layers, and a test derives the requirement from `minSdk` so
+    raising it later retires the check automatically.
+30. **The icon artwork was cropped by the launcher mask, and nobody had ever
+    looked at it.** An adaptive icon only guarantees a 66dp circle in the middle
+    of its 108dp canvas; the mark put the top of the "2" at r=42 and the foot of a
+    shield at r=39, against a limit of 33 — while the file's own comment claimed
+    everything was inside the safe zone. Corners of a bounding box sit much
+    further from the centre than their edges, which is what makes this easy to get
+    wrong by eye and impossible to see without a device. `check-icon-safezone.py`
+    now flattens the paths, applies `<group>` transforms, measures every point
+    including Bezier control points, and fails the Android build. The overlapping
+    shield was dropped rather than shrunk, and `render-brand-preview.py` renders
+    the real drawables to PNG so the artwork can actually be reviewed.
 
 ---
 

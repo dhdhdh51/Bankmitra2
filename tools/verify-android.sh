@@ -50,6 +50,14 @@ cd "$ANDROID_DIR"
 # local.properties is git-ignored; the SDK path is machine specific.
 printf 'sdk.dir=%s\n' "$SDK_ROOT" > local.properties
 
+# Geometry, before anything expensive. A launcher masks an adaptive icon into a
+# circle, and artwork that leaves the safe circle is cropped on a real phone
+# while compiling and rendering perfectly here - which is how the mark shipped
+# with the top of its "2" cut off.
+echo ""
+echo "==> adaptive icon safe zone"
+python3 "$ROOT_DIR/tools/check-icon-safezone.py"
+
 echo ""
 echo "==> unit tests"
 ./gradlew --no-daemon testDebugUnitTest

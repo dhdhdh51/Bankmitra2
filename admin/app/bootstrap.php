@@ -113,7 +113,12 @@ if ($configProblems !== []) {
        . '<h1 style="font-size:20px;color:#b3261e;margin:0 0 12px">Configuration incomplete</h1>'
        . '<p><code>config/config.php</code> was found, but these entries are not usable:</p>'
        . '<ul style="line-height:1.9">' . $rows . '</ul>'
-       . '<p>Generate each key with:</p>'
+       . (is_file(dirname(__DIR__) . '/setup-keys.php')
+            ? '<p><strong>Easiest fix:</strong> open <a href="setup-keys.php">setup-keys.php</a> - it '
+              . 'generates the missing keys and writes them for you. Keys that are already set are left '
+              . 'alone. Delete that file afterwards.</p>'
+              . '<p style="color:#6b7280;font-size:13px">Prefer to do it by hand? Generate each key with:</p>'
+            : '<p>Generate each key with:</p>')
        . '<pre style="background:#f5f7fa;border:1px solid #e2e5ea;border-radius:8px;padding:12px;overflow:auto">'
        . 'php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"</pre>'
        . '<p style="color:#b3261e"><strong>Once real borrower data exists, <code>data_key</code> and '

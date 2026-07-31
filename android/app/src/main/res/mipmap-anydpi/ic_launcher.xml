@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher icon for API 24 and 25.
+
+    mipmap-anydpi-v26 holds the adaptive icon, but that qualifier excludes
+    Android 7.0 and 7.1 - which minSdk 24 still supports. With nothing else
+    declared, @mipmap/ic_launcher resolved to no value at all on those versions
+    and the launcher had no icon to draw. aapt2 confirmed it: the only
+    configuration in the built APK was (anydpi-v26).
+
+    This is a flat composite of the same two layers the adaptive icon uses, so
+    there is one source of truth for the artwork. The mark sits in the central
+    two thirds because that is how the foreground is drawn for masking, which
+    leaves a little more navy around it here than on Android 8+. That is the
+    trade for not maintaining a second copy of the art or five PNG renders.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/ic_launcher_background" />
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

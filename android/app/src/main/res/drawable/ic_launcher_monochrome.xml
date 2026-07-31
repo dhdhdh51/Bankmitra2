@@ -5,12 +5,12 @@
     When a user turns on themed icons the launcher tints this single silhouette
     with their wallpaper colours, so it must be ONE flat shape with no colour of
     its own: every fill here is white and the system recolours it. Detail that
-    depends on colour contrast - the blue bars inside the D, the navy shield face
-    - has to go, because tinted flat it would read as a smudge.
+    depends on colour contrast - the blue bars inside the D - has to go, because
+    tinted flat it would read as a smudge.
 
-    What survives is the outline that makes the icon recognisable at 48dp: the D,
-    the 2, and the shield. Without this file the launcher falls back to the full
-    colour icon, which looks out of place on a themed home screen.
+    Geometry mirrors ic_launcher_foreground.xml exactly, including the safe-circle
+    fit, so the themed icon and the colour icon are the same mark. Keep the two in
+    step and re-run tools/check-icon-safezone.py after editing either.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -18,21 +18,28 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- D, with the bowl left hollow so the letter still reads when tinted. -->
+    <!-- Recovery arrow, same crescent and head as the colour layer. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M28,26h14c12,0 20,8 20,21c0,13 -8,21 -20,21h-14V26zM36,34v26h5c8,0 13,-5 13,-13c0,-8 -5,-13 -13,-13z" />
+        android:pathData="M32,66C34,76 43,82 54,82C65,82 74,77 78,68L73,66C69,73 62,77 54,77C45,77 38,72 36,65Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M80,57L81,69.4L70,64.6Z" />
 
-    <!-- 2 -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M64,34c2,-5 7,-8 13,-8c8,0 13,5 13,12c0,5 -3,9 -8,14l-10,10h19v6H63v-5l15,-15c4,-4 5,-6 5,-9c0,-4 -3,-6 -6,-6c-4,0 -6,2 -7,6z" />
+    <group
+        android:scaleX="0.738"
+        android:scaleY="0.738"
+        android:translateX="10.34"
+        android:translateY="13.81">
 
-    <!-- Shield, as an outline so the tick inside stays visible when tinted. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M60,62h20v12c0,8 -6,13 -10,15c-4,-2 -10,-7 -10,-15zM64,66v8c0,5 4,9 6,10c2,-1 6,-5 6,-10v-8z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M66,74l2,-2l3,3l5,-6l2,2l-7,8z" />
+        <!-- D, with the bowl left hollow so the letter still reads when tinted. -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M28,26h14c12,0 20,8 20,21c0,13 -8,21 -20,21h-14V26zM36,34v26h5c8,0 13,-5 13,-13c0,-8 -5,-13 -13,-13z" />
+
+        <!-- 2 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M64,34c2,-5 7,-8 13,-8c8,0 13,5 13,12c0,5 -3,9 -8,14l-10,10h19v6H63v-5l15,-15c4,-4 5,-6 5,-9c0,-4 -3,-6 -6,-6c-4,0 -6,2 -7,6z" />
+    </group>
 </vector>

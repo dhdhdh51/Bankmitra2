@@ -37,12 +37,42 @@
         <item name="textInputStyle">@style/Widget.LRMS.TextInputLayout</item>
     </style>
 
-    <!-- Splash uses the icon's navy, so tapping the icon does not flash a
-         different blue before the app appears. -->
-    <style name="Theme.LRMS.Splash" parent="Theme.LRMS">
+    <!--
+        Launch theme.
+
+        Parenting this on Theme.SplashScreen (androidx.core:core-splashscreen) is
+        what makes the launch screen exist at all. Setting only a window
+        background - which is what this style used to do - gives a blank navy
+        flash on Android 7 to 11, while Android 12+ ignores it and draws its own
+        default icon: the brand never appears on any version.
+
+        The library renders the icon over the background itself below API 31 and
+        hands the same values to the platform splash screen from 31 up, so one
+        declaration covers every device. postSplashScreenTheme is applied to the
+        activity the moment the splash is dismissed.
+    -->
+    <style name="Theme.LRMS.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/lrms_brand_navy</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.LRMS.Loading</item>
+
+        <item name="android:statusBarColor">@color/lrms_brand_navy</item>
+        <item name="android:navigationBarColor">@color/lrms_brand_navy</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!--
+        What SplashActivity wears after the splash is dismissed. It carries the
+        same navy so the hand-off is invisible: confirming a stored session is a
+        network call, and on a weak rural connection that can outlast the splash.
+        Without this the user would watch the brand fade into a white rectangle.
+    -->
+    <style name="Theme.LRMS.Loading" parent="Theme.LRMS">
         <item name="android:windowBackground">@color/lrms_brand_navy</item>
         <item name="android:statusBarColor">@color/lrms_brand_navy</item>
         <item name="android:navigationBarColor">@color/lrms_brand_navy</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
     </style>
 
     <!-- Full-screen theme for the landscape signature pad. -->
