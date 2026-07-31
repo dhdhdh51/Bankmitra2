@@ -14,10 +14,19 @@ WEB_PORT=8099
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$ROOT_DIR/.verify"
 
+# Which directory to serve. Defaults to the repository's admin/, but can be
+# pointed at a built hosting package so the exact tree that gets uploaded to
+# shared hosting is the tree these tests exercise:
+#   LRMS_DOCROOT=.verify/hosting sh tools/smoke-panel.sh
+DOCROOT=${LRMS_DOCROOT:-$ROOT_DIR/admin}
+DOCROOT=$(cd "$DOCROOT" && pwd)
+[ -f "$DOCROOT/index.php" ] || { echo "!! $DOCROOT has no index.php"; exit 1; }
+echo "==> document root: $DOCROOT"
+
 cleanup() {
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
   docker rm -f "$CT" >/dev/null 2>&1 || true
-  rm -f "$ROOT_DIR/admin/config/config.php"
+  rm -f "$DOCROOT/config/config.php"
 }
 trap cleanup EXIT
 
@@ -52,7 +61,7 @@ APP_KEY=$(php -r 'echo bin2hex(random_bytes(32));')
 DATA_KEY=$(php -r 'echo bin2hex(random_bytes(32));')
 PEPPER=$(php -r 'echo bin2hex(random_bytes(32));')
 
-cat > "$ROOT_DIR/admin/config/config.php" <<PHPEOF
+cat > "$DOCROOT/config/config.php" <<PHPEOF
 <?php
 return [
     'db' => [
@@ -79,7 +88,7 @@ LRMS_DB_USER=root LRMS_DB_PASS=root \
 php "$ROOT_DIR/tools/seed-demo.php"
 
 echo "==> starting PHP built-in server on port $WEB_PORT"
-php -S 127.0.0.1:"$WEB_PORT" -t "$ROOT_DIR/admin" "$ROOT_DIR/tools/router-dev.php" \
+php -S 127.0.0.1:"$WEB_PORT" -t "$DOCROOT" "$ROOT_DIR/tools/router-dev.php" \
   > "$ROOT_DIR/.verify/server.log" 2>&1 &
 SERVER_PID=$!
 
