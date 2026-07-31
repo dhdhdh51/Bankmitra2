@@ -104,10 +104,27 @@ foreach (['.' => $root, 'index.php' => $root . '/index.php', 'storage' => $root 
 }
 
 $dirMode = fileperms($root) & 0777;
-if (($dirMode & 0005) !== 0005) {
+
+// Whether 0750 is a problem depends entirely on WHO serves the request. On
+// cPanel/LiteSpeed/suexec hosts PHP and the static-file handler both run as the
+// account owner, so owner rx bits are sufficient and 0750 is in fact tighter
+// (and better) than 0755. Only demand world rx when we are clearly NOT the
+// owner, e.g. mod_php running as apache/www-data.
+$phpUid = function_exists('posix_geteuid') ? posix_geteuid() : null;
+$runsAsOwner = $phpUid !== null && $phpUid === fileowner($root);
+$canEnter = $runsAsOwner
+    ? ($dirMode & 0500) === 0500
+    : ($dirMode & 0005) === 0005;
+
+row('document root readable by the web server', $canEnter ? 'yes' : 'NO', $canEnter);
+if ($runsAsOwner) {
+    row('serving model', sprintf('suexec-style (PHP runs as the owner), so %o is fine', $dirMode));
+}
+if (!$canEnter) {
     problem(sprintf(
-        'The document root is %o - the web server cannot read and enter it, which is exactly '
-        . 'what produces a bare 403. Set directories to 755: chmod 755 . and chmod -R 755 storage uploads',
+        'The document root is %o and PHP does not run as its owner, so the web server cannot '
+        . 'read and enter it - which is exactly what produces a bare 403. Set directories to '
+        . '755: chmod 755 . and chmod -R 755 storage uploads',
         $dirMode
     ));
 }
@@ -119,7 +136,8 @@ if (($dirMode & 0022) === 0022) {
     ));
 }
 $indexMode = file_exists($root . '/index.php') ? (fileperms($root . '/index.php') & 0777) : 0;
-if ($indexMode !== 0 && ($indexMode & 0004) !== 0004) {
+$indexReadable = $runsAsOwner ? ($indexMode & 0400) === 0400 : ($indexMode & 0004) === 0004;
+if ($indexMode !== 0 && !$indexReadable) {
     problem(sprintf('index.php is %o and unreadable by the web server. Files should be 644.', $indexMode));
 }
 
