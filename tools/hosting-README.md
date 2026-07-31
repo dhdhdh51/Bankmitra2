@@ -43,6 +43,10 @@ File Manager or FTP.
 **2. Create the database** in cPanel → *MySQL Databases*, then import
 `schema.sql` in phpMyAdmin (select the database first, then the **Import** tab).
 
+> **Only once, on an empty database.** `schema.sql` starts every table with
+> `DROP TABLE IF EXISTS`, so importing it again later **deletes everything** —
+> all customers, visits and promises. It installs; it does not upgrade.
+
 **3. Configure.** Copy the sample and edit it:
 
 ```bash

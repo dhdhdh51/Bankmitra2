@@ -172,6 +172,9 @@ php -S 127.0.0.1:8080 -t admin tools/router-dev.php
 | **Super Admin** | Everything, all branches, role editing, backups, settings |
 | **Branch Manager** | Own branch: leads, agents, assignment, promises, reports |
 | **Agent** | Own assigned leads only: view, visit, upload, promise history |
+| **Auditor** | Read-only: reports, audit and activity logs. No edits, no PII |
+
+36 permissions across the four seeded roles (68 role/permission grants).
 
 Permissions are rows in `permissions`, joined to roles through `role_permissions`, so
 the matrix is editable in the panel rather than hard-coded. Two decisions worth knowing:

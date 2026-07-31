@@ -18,11 +18,32 @@
 --   application for either table. A new field visit always INSERTs a new row.
 --
 -- Designed for: 100+ branches, 1,000+ agents, 500,000+ customers, millions of visits.
+--
+-- ############################################################################
+-- #                                                                          #
+-- #  THIS FILE DESTROYS DATA. IT IS AN INSTALL SCRIPT, NOT A MIGRATION.       #
+-- #                                                                          #
+-- #  Every table below begins with DROP TABLE IF EXISTS, so importing this    #
+-- #  file into a database that already holds records DELETES ALL OF THEM -    #
+-- #  every customer, visit, promise, photo reference and user account.        #
+-- #                                                                          #
+-- #  Run it ONCE, on an empty database, when first installing.               #
+-- #                                                                          #
+-- #  Never run it to "refresh" or "repair" a live installation. To upgrade,   #
+-- #  apply the migration named in the release notes. Take a backup first:     #
+-- #      php /home/USER/public_html/cron/backup.php                          #
+-- #                                                                          #
+-- ############################################################################
 -- ============================================================================
 
 SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0;
 SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';
+
+-- Off only so the tables below can be created in any order. Switched back on at
+-- the very end of this file - leaving it off would let the rest of the session
+-- (a phpMyAdmin tab, an operator's shell) write rows that break referential
+-- integrity without any complaint.
+SET FOREIGN_KEY_CHECKS = 0;
 
 -- ============================================================================
 -- 1. RBAC
@@ -781,3 +802,10 @@ VALUES
   (1, 'ADMIN001', 'System Administrator', 'admin@example.com',
    '$2y$12$2q28FzDqMSbQH/rK66GwWOB7QhCplC4jBmkYwcQfEy6OR7R3sXB.G',
    1, NULL, 'active', 1);
+
+
+-- ============================================================================
+-- Restore foreign key enforcement for the remainder of this session.
+-- ============================================================================
+
+SET FOREIGN_KEY_CHECKS = 1;

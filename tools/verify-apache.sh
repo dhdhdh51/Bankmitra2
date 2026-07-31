@@ -224,6 +224,33 @@ else
 fi
 
 echo
+echo '== Cron scripts are not usable over the web'
+# cron/ sits inside the document root on shared hosting because there is nowhere
+# else to put it, so a browser can reach the URL. The scripts refuse to run
+# outside the CLI; this proves the guard holds through Apache rather than only in
+# the source.
+for p in /cron/backup.php /cron/reminders.php; do
+    c=$(code "$p")
+    b=$(body "$p")
+    case "$c" in
+        403|404)
+            if printf '%s' "$b" | grep -qi 'backup ok\|reminders sent'; then
+                fail "$p returned $c but still executed the job"
+            else
+                pass "$p is refused ($c) and did not run"
+            fi
+            ;;
+        *) fail "$p returned $c - a cron script must not be web-runnable" ;;
+    esac
+done
+# A backup triggered over the web would leak the whole database as a download.
+BEFORE_BK=$(find "$DOCROOT/storage/backups" -name '*.sql' 2>/dev/null | wc -l | tr -d ' ')
+code /cron/backup.php > /dev/null
+AFTER_BK=$(find "$DOCROOT/storage/backups" -name '*.sql' 2>/dev/null | wc -l | tr -d ' ')
+[ "$BEFORE_BK" = "$AFTER_BK" ] && pass 'a web request to cron/backup.php creates no backup file' \
+    || fail 'cron/backup.php ran over HTTP' "backups $BEFORE_BK -> $AFTER_BK"
+
+echo
 echo '== Uploads are not web-served'
 mkdir -p "$DOCROOT/uploads/photos"
 echo 'secret-image-bytes' > "$DOCROOT/uploads/photos/probe.jpg"

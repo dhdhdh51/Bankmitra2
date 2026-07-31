@@ -8,10 +8,21 @@ using parsers that know nothing about our implementation.
 openpyxl must open the workbook and see the header/data/totals; pypdf must open
 the PDF, count pages and extract text.
 """
+import importlib.util
 import sys
 
 out_dir = sys.argv[1] if len(sys.argv) > 1 else "/tmp"
 failures = []
+
+# A missing parser is a setup problem, not a defect in the generated file. Saying
+# "FAIL" for it reads as though the PHP writer is broken, so exit code 2 and a
+# distinct message keep the two apart.
+missing = [m for m in ("openpyxl", "pypdf") if importlib.util.find_spec(m) is None]
+if missing:
+    print("SKIPPED - required parser(s) not installed: " + ", ".join(missing))
+    print("Install them, then re-run:")
+    print("  python3 -m pip install " + " ".join(missing))
+    sys.exit(2)
 
 
 def check(label, ok, detail=""):
