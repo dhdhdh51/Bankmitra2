@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The same palette as the admin panel, expressed as Material 3 colour roles so
+    the app and the web panel are visually one product.
+-->
+<resources>
+
+    <!-- Brand -->
+    <color name="lrms_primary">#1957C2</color>
+    <color name="lrms_primary_dark">#123F8F</color>
+    <color name="lrms_primary_light">#E8F0FD</color>
+
+    <!-- Text -->
+    <color name="lrms_ink">#1C2128</color>
+    <color name="lrms_slate">#4B5563</color>
+    <color name="lrms_muted">#6B7280</color>
+
+    <!-- Surfaces -->
+    <color name="lrms_surface">#FFFFFF</color>
+    <color name="lrms_surface_variant">#EEF2F6</color>
+    <color name="lrms_background">#F5F7FA</color>
+    <color name="lrms_border">#E2E5EA</color>
+    <color name="lrms_border_strong">#CFD4DC</color>
+
+    <!-- Status -->
+    <color name="lrms_success">#1A7F4E</color>
+    <color name="lrms_success_light">#E6F4EC</color>
+    <color name="lrms_warning">#B7791F</color>
+    <color name="lrms_warning_light">#FDF4E3</color>
+    <color name="lrms_danger">#B3261E</color>
+    <color name="lrms_danger_light">#FDECEA</color>
+
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+
+    <!-- Dark theme -->
+    <color name="lrms_primary_night">#4D8BF0</color>
+    <color name="lrms_primary_dark_night">#7AA9F5</color>
+    <color name="lrms_primary_light_night">#17253C</color>
+    <color name="lrms_ink_night">#E6EDF3</color>
+    <color name="lrms_slate_night">#A6B1C0</color>
+    <color name="lrms_muted_night">#8B95A3</color>
+    <color name="lrms_surface_night">#161B22</color>
+    <color name="lrms_surface_variant_night">#1B212A</color>
+    <color name="lrms_background_night">#0F1319</color>
+    <color name="lrms_border_night">#262D38</color>
+    <color name="lrms_success_night">#3FB27F</color>
+    <color name="lrms_success_light_night">#12291F</color>
+    <color name="lrms_warning_night">#D9A13B</color>
+    <color name="lrms_warning_light_night">#2B2113</color>
+    <color name="lrms_danger_night">#E5645B</color>
+    <color name="lrms_danger_light_night">#2C1715</color>
+</resources>

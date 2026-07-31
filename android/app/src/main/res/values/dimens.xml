@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">24dp</dimen>
+    <dimen name="space_xxl">32dp</dimen>
+
+    <dimen name="card_radius">10dp</dimen>
+    <dimen name="screen_padding">16dp</dimen>
+    <dimen name="list_item_padding">14dp</dimen>
+
+    <dimen name="text_label">10sp</dimen>
+    <dimen name="text_caption">12sp</dimen>
+    <dimen name="text_body">14sp</dimen>
+    <dimen name="text_body_large">15sp</dimen>
+    <dimen name="text_title">17sp</dimen>
+    <dimen name="text_headline">22sp</dimen>
+
+    <dimen name="signature_stroke_width">4dp</dimen>
+    <dimen name="photo_thumb_size">96dp</dimen>
+    <dimen name="touch_target">48dp</dimen>
+</resources>

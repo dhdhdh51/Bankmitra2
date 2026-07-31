@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Material 3, light. Colour roles mirror the admin panel tokens. -->
+    <style name="Theme.LRMS" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/lrms_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryContainer">@color/lrms_primary_light</item>
+        <item name="colorOnPrimaryContainer">@color/lrms_primary_dark</item>
+
+        <item name="colorSecondary">@color/lrms_primary_dark</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorSecondaryContainer">@color/lrms_primary_light</item>
+        <item name="colorOnSecondaryContainer">@color/lrms_primary_dark</item>
+
+        <item name="colorSurface">@color/lrms_surface</item>
+        <item name="colorOnSurface">@color/lrms_ink</item>
+        <item name="colorSurfaceVariant">@color/lrms_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/lrms_slate</item>
+        <item name="android:colorBackground">@color/lrms_background</item>
+        <item name="colorOnBackground">@color/lrms_ink</item>
+
+        <item name="colorError">@color/lrms_danger</item>
+        <item name="colorOnError">@color/white</item>
+        <item name="colorErrorContainer">@color/lrms_danger_light</item>
+        <item name="colorOnErrorContainer">@color/lrms_danger</item>
+
+        <item name="colorOutline">@color/lrms_border_strong</item>
+        <item name="colorOutlineVariant">@color/lrms_border</item>
+
+        <item name="android:statusBarColor">@color/lrms_primary_dark</item>
+        <item name="android:navigationBarColor">@color/lrms_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+
+        <item name="materialCardViewStyle">@style/Widget.LRMS.CardView</item>
+        <item name="textInputStyle">@style/Widget.LRMS.TextInputLayout</item>
+    </style>
+
+    <style name="Theme.LRMS.Splash" parent="Theme.LRMS">
+        <item name="android:windowBackground">@color/lrms_primary_dark</item>
+        <item name="android:statusBarColor">@color/lrms_primary_dark</item>
+        <item name="android:navigationBarColor">@color/lrms_primary_dark</item>
+    </style>
+
+    <!-- Full-screen theme for the landscape signature pad. -->
+    <style name="Theme.LRMS.Fullscreen" parent="Theme.LRMS">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@color/lrms_ink</item>
+        <item name="android:navigationBarColor">@color/lrms_ink</item>
+    </style>
+
+    <!-- ==================== Components ==================== -->
+
+    <style name="Widget.LRMS.CardView" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">10dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/lrms_border</item>
+        <item name="cardBackgroundColor">?attr/colorSurface</item>
+    </style>
+
+    <style name="Widget.LRMS.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">8dp</item>
+        <item name="boxCornerRadiusTopEnd">8dp</item>
+        <item name="boxCornerRadiusBottomStart">8dp</item>
+        <item name="boxCornerRadiusBottomEnd">8dp</item>
+    </style>
+
+    <style name="Widget.LRMS.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">50dp</item>
+        <item name="cornerRadius">8dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.01</item>
+    </style>
+
+    <style name="Widget.LRMS.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minHeight">50dp</item>
+        <item name="cornerRadius">8dp</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <!-- ==================== Text ==================== -->
+
+    <style name="TextAppearance.LRMS.SectionLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textColor">@color/lrms_muted</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="TextAppearance.LRMS.FieldLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textColor">@color/lrms_muted</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.05</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.LRMS.FieldValue" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="TextAppearance.LRMS.Amount" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- Status pill used in lead lists. -->
+    <style name="Widget.LRMS.StatusChip" parent="Widget.Material3.Chip.Assist">
+        <item name="chipMinHeight">24dp</item>
+        <item name="android:textSize">11sp</item>
+        <item name="chipStrokeWidth">1dp</item>
+        <item name="ensureMinTouchTargetSize">false</item>
+        <item name="chipStartPadding">8dp</item>
+        <item name="chipEndPadding">8dp</item>
+    </style>
+</resources>

@@ -1,0 +1,754 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A submitted visit report, read-only.
+    Values come from the snapshot stored with the report, not from the customer's
+    current record, so a historical report always reads as it was signed.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:navigationIconTint="@color/white"
+        app:subtitleTextColor="#CCFFFFFF"
+        app:title="@string/visit_title"
+        app:titleTextColor="@color/white" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_general"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_date"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textVisitDate"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_time"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textVisitTime"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_bc_code"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textBcCode"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_branch"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textBranch"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_agent"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textAgent"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_village"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textVillage"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_borrower"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_customer_name"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textCustomerName"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_father_husband"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textFatherName"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_mobile"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textMobile"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_aadhaar"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textAadhaar"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_address"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textAddress"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_loan"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_loan_account"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textAccountNumber"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_loan_type"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textLoanType"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_outstanding"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textOutstanding"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_overdue"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textOverdue"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/label_npa_date"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textNpaDate"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_contact"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_section_contact"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textContact"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <TextView
+                        android:id="@+id/textFamilyMember"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/lrms_slate"
+                        android:textSize="13sp"
+                        android:visibility="gone"
+                        tools:text="Sita Devi - Wife"
+                        tools:visibility="visible" />
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_verification"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_borrower_alive"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textBorrowerAlive"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_same_address"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textSameAddress"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_shifted"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textShifted"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_occupation"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textOccupation"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_recovery"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_section_recovery"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textRecovery"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    <LinearLayout
+                        android:id="@+id/groupPromise"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@color/lrms_primary_light"
+                        android:orientation="horizontal"
+                        android:padding="10dp"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_promise_amount"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textPromiseAmount"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_promise_date"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textPromiseDate"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_reason"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_section_reason"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textReasons"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_recommendation"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingVertical="6dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/visit_section_recommendation"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+                            <TextView
+                                android:id="@+id/textRecommendations"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                                tools:text="Value" />
+                        </LinearLayout>
+                    </LinearLayout>
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_remarks"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+                    <TextView
+                        android:id="@+id/textRemarks"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp"
+                        tools:text="Customer agreed to pay after harvest." />
+                    </LinearLayout></com.google.android.material.card.MaterialCardView>
+                <LinearLayout
+                    android:id="@+id/groupMedia"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_documents"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recyclerMedia"
+                        android:layout_width="match_parent"
+                        android:layout_height="96dp"
+                        android:clipToPadding="false"
+                        tools:listitem="@layout/item_media" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/textSubmitted"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:textColor="@color/lrms_muted"
+                    android:textSize="11sp"
+                    tools:text="Submitted from android v1.0.0 on 30 Jul 2026. Append-only." />
+            </LinearLayout>
+        </ScrollView>
+
+        <ProgressBar
+            android:id="@+id/progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

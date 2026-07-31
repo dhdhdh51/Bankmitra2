@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Full-screen landscape signature capture.
+
+    The pad takes almost the whole width because a narrow box produces a
+    signature nobody would recognise. Controls sit in a compact right-hand rail so
+    they never overlap the signing area.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/lrms_ink"
+    android:padding="12dp">
+
+    <!-- Heading -->
+    <TextView
+        android:id="@+id/textTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textColor="@color/white"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toStartOf="@id/textSigner"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Customer signature" />
+
+    <TextView
+        android:id="@+id/textSigner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#A6B1C0"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/textTitle"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/textTitle"
+        tools:text="Ramesh Kumar"
+        tools:visibility="visible" />
+
+    <!-- Signing surface -->
+    <FrameLayout
+        android:id="@+id/padContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_signature_pad"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/controlRail"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textTitle">
+
+        <com.lrms.recovery.ui.signature.SignaturePadView
+            android:id="@+id/signaturePad"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_margin="2dp" />
+
+        <TextView
+            android:id="@+id/textHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/signature_hint"
+            android:textColor="#8B95A3"
+            android:textSize="14sp" />
+    </FrameLayout>
+
+    <!-- Controls -->
+    <LinearLayout
+        android:id="@+id/controlRail"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginStart="12dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textTitle">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSave"
+            style="@style/Widget.LRMS.Button"
+            android:layout_width="128dp"
+            android:layout_height="wrap_content"
+            android:text="@string/signature_save"
+            app:icon="@drawable/ic_check" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonUndo"
+            style="@style/Widget.Material3.Button.TextButton.Icon"
+            android:layout_width="128dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/signature_undo"
+            android:textColor="@color/white"
+            app:icon="@drawable/ic_undo"
+            app:iconTint="@color/white" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonRedo"
+            style="@style/Widget.Material3.Button.TextButton.Icon"
+            android:layout_width="128dp"
+            android:layout_height="wrap_content"
+            android:text="@string/signature_redo"
+            android:textColor="@color/white"
+            app:icon="@drawable/ic_redo"
+            app:iconTint="@color/white" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonClear"
+            style="@style/Widget.Material3.Button.TextButton.Icon"
+            android:layout_width="128dp"
+            android:layout_height="wrap_content"
+            android:text="@string/signature_clear"
+            android:textColor="@color/white"
+            app:icon="@drawable/ic_delete"
+            app:iconTint="@color/white" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonCancel"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="128dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/signature_cancel"
+            android:textColor="#A6B1C0" />
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

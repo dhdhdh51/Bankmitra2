@@ -1,0 +1,141 @@
+name: Verify backend
+
+# Lints the PHP tree and runs the core self-tests plus the full integration
+# suite against a real MySQL service.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'admin/**'
+      - 'schema.sql'
+      - 'tools/**'
+      - '.github/workflows/verify-backend.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: PHP syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      matrix:
+        # The oldest version the app supports, and the newest it must not break on.
+        php: ['8.2', '8.4']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring, zip, gd, openssl, fileinfo
+          coverage: none
+
+      - name: Lint every PHP file
+        run: |
+          set -e
+          FAILED=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" > /dev/null; then
+              echo "::error file=$file::PHP syntax error"
+              php -l "$file" || true
+              FAILED=1
+            fi
+          done < <(find admin tools -name '*.php' -print0)
+          echo "Checked $(find admin tools -name '*.php' | wc -l) files"
+          exit $FAILED
+
+  core:
+    name: Core self-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, gd, openssl, fileinfo
+          coverage: none
+
+      # Crypto, JWT, XLSX reader/writer, PDF writer, validator, paginator.
+      - name: Run core self-tests
+        run: php tools/selftest-core.php
+
+      - name: Cross-validate the generated XLSX and PDF
+        run: |
+          python3 -m pip install --quiet pypdf openpyxl
+          mkdir -p .verify
+          php tools/crossvalidate.php "$PWD/.verify"
+          python3 tools/crossvalidate.py "$PWD/.verify"
+
+  integration:
+    name: Integration tests (MySQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: lrms
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, gd, openssl, fileinfo
+          coverage: none
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent; then
+              echo "MySQL is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready" >&2
+          exit 1
+
+      - name: Import the schema
+        run: mysql -h 127.0.0.1 -P 3306 -uroot -proot lrms < schema.sql
+
+      - name: Verify the schema landed
+        run: |
+          COUNT=$(mysql -h 127.0.0.1 -P 3306 -uroot -proot -N -B lrms \
+            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='lrms';")
+          echo "Tables created: $COUNT"
+          test "$COUNT" -ge 20
+
+      - name: Run the integration suite
+        env:
+          LRMS_DB_HOST: 127.0.0.1
+          LRMS_DB_PORT: 3306
+          LRMS_DB_NAME: lrms
+          LRMS_DB_USER: root
+          LRMS_DB_PASS: root
+        run: php tools/integration-test.php

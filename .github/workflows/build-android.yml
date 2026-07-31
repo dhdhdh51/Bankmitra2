@@ -1,0 +1,195 @@
+name: Build Android APK
+
+# Builds the LRMS agent app on every push to main, on pull requests, and on
+# manual dispatch. Produces debug and release APKs plus the test reports as
+# downloadable artefacts.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Which variants to build'
+        required: false
+        default: 'both'
+        type: choice
+        options: [both, debug, release]
+
+# A newer push supersedes an in-flight run for the same ref.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: android
+
+jobs:
+  build:
+    name: Unit tests and APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          # Caches ~/.gradle based on the Gradle files in the repo.
+          cache: gradle
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # The wrapper JAR is committed, so verify it against Gradle's checksums.
+          validate-wrappers: true
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # Fails fast with a clear message rather than a compile error 20 minutes in.
+      - name: Show environment
+        run: |
+          echo "Java:   $(java -version 2>&1 | head -1)"
+          echo "Gradle: $(./gradlew --version | grep '^Gradle' | head -1)"
+          echo "SDK:    ${ANDROID_HOME:-unset}"
+
+      - name: Run unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Upload test report
+        # Uploaded even on failure: the report is how you diagnose a red build.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest/
+            android/app/build/test-results/testDebugUnitTest/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Build debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Build release APK
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        # No signing config is committed, so this produces an unsigned release
+        # APK. Add a keystore and keystore.properties to get a signed build; see
+        # DEPLOYMENT.md.
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Read the app version
+        id: version
+        run: |
+          VERSION=$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+          echo "name=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "App version: ${VERSION}"
+
+      - name: Upload debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lrms-debug-v${{ steps.version.outputs.name }}-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload release APK
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lrms-release-v${{ steps.version.outputs.name }}-${{ github.run_number }}
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload R8 mapping file
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        # Required to symbolise a stack trace from a minified release build.
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mapping-${{ github.run_number }}
+          path: android/app/build/outputs/mapping/release/mapping.txt
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "### LRMS Android build"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Version | ${{ steps.version.outputs.name }} |"
+            echo "| Run | #${{ github.run_number }} |"
+            echo "| Commit | \`${GITHUB_SHA:0:8}\` |"
+            echo ""
+            if ls app/build/outputs/apk/debug/*.apk >/dev/null 2>&1; then
+              echo "**Debug APK**"
+              for f in app/build/outputs/apk/debug/*.apk; do
+                echo "- \`$(basename "$f")\` ($(du -h "$f" | cut -f1))"
+              done
+            fi
+            if ls app/build/outputs/apk/release/*.apk >/dev/null 2>&1; then
+              echo ""
+              echo "**Release APK** (unsigned unless a keystore is configured)"
+              for f in app/build/outputs/apk/release/*.apk; do
+                echo "- \`$(basename "$f")\` ($(du -h "$f" | cut -f1))"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    name: Android lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Advisory only: a lint warning should not block an APK artefact.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x gradlew
+
+      - name: Run lint
+        run: ./gradlew --no-daemon lintDebug
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: android/app/build/reports/lint-results-debug.*
+          retention-days: 14
+          if-no-files-found: ignore

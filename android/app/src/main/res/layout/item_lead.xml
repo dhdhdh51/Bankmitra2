@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardCornerRadius="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="@dimen/list_item_padding">
+
+        <!-- Account number + status -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/textAccountNumber"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:singleLine="true"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                tools:text="LN00100001" />
+
+            <TextView
+                android:id="@+id/textNpa"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_npa_badge"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="1dp"
+                android:text="@string/npa_badge"
+                android:textColor="@color/lrms_danger"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chipStatus"
+                style="@style/Widget.LRMS.StatusChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:clickable="false"
+                tools:text="Pending" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textCustomerName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:singleLine="true"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            tools:text="Ramesh Kumar" />
+
+        <TextView
+            android:id="@+id/textVillage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="@color/lrms_muted"
+            android:textSize="12sp"
+            tools:text="Kotri - Crop Loan" />
+
+        <!-- Amounts -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_outstanding"
+                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                <TextView
+                    android:id="@+id/textOutstanding"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    tools:text="1,25,000" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_overdue"
+                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                <TextView
+                    android:id="@+id/textOverdue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/lrms_danger"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    tools:text="24,500" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonCall"
+                style="@style/Widget.Material3.Button.IconButton.Outlined"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:contentDescription="@string/cd_call"
+                app:icon="@drawable/ic_phone" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textVisitInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/lrms_muted"
+            android:textSize="11sp"
+            tools:text="2 visits - 3 days ago" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

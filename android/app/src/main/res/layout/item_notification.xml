@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="6dp"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardCornerRadius="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="top"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <View
+            android:id="@+id/viewUnreadDot"
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_marginTop="7dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_timeline_dot"
+            android:backgroundTint="?attr/colorPrimary" />
+
+        <ImageView
+            android:id="@+id/imageIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="@string/cd_notification_icon"
+            app:tint="?attr/colorPrimary"
+            tools:src="@drawable/ic_bell" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                tools:text="New lead assigned" />
+
+            <TextView
+                android:id="@+id/textBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/lrms_slate"
+                android:textSize="13sp"
+                tools:text="Loan account LN00100001 has been assigned to you." />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/textTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/lrms_muted"
+                    android:textSize="11sp"
+                    tools:text="2 hours ago" />
+
+                <TextView
+                    android:id="@+id/textAccount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="monospace"
+                    android:textColor="?attr/colorPrimary"
+                    android:textSize="11sp"
+                    tools:text="LN00100001" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

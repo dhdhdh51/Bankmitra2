@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Directories the FileProvider may share, used for camera capture targets. -->
+<paths>
+    <cache-path name="captures" path="captures/" />
+    <cache-path name="signatures" path="signatures/" />
+    <files-path name="app_files" path="." />
+</paths>

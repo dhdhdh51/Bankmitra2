@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LRMS</string>
+    <string name="app_full_name">Loan Recovery Management System</string>
+
+    <!-- ==================== Login ==================== -->
+    <string name="login_title">Sign in</string>
+    <string name="login_subtitle">Enter your employee code and password</string>
+    <string name="login_employee_code">Employee code</string>
+    <string name="login_password">Password</string>
+    <string name="login_remember">Keep me signed in</string>
+    <string name="login_button">Sign in</string>
+    <string name="login_forgot">Forgot password?</string>
+    <string name="login_server">Server address</string>
+    <string name="login_server_hint">https://your-domain.com/api/v1/</string>
+    <string name="login_change_server">Change server</string>
+    <string name="login_error_code">Enter your employee code</string>
+    <string name="login_error_password">Enter your password</string>
+    <string name="login_error_server">Enter a valid https:// server address</string>
+
+    <!-- ==================== Forgot / change password ==================== -->
+    <string name="forgot_title">Forgot password</string>
+    <string name="forgot_subtitle">We will send a one-time password to your registered mobile number</string>
+    <string name="forgot_send_otp">Send OTP</string>
+    <string name="forgot_otp">One-time password</string>
+    <string name="forgot_new_password">New password</string>
+    <string name="forgot_confirm_password">Confirm new password</string>
+    <string name="forgot_reset">Reset password</string>
+    <string name="change_password_title">Change password</string>
+    <string name="change_password_forced">Please set a new password before continuing.</string>
+    <string name="change_password_current">Current password</string>
+    <string name="change_password_update">Update password</string>
+    <string name="password_mismatch">The two passwords do not match</string>
+    <string name="password_too_short">Password must be at least 8 characters</string>
+
+    <!-- ==================== Navigation ==================== -->
+    <string name="nav_leads">My Leads</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_notifications">Alerts</string>
+    <string name="nav_account">Account</string>
+
+    <!-- ==================== Leads ==================== -->
+    <string name="leads_title">Assigned Leads</string>
+    <string name="leads_empty_title">No leads assigned</string>
+    <string name="leads_empty_message">Leads assigned to you by your branch will appear here. Pull down to refresh.</string>
+    <string name="leads_filter_all">All</string>
+    <string name="leads_filter_pending">Pending</string>
+    <string name="leads_filter_visited">Visited</string>
+    <string name="leads_filter_promise">Promise</string>
+    <string name="leads_filter_followup">Follow-up</string>
+    <string name="leads_filter_closed">Closed</string>
+
+    <!-- ==================== Search ==================== -->
+    <string name="search_title">Search Customer</string>
+    <string name="search_hint">Loan account no, name, mobile, Aadhaar or village</string>
+    <string name="search_empty_title">Search for a customer</string>
+    <string name="search_empty_message">Search by loan account number, customer name, mobile number, Aadhaar number or village.</string>
+    <string name="search_no_results_title">No matches</string>
+    <string name="search_no_results_message">Nothing matched that search. Check the spelling or try a different detail.</string>
+    <string name="search_scope_mine">My leads</string>
+    <string name="search_scope_branch">Whole branch</string>
+    <string name="search_too_short">Enter at least 2 characters</string>
+
+    <!-- ==================== Customer profile ==================== -->
+    <string name="profile_title">Customer Profile</string>
+    <string name="profile_borrower">Borrower details</string>
+    <string name="profile_loan">Loan details</string>
+    <string name="profile_promises">Promise history</string>
+    <string name="profile_visits">Visit history</string>
+    <string name="profile_photos">Photos</string>
+    <string name="profile_signatures">Signatures</string>
+    <string name="profile_timeline">Timeline</string>
+    <string name="profile_new_visit">Submit visit report</string>
+    <string name="profile_call">Call</string>
+    <string name="profile_view_history">View full history</string>
+    <string name="profile_no_promises">No promises recorded.</string>
+    <string name="profile_no_visits">No visits recorded yet.</string>
+    <string name="profile_other_accounts">Other accounts</string>
+
+    <!-- Field labels -->
+    <string name="label_customer_name">Customer name</string>
+    <string name="label_father_husband">Father / husband name</string>
+    <string name="label_mobile">Mobile</string>
+    <string name="label_aadhaar">Aadhaar</string>
+    <string name="label_village">Village</string>
+    <string name="label_address">Address</string>
+    <string name="label_loan_account">Loan account number</string>
+    <string name="label_loan_type">Loan type</string>
+    <string name="label_outstanding">Outstanding</string>
+    <string name="label_overdue">Overdue</string>
+    <string name="label_npa_date">NPA date</string>
+    <string name="label_status">Status</string>
+    <string name="label_branch">Branch</string>
+    <string name="label_bc_code">BC code</string>
+    <string name="label_visits">Visits</string>
+    <string name="label_agent">Agent</string>
+
+    <!-- ==================== Visit report ==================== -->
+    <string name="visit_title">Field Visit Report</string>
+    <string name="visit_section_general">General</string>
+    <string name="visit_section_borrower">Borrower details</string>
+    <string name="visit_section_loan">Loan details</string>
+    <string name="visit_section_contact">Customer contact</string>
+    <string name="visit_section_verification">Physical verification</string>
+    <string name="visit_section_recovery">Recovery possibility</string>
+    <string name="visit_section_reason">Non-payment reason</string>
+    <string name="visit_section_recommendation">Agent recommendation</string>
+    <string name="visit_section_remarks">Remarks</string>
+    <string name="visit_section_documents">Documents</string>
+    <string name="visit_section_signatures">Signatures</string>
+
+    <string name="visit_date">Visit date</string>
+    <string name="visit_time">Visit time</string>
+
+    <string name="visit_customer_met">Customer met</string>
+    <string name="visit_family_met">Family member met</string>
+    <string name="visit_house_locked">House locked</string>
+    <string name="visit_phone_contact">Phone contact</string>
+    <string name="visit_phone_off">Phone switched off</string>
+    <string name="visit_family_name">Family member name</string>
+    <string name="visit_family_relationship">Relationship</string>
+
+    <string name="visit_borrower_alive">Borrower alive</string>
+    <string name="visit_same_address">Same address</string>
+    <string name="visit_shifted">Shifted</string>
+    <string name="visit_occupation">Occupation</string>
+    <string name="visit_occupation_other">Specify occupation</string>
+
+    <string name="visit_ready_to_pay">Ready to pay</string>
+    <string name="visit_not_ready">Not ready</string>
+    <string name="visit_interest_payment">Interest payment</string>
+    <string name="visit_ots">OTS</string>
+    <string name="visit_promise_amount">Promise amount</string>
+    <string name="visit_promise_date">Promise date</string>
+    <string name="visit_promise_incomplete">A promise needs both an amount and a date</string>
+
+    <string name="visit_reason_financial">Financial problem</string>
+    <string name="visit_reason_crop">Crop loss</string>
+    <string name="visit_reason_animal">Animal loss</string>
+    <string name="visit_reason_illness">Illness</string>
+    <string name="visit_reason_unemployment">Unemployment</string>
+    <string name="visit_reason_dispute">Dispute</string>
+    <string name="visit_reason_other_loan">Other loan</string>
+    <string name="visit_reason_others">Others</string>
+    <string name="visit_reason_other_text">Specify reason</string>
+
+    <string name="visit_rec_recovery_possible">Recovery possible</string>
+    <string name="visit_rec_followup">Regular follow-up</string>
+    <string name="visit_rec_legal">Legal action</string>
+    <string name="visit_rec_rc">RC</string>
+    <string name="visit_rec_ots">OTS</string>
+    <string name="visit_rec_others">Others</string>
+    <string name="visit_rec_other_text">Specify recommendation</string>
+
+    <string name="visit_remarks_hint">Observations, next steps, anything the branch should know</string>
+
+    <string name="visit_customer_photo">Customer photo</string>
+    <string name="visit_house_photo">House photo</string>
+    <string name="visit_aadhaar_photo">Aadhaar copy</string>
+    <string name="visit_other_documents">Other documents</string>
+
+    <string name="visit_customer_signature">Customer signature</string>
+    <string name="visit_agent_signature">Agent signature</string>
+    <string name="visit_capture_signature">Capture signature</string>
+    <string name="visit_recapture">Recapture</string>
+    <string name="visit_signature_captured">Captured</string>
+    <string name="visit_signature_not_captured">Not captured</string>
+
+    <string name="visit_submit">Submit visit report</string>
+    <string name="visit_submitting">Submitting…</string>
+    <string name="visit_submitted">Visit report submitted</string>
+    <string name="visit_discard_title">Discard this report?</string>
+    <string name="visit_discard_message">The details you have entered will be lost.</string>
+    <string name="visit_discard_confirm">Discard</string>
+    <string name="visit_keep_editing">Keep editing</string>
+    <string name="visit_error_contact">Select how the visit went</string>
+
+    <!-- ==================== Photos ==================== -->
+    <string name="photo_title">Photo Upload</string>
+    <string name="photo_take">Take photo</string>
+    <string name="photo_choose">Choose from gallery</string>
+    <string name="photo_remove">Remove</string>
+    <string name="photo_camera_denied">Camera permission is needed to take a photo.</string>
+    <string name="photo_gallery_denied">Storage permission is needed to pick a photo.</string>
+
+    <!-- ==================== Signature ==================== -->
+    <string name="signature_title">Signature</string>
+    <string name="signature_hint">Sign inside the box using your finger or a stylus</string>
+    <string name="signature_undo">Undo</string>
+    <string name="signature_redo">Redo</string>
+    <string name="signature_clear">Clear</string>
+    <string name="signature_save">Save</string>
+    <string name="signature_cancel">Cancel</string>
+    <string name="signature_empty">Please sign before saving</string>
+    <string name="signature_name_hint">Name of signatory (optional)</string>
+
+    <!-- ==================== Visit history ==================== -->
+    <string name="history_title">Visit History</string>
+    <string name="history_empty_title">No visits yet</string>
+    <string name="history_empty_message">Submitted field visit reports appear here, newest first.</string>
+    <string name="history_read_only">This history is read-only. Reports are never edited once submitted.</string>
+
+    <!-- ==================== Notifications ==================== -->
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_empty_title">No notifications</string>
+    <string name="notifications_empty_message">New lead assignments, follow-up reminders and promise reminders appear here.</string>
+    <string name="notifications_mark_all">Mark all read</string>
+
+    <!-- ==================== Account ==================== -->
+    <string name="account_title">Account</string>
+    <string name="account_change_password">Change password</string>
+    <string name="account_dark_mode">Dark mode</string>
+    <string name="account_sign_out">Sign out</string>
+    <string name="account_sign_out_confirm">Sign out of LRMS?</string>
+    <string name="account_about">About</string>
+    <string name="account_my_stats">My performance</string>
+    <string name="account_assigned">Assigned</string>
+    <string name="account_visits_today">Visits today</string>
+    <string name="account_visits_month">Visits this month</string>
+    <string name="account_promises_kept">Promises kept</string>
+
+    <!-- ==================== Common ==================== -->
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_ok">OK</string>
+    <string name="action_save">Save</string>
+    <string name="action_close">Close</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="loading">Loading…</string>
+    <string name="error_network">No internet connection. Check your network and try again.</string>
+    <string name="error_timeout">The server took too long to respond. Please try again.</string>
+    <string name="error_server">Something went wrong on the server. Please try again.</string>
+    <string name="error_session_expired">Your session has expired. Please sign in again.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="not_available">—</string>
+    <string name="npa_badge">NPA</string>
+    <string name="required_marker">*</string>
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_message">This version of LRMS is no longer supported. Please install the latest version to continue.</string>
+
+    <string name="account_version_format">Version %1$s (build %2$d)</string>
+    <string name="visit_submitted_from">Submitted from %1$s v%2$s on %3$s. This record is append-only and has not been edited.</string>
+    <string name="account_pending">Pending</string>
+    <string name="account_promises_pending">Promises pending</string>
+    <string name="account_outstanding">Outstanding</string>
+    <string name="account_overdue">Overdue</string>
+    <string name="no_gps_note">This app records field verification only. It does not track your location.</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_call">Call customer</string>
+    <string name="cd_photo">Photo</string>
+    <string name="cd_signature">Signature</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_notification_icon">Notification type</string>
+    <string name="cd_avatar">Profile initial</string>
+</resources>
+

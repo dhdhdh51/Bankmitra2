@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One append-only timeline event. Read-only by design. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="2dp">
+
+    <!-- Marker + connector -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingEnd="12dp">
+
+        <View
+            android:id="@+id/viewDot"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/bg_timeline_dot" />
+
+        <View
+            android:id="@+id/viewLine"
+            android:layout_width="2dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="3dp"
+            android:layout_weight="1"
+            android:background="@color/lrms_border" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/textTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                tools:text="Field visit #2" />
+
+            <ImageView
+                android:id="@+id/imageChevron"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/lrms_muted" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/textTime"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/lrms_muted"
+            android:textSize="11sp"
+            tools:text="30 Jul 2026, 03:45 PM" />
+
+        <TextView
+            android:id="@+id/textDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="@color/lrms_slate"
+            android:textSize="13sp"
+            tools:text="Customer met - Ready to pay" />
+
+        <TextView
+            android:id="@+id/textMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="11sp"
+            tools:text="2 photos - 2 signatures" />
+
+        <TextView
+            android:id="@+id/textActor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/lrms_muted"
+            android:textSize="11sp"
+            tools:text="Ramesh Kumar" />
+    </LinearLayout>
+</LinearLayout>

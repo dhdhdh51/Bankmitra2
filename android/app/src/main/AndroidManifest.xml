@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Permissions are deliberately minimal.
+
+        There is NO location permission of any kind: this app does no GPS
+        tracking, no live agent tracking, no attendance and no map monitoring.
+        There is also no payment capability - agents record field verification
+        and recovery follow-up only, they never collect money.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!-- Gallery access: scoped storage on 33+, legacy read below that. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- A camera is preferred for capturing visit photos but not required. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <application
+        android:name=".LrmsApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LRMS"
+        android:usesCleartextTraffic="false"
+        tools:targetApi="36">
+
+        <activity
+            android:name=".ui.splash.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.LRMS.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.login.LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.login.ChangePasswordActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.login.ForgotPasswordActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.main.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".ui.customer.CustomerProfileActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.main.MainActivity" />
+
+        <activity
+            android:name=".ui.visit.VisitReportActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.visit.VisitDetailActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.history.VisitHistoryActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.photo.PhotoUploadActivity"
+            android:exported="false" />
+
+        <!--
+            The signature pad is a full-screen, landscape-only activity: a small
+            inline box produces unusable signatures on a phone. Rotation is locked
+            so a mid-signature orientation change cannot discard the strokes.
+        -->
+        <activity
+            android:name=".ui.signature.SignatureActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="keyboardHidden|screenSize|orientation"
+            android:theme="@style/Theme.LRMS.Fullscreen"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
+
+        <!-- FileProvider for handing a camera capture target to the camera app. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

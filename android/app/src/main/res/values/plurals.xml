@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="lead_count">
+        <item quantity="one">%d lead</item>
+        <item quantity="other">%d leads</item>
+    </plurals>
+
+    <plurals name="visit_count">
+        <item quantity="one">%d visit</item>
+        <item quantity="other">%d visits</item>
+    </plurals>
+
+    <plurals name="photo_count">
+        <item quantity="one">%d photo</item>
+        <item quantity="other">%d photos</item>
+    </plurals>
+
+    <plurals name="notification_count">
+        <item quantity="one">%d notification</item>
+        <item quantity="other">%d notifications</item>
+    </plurals>
+
+    <plurals name="day_count">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+</resources>

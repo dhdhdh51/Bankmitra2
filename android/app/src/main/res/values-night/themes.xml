@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Dark mode: same roles, night palette. -->
+    <style name="Theme.LRMS" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/lrms_primary_night</item>
+        <item name="colorOnPrimary">@color/lrms_background_night</item>
+        <item name="colorPrimaryContainer">@color/lrms_primary_light_night</item>
+        <item name="colorOnPrimaryContainer">@color/lrms_primary_dark_night</item>
+
+        <item name="colorSecondary">@color/lrms_primary_dark_night</item>
+        <item name="colorOnSecondary">@color/lrms_background_night</item>
+        <item name="colorSecondaryContainer">@color/lrms_primary_light_night</item>
+        <item name="colorOnSecondaryContainer">@color/lrms_primary_dark_night</item>
+
+        <item name="colorSurface">@color/lrms_surface_night</item>
+        <item name="colorOnSurface">@color/lrms_ink_night</item>
+        <item name="colorSurfaceVariant">@color/lrms_surface_variant_night</item>
+        <item name="colorOnSurfaceVariant">@color/lrms_slate_night</item>
+        <item name="android:colorBackground">@color/lrms_background_night</item>
+        <item name="colorOnBackground">@color/lrms_ink_night</item>
+
+        <item name="colorError">@color/lrms_danger_night</item>
+        <item name="colorOnError">@color/lrms_background_night</item>
+        <item name="colorErrorContainer">@color/lrms_danger_light_night</item>
+        <item name="colorOnErrorContainer">@color/lrms_danger_night</item>
+
+        <item name="colorOutline">@color/lrms_border_night</item>
+        <item name="colorOutlineVariant">@color/lrms_border_night</item>
+
+        <item name="android:statusBarColor">@color/lrms_background_night</item>
+        <item name="android:navigationBarColor">@color/lrms_surface_night</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+
+        <item name="materialCardViewStyle">@style/Widget.LRMS.CardView</item>
+        <item name="textInputStyle">@style/Widget.LRMS.TextInputLayout</item>
+    </style>
+
+    <style name="Widget.LRMS.CardView" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">10dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/lrms_border_night</item>
+        <item name="cardBackgroundColor">?attr/colorSurface</item>
+    </style>
+</resources>

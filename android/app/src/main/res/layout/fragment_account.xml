@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:title="@string/account_title"
+        app:titleTextColor="@color/white" />
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <!-- Identity -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/textAvatar"
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:background="@color/lrms_primary_light"
+                            android:gravity="center"
+                            android:textColor="@color/lrms_primary_dark"
+                            android:textSize="20sp"
+                            android:textStyle="bold"
+                            tools:text="R" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/textName"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="17sp"
+                                android:textStyle="bold"
+                                tools:text="Ramesh Kumar" />
+
+                            <TextView
+                                android:id="@+id/textRole"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textColor="?attr/colorPrimary"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                tools:text="BC/DC Agent" />
+
+                            <TextView
+                                android:id="@+id/textEmployeeCode"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textColor="@color/lrms_muted"
+                                android:textSize="12sp"
+                                tools:text="AGT001" />
+
+                            <TextView
+                                android:id="@+id/textBranch"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textColor="@color/lrms_muted"
+                                android:textSize="12sp"
+                                tools:text="Bhilwara Main - BC-001" />
+
+                            <TextView
+                                android:id="@+id/textMobile"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:textColor="@color/lrms_muted"
+                                android:textSize="12sp"
+                                tools:text="XXXXXX2222" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Performance -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="6dp"
+                    android:text="@string/account_my_stats"
+                    android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                <LinearLayout
+                    android:id="@+id/groupStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_assigned"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatAssigned"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="48" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_pending"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatPending"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_warning"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="12" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_visits_today"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatVisitsToday"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_success"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="6" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_visits_month"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatVisitsMonth"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="84" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_promises_kept"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatPromisesKept"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_success"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="9" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_weight="1">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:padding="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_promises_pending"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textStatPromisesPending"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_warning"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    tools:text="4" />
+                            </LinearLayout>
+                        </com.google.android.material.card.MaterialCardView>
+                    </LinearLayout>
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:padding="12dp">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_outstanding"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textOutstanding"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textSize="15sp"
+                                    android:textStyle="bold"
+                                    tools:text="12,45,000" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_overdue"
+                                    android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                                <TextView
+                                    android:id="@+id/textOverdue"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_danger"
+                                    android:textSize="15sp"
+                                    android:textStyle="bold"
+                                    tools:text="2,10,500" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+                </LinearLayout>
+
+                <!-- Settings -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="6dp"
+                    android:text="Settings"
+                    android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:id="@+id/rowChangePassword"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:minHeight="@dimen/touch_target"
+                            android:orientation="horizontal"
+                            android:padding="14dp">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_key"
+                                app:tint="@color/lrms_slate" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:text="@string/account_change_password"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="14sp" />
+
+                            <ImageView
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_chevron_right"
+                                app:tint="@color/lrms_muted" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:background="@color/lrms_border" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:minHeight="@dimen/touch_target"
+                            android:orientation="horizontal"
+                            android:padding="14dp">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_moon"
+                                app:tint="@color/lrms_slate" />
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:text="@string/account_dark_mode"
+                                android:textColor="?attr/colorOnSurface"
+                                android:textSize="14sp" />
+
+                            <com.google.android.material.materialswitch.MaterialSwitch
+                                android:id="@+id/switchDarkMode"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/buttonSignOut"
+                    style="@style/Widget.LRMS.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/account_sign_out"
+                    android:textColor="@color/lrms_danger"
+                    app:icon="@drawable/ic_logout"
+                    app:iconTint="@color/lrms_danger"
+                    app:strokeColor="@color/lrms_danger" />
+
+                <TextView
+                    android:id="@+id/textVersion"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:gravity="center"
+                    android:textColor="@color/lrms_muted"
+                    android:textSize="11sp"
+                    tools:text="Version 1.0.0 (build 1)" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="16dp"
+                    android:gravity="center"
+                    android:text="@string/no_gps_note"
+                    android:textColor="@color/lrms_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </ScrollView>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</LinearLayout>

@@ -1,0 +1,451 @@
+package com.lrms.recovery.data.remote
+
+import com.google.gson.annotations.SerializedName
+
+/**
+ * Wire models for the LRMS REST API.
+ *
+ * Every endpoint answers with the same envelope, so [ApiEnvelope] is the single
+ * type the networking layer unwraps. Nullable fields mirror the server contract
+ * exactly - the API returns null for absent values rather than omitting keys, so
+ * a missing value can never be confused with a parse failure.
+ */
+data class ApiEnvelope<T>(
+    @SerializedName("success") val success: Boolean = false,
+    @SerializedName("data") val data: T? = null,
+    @SerializedName("message") val message: String = "",
+    @SerializedName("meta") val meta: PageMeta? = null,
+    @SerializedName("unread_count") val unreadCount: Int? = null,
+    @SerializedName("status_counts") val statusCounts: Map<String, Int>? = null,
+)
+
+data class PageMeta(
+    @SerializedName("current_page") val currentPage: Int = 1,
+    @SerializedName("per_page") val perPage: Int = 25,
+    @SerializedName("total") val total: Int = 0,
+    @SerializedName("last_page") val lastPage: Int = 1,
+    @SerializedName("from") val from: Int = 0,
+    @SerializedName("to") val to: Int = 0,
+    @SerializedName("has_more") val hasMore: Boolean = false,
+)
+
+/** Field-level validation errors from a 422 response. */
+data class ValidationPayload(
+    @SerializedName("errors") val errors: Map<String, List<String>>? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+data class LoginRequest(
+    @SerializedName("employee_code") val employeeCode: String,
+    @SerializedName("password") val password: String,
+    @SerializedName("device_token") val deviceToken: String? = null,
+    @SerializedName("app_version") val appVersion: String? = null,
+)
+
+data class RefreshRequest(
+    @SerializedName("refresh_token") val refreshToken: String,
+)
+
+data class LogoutRequest(
+    @SerializedName("refresh_token") val refreshToken: String?,
+    @SerializedName("device_token") val deviceToken: String? = null,
+)
+
+data class ForgotPasswordRequest(
+    @SerializedName("employee_code") val employeeCode: String,
+)
+
+data class ResetPasswordRequest(
+    @SerializedName("employee_code") val employeeCode: String,
+    @SerializedName("otp") val otp: String,
+    @SerializedName("password") val password: String,
+)
+
+data class ChangePasswordRequest(
+    @SerializedName("current_password") val currentPassword: String,
+    @SerializedName("password") val password: String,
+)
+
+data class AuthPayload(
+    @SerializedName("access_token") val accessToken: String = "",
+    @SerializedName("refresh_token") val refreshToken: String = "",
+    @SerializedName("token_type") val tokenType: String = "Bearer",
+    @SerializedName("expires_in") val expiresIn: Long = 0,
+    @SerializedName("user") val user: UserDto? = null,
+    @SerializedName("app_version") val appVersion: String? = null,
+    @SerializedName("min_version") val minVersion: String? = null,
+)
+
+data class MePayload(
+    @SerializedName("user") val user: UserDto? = null,
+    @SerializedName("app_version") val appVersion: String? = null,
+    @SerializedName("min_version") val minVersion: String? = null,
+)
+
+data class OtpPayload(
+    @SerializedName("otp_sent") val otpSent: Boolean = false,
+    @SerializedName("contact_admin") val contactAdmin: Boolean = false,
+    @SerializedName("mobile_masked") val mobileMasked: String? = null,
+    @SerializedName("expires_in") val expiresIn: Long = 0,
+)
+
+data class UserDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("employee_code") val employeeCode: String = "",
+    @SerializedName("name") val name: String = "",
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("mobile_masked") val mobileMasked: String? = null,
+    @SerializedName("role") val role: String = "",
+    @SerializedName("role_name") val roleName: String = "",
+    @SerializedName("branch_id") val branchId: Int? = null,
+    @SerializedName("branch_name") val branchName: String? = null,
+    @SerializedName("branch_code") val branchCode: String? = null,
+    @SerializedName("bc_code") val bcCode: String? = null,
+    @SerializedName("designation") val designation: String? = null,
+    @SerializedName("must_change_password") val mustChangePassword: Boolean = false,
+    @SerializedName("permissions") val permissions: List<String> = emptyList(),
+) {
+    val isAgent: Boolean get() = role == "agent"
+
+    fun can(permission: String): Boolean =
+        permissions.contains("*") || permissions.contains(permission)
+}
+
+data class PingPayload(
+    @SerializedName("status") val status: String = "",
+    @SerializedName("app_name") val appName: String = "LRMS",
+    @SerializedName("bank_name") val bankName: String? = null,
+    @SerializedName("app_version") val appVersion: String = "",
+    @SerializedName("min_version") val minVersion: String = "",
+    @SerializedName("api_version") val apiVersion: String = "",
+)
+
+data class DeviceTokenRequest(
+    @SerializedName("device_token") val deviceToken: String,
+    @SerializedName("app_version") val appVersion: String,
+)
+
+// ---------------------------------------------------------------------------
+// Leads & customers
+// ---------------------------------------------------------------------------
+
+data class LeadDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("loan_account_number") val loanAccountNumber: String = "",
+    @SerializedName("customer_id") val customerId: Int = 0,
+    @SerializedName("customer_name") val customerName: String = "",
+    @SerializedName("father_husband_name") val fatherHusbandName: String? = null,
+    @SerializedName("village") val village: String? = null,
+    @SerializedName("address") val address: String? = null,
+    @SerializedName("mobile") val mobile: String? = null,
+    @SerializedName("mobile_masked") val mobileMasked: String? = null,
+    @SerializedName("aadhaar") val aadhaar: String? = null,
+    @SerializedName("aadhaar_masked") val aadhaarMasked: String? = null,
+    @SerializedName("bc_code") val bcCode: String? = null,
+    @SerializedName("loan_type") val loanType: String? = null,
+    @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerializedName("overdue_amount") val overdueAmount: Double = 0.0,
+    @SerializedName("npa_date") val npaDate: String? = null,
+    @SerializedName("is_npa") val isNpa: Boolean = false,
+    @SerializedName("current_status") val currentStatus: String = "pending",
+    @SerializedName("branch_id") val branchId: Int = 0,
+    @SerializedName("branch_name") val branchName: String = "",
+    @SerializedName("branch_code") val branchCode: String? = null,
+    @SerializedName("assigned_agent_id") val assignedAgentId: Int? = null,
+    @SerializedName("agent_name") val agentName: String? = null,
+    @SerializedName("visit_count") val visitCount: Int = 0,
+    @SerializedName("last_visit_at") val lastVisitAt: String? = null,
+    @SerializedName("next_followup_date") val nextFollowupDate: String? = null,
+    @SerializedName("remarks") val remarks: String? = null,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class CustomerProfilePayload(
+    @SerializedName("lead") val lead: LeadDto? = null,
+    @SerializedName("promises") val promises: List<PromiseDto> = emptyList(),
+    @SerializedName("visits") val visits: List<VisitSummaryDto> = emptyList(),
+    @SerializedName("timeline") val timeline: List<TimelineEventDto> = emptyList(),
+    @SerializedName("photos") val photos: List<MediaDto> = emptyList(),
+    @SerializedName("documents") val documents: List<MediaDto> = emptyList(),
+    @SerializedName("signatures") val signatures: List<MediaDto> = emptyList(),
+    @SerializedName("other_accounts") val otherAccounts: List<OtherAccountDto> = emptyList(),
+)
+
+data class OtherAccountDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("loan_account_number") val loanAccountNumber: String = "",
+    @SerializedName("loan_type") val loanType: String? = null,
+    @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerializedName("current_status") val currentStatus: String = "",
+)
+
+data class HistoryPayload(
+    @SerializedName("loan_account_number") val loanAccountNumber: String = "",
+    @SerializedName("customer_name") val customerName: String = "",
+    @SerializedName("visit_count") val visitCount: Int = 0,
+    @SerializedName("timeline") val timeline: List<TimelineEventDto> = emptyList(),
+    @SerializedName("visits") val visits: List<VisitSummaryDto> = emptyList(),
+)
+
+data class TimelineEventDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("event_type") val eventType: String = "",
+    @SerializedName("event_label") val eventLabel: String = "",
+    @SerializedName("tone") val tone: String = "slate",
+    @SerializedName("event_at") val eventAt: String = "",
+    @SerializedName("actor_name") val actorName: String? = null,
+    @SerializedName("title") val title: String = "",
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("visit_report_id") val visitReportId: Int? = null,
+    @SerializedName("promise_id") val promiseId: Int? = null,
+    @SerializedName("photo_count") val photoCount: Int = 0,
+    @SerializedName("signature_count") val signatureCount: Int = 0,
+    @SerializedName("promise_amount") val promiseAmount: Double? = null,
+    @SerializedName("promise_date") val promiseDate: String? = null,
+)
+
+data class PromiseDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("loan_account_id") val loanAccountId: Int = 0,
+    @SerializedName("loan_account_number") val loanAccountNumber: String? = null,
+    @SerializedName("customer_name") val customerName: String? = null,
+    @SerializedName("village") val village: String? = null,
+    @SerializedName("promise_amount") val promiseAmount: Double = 0.0,
+    @SerializedName("promise_date") val promiseDate: String = "",
+    @SerializedName("status") val status: String = "pending",
+    @SerializedName("agent_name") val agentName: String = "",
+    @SerializedName("notes") val notes: String? = null,
+    @SerializedName("settled_at") val settledAt: String? = null,
+    @SerializedName("days_overdue") val daysOverdue: Int = 0,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class MediaDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("kind") val kind: String = "",
+    @SerializedName("type") val type: String = "",
+    @SerializedName("url") val url: String = "",
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("signed_name") val signedName: String? = null,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+// ---------------------------------------------------------------------------
+// Visits
+// ---------------------------------------------------------------------------
+
+data class VisitSummaryDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("visit_date") val visitDate: String = "",
+    @SerializedName("visit_time") val visitTime: String = "",
+    @SerializedName("agent_name") val agentName: String = "",
+    @SerializedName("village") val village: String? = null,
+    @SerializedName("customer_met") val customerMet: Boolean = false,
+    @SerializedName("family_member_met") val familyMemberMet: Boolean = false,
+    @SerializedName("house_locked") val houseLocked: Boolean = false,
+    @SerializedName("phone_contact") val phoneContact: Boolean = false,
+    @SerializedName("phone_switched_off") val phoneSwitchedOff: Boolean = false,
+    @SerializedName("ready_to_pay") val readyToPay: Boolean = false,
+    @SerializedName("not_ready") val notReady: Boolean = false,
+    @SerializedName("promise_amount") val promiseAmount: Double? = null,
+    @SerializedName("promise_date") val promiseDate: String? = null,
+    @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerializedName("overdue_amount") val overdueAmount: Double = 0.0,
+    @SerializedName("remarks") val remarks: String? = null,
+    @SerializedName("photo_count") val photoCount: Int = 0,
+    @SerializedName("document_count") val documentCount: Int = 0,
+    @SerializedName("signature_count") val signatureCount: Int = 0,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class VisitSubmitPayload(
+    @SerializedName("visit_id") val visitId: Int = 0,
+    @SerializedName("promise_id") val promiseId: Int? = null,
+    @SerializedName("duplicate") val duplicate: Boolean = false,
+    @SerializedName("media") val media: Map<String, Int>? = null,
+    @SerializedName("warnings") val warnings: List<String> = emptyList(),
+    @SerializedName("lead") val lead: LeadDto? = null,
+)
+
+data class VisitDetailPayload(
+    @SerializedName("report") val report: VisitReportDto? = null,
+    @SerializedName("photos") val photos: List<MediaDto> = emptyList(),
+    @SerializedName("documents") val documents: List<MediaDto> = emptyList(),
+    @SerializedName("signatures") val signatures: List<MediaDto> = emptyList(),
+)
+
+data class VisitReportDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("loan_account_id") val loanAccountId: Int = 0,
+    @SerializedName("general") val general: VisitGeneralDto? = null,
+    @SerializedName("borrower") val borrower: VisitBorrowerDto? = null,
+    @SerializedName("loan") val loan: VisitLoanDto? = null,
+    @SerializedName("contact") val contact: VisitContactDto? = null,
+    @SerializedName("verification") val verification: VisitVerificationDto? = null,
+    @SerializedName("recovery") val recovery: VisitRecoveryDto? = null,
+    @SerializedName("non_payment_reason") val nonPaymentReason: VisitReasonDto? = null,
+    @SerializedName("recommendation") val recommendation: VisitRecommendationDto? = null,
+    @SerializedName("remarks") val remarks: String? = null,
+    @SerializedName("source") val source: String = "",
+    @SerializedName("app_version") val appVersion: String? = null,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class VisitGeneralDto(
+    @SerializedName("visit_date") val visitDate: String = "",
+    @SerializedName("visit_time") val visitTime: String = "",
+    @SerializedName("bc_code") val bcCode: String? = null,
+    @SerializedName("branch") val branch: String = "",
+    @SerializedName("agent_name") val agentName: String = "",
+    @SerializedName("village") val village: String? = null,
+)
+
+data class VisitBorrowerDto(
+    @SerializedName("customer_name") val customerName: String = "",
+    @SerializedName("father_husband_name") val fatherHusbandName: String? = null,
+    @SerializedName("address") val address: String? = null,
+    @SerializedName("mobile") val mobile: String? = null,
+    @SerializedName("mobile_masked") val mobileMasked: String? = null,
+    @SerializedName("aadhaar") val aadhaar: String? = null,
+    @SerializedName("aadhaar_masked") val aadhaarMasked: String? = null,
+)
+
+data class VisitLoanDto(
+    @SerializedName("loan_account_number") val loanAccountNumber: String = "",
+    @SerializedName("loan_type") val loanType: String? = null,
+    @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerializedName("overdue_amount") val overdueAmount: Double = 0.0,
+    @SerializedName("npa_date") val npaDate: String? = null,
+    @SerializedName("current_status") val currentStatus: String? = null,
+)
+
+data class VisitContactDto(
+    @SerializedName("customer_met") val customerMet: Boolean = false,
+    @SerializedName("family_member_met") val familyMemberMet: Boolean = false,
+    @SerializedName("house_locked") val houseLocked: Boolean = false,
+    @SerializedName("phone_contact") val phoneContact: Boolean = false,
+    @SerializedName("phone_switched_off") val phoneSwitchedOff: Boolean = false,
+    @SerializedName("family_member_name") val familyMemberName: String? = null,
+    @SerializedName("family_member_relationship") val familyMemberRelationship: String? = null,
+)
+
+data class VisitVerificationDto(
+    @SerializedName("borrower_alive") val borrowerAlive: Boolean = true,
+    @SerializedName("same_address") val sameAddress: Boolean = true,
+    @SerializedName("shifted") val shifted: Boolean = false,
+    @SerializedName("occupation") val occupation: String? = null,
+    @SerializedName("occupation_other_text") val occupationOtherText: String? = null,
+)
+
+data class VisitRecoveryDto(
+    @SerializedName("ready_to_pay") val readyToPay: Boolean = false,
+    @SerializedName("not_ready") val notReady: Boolean = false,
+    @SerializedName("interest_payment") val interestPayment: Boolean = false,
+    @SerializedName("ots") val ots: Boolean = false,
+    @SerializedName("promise_amount") val promiseAmount: Double? = null,
+    @SerializedName("promise_date") val promiseDate: String? = null,
+)
+
+data class VisitReasonDto(
+    @SerializedName("financial_problem") val financialProblem: Boolean = false,
+    @SerializedName("crop_loss") val cropLoss: Boolean = false,
+    @SerializedName("animal_loss") val animalLoss: Boolean = false,
+    @SerializedName("illness") val illness: Boolean = false,
+    @SerializedName("unemployment") val unemployment: Boolean = false,
+    @SerializedName("dispute") val dispute: Boolean = false,
+    @SerializedName("other_loan") val otherLoan: Boolean = false,
+    @SerializedName("others") val others: Boolean = false,
+    @SerializedName("other_text") val otherText: String? = null,
+)
+
+data class VisitRecommendationDto(
+    @SerializedName("recovery_possible") val recoveryPossible: Boolean = false,
+    @SerializedName("regular_followup") val regularFollowup: Boolean = false,
+    @SerializedName("legal_action") val legalAction: Boolean = false,
+    @SerializedName("rc") val rc: Boolean = false,
+    @SerializedName("ots") val ots: Boolean = false,
+    @SerializedName("others") val others: Boolean = false,
+    @SerializedName("other_text") val otherText: String? = null,
+)
+
+// ---------------------------------------------------------------------------
+// Notifications, meta, dashboard
+// ---------------------------------------------------------------------------
+
+data class NotificationDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("type") val type: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("body") val body: String? = null,
+    @SerializedName("is_read") val isRead: Boolean = false,
+    @SerializedName("loan_account_id") val loanAccountId: Int? = null,
+    @SerializedName("loan_account_number") val loanAccountNumber: String? = null,
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class UnreadPayload(
+    @SerializedName("unread_count") val unreadCount: Int = 0,
+    @SerializedName("marked") val marked: Int = 0,
+)
+
+data class MetaPayload(
+    @SerializedName("villages") val villages: List<String> = emptyList(),
+    @SerializedName("loan_types") val loanTypes: List<String> = emptyList(),
+    @SerializedName("statuses") val statuses: List<String> = emptyList(),
+    @SerializedName("app_version") val appVersion: String? = null,
+    @SerializedName("min_version") val minVersion: String? = null,
+)
+
+data class AgentDashboardPayload(
+    @SerializedName("leads") val leads: AgentLeadCounters? = null,
+    @SerializedName("visits") val visits: AgentVisitCounters? = null,
+    @SerializedName("promises") val promises: AgentPromiseCounters? = null,
+)
+
+data class AgentLeadCounters(
+    @SerializedName("total") val total: Int = 0,
+    @SerializedName("pending") val pending: Int = 0,
+    @SerializedName("visited") val visited: Int = 0,
+    @SerializedName("promise_cases") val promiseCases: Int = 0,
+    @SerializedName("followup") val followup: Int = 0,
+    @SerializedName("closed") val closed: Int = 0,
+    @SerializedName("npa_cases") val npaCases: Int = 0,
+    @SerializedName("outstanding") val outstanding: Double = 0.0,
+    @SerializedName("overdue") val overdue: Double = 0.0,
+)
+
+data class AgentVisitCounters(
+    @SerializedName("total") val total: Int = 0,
+    @SerializedName("today") val today: Int = 0,
+    @SerializedName("week") val week: Int = 0,
+    @SerializedName("month") val month: Int = 0,
+)
+
+data class AgentPromiseCounters(
+    @SerializedName("pending") val pending: Int = 0,
+    @SerializedName("kept") val kept: Int = 0,
+    @SerializedName("broken") val broken: Int = 0,
+    @SerializedName("overdue") val overdue: Int = 0,
+    @SerializedName("due_today") val dueToday: Int = 0,
+)
+
+data class FormOptionsPayload(
+    @SerializedName("occupations") val occupations: List<OptionDto> = emptyList(),
+    @SerializedName("contact_flags") val contactFlags: List<FlagDto> = emptyList(),
+    @SerializedName("recovery_flags") val recoveryFlags: List<FlagDto> = emptyList(),
+    @SerializedName("reason_flags") val reasonFlags: List<FlagDto> = emptyList(),
+    @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
+)
+
+data class OptionDto(
+    @SerializedName("value") val value: String = "",
+    @SerializedName("label") val label: String = "",
+)
+
+data class FlagDto(
+    @SerializedName("key") val key: String = "",
+    @SerializedName("label") val label: String = "",
+)

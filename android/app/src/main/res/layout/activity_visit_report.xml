@@ -1,0 +1,748 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Digital BC Field Visit Report form.
+
+    Sections follow the specification order exactly - General, Borrower contact,
+    Physical verification, Recovery possibility, Non-payment reason, Agent
+    recommendation, Remarks, Documents, Signatures - so an agent who knows the
+    paper form finds the app familiar.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:navigationIcon="@drawable/ic_close"
+        app:navigationIconTint="@color/white"
+        app:subtitleTextColor="#CCFFFFFF"
+        app:title="@string/visit_title"
+        app:titleTextColor="@color/white" />
+
+    <ScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- ============ General ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardGeneral"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="10dp"
+                        android:text="@string/visit_section_general"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldVisitDate"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:hint="@string/visit_date"
+                            app:endIconDrawable="@drawable/ic_calendar"
+                            app:endIconMode="custom">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputVisitDate"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:cursorVisible="false"
+                                android:focusable="false"
+                                android:inputType="none"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldVisitTime"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:hint="@string/visit_time"
+                            app:endIconDrawable="@drawable/ic_clock"
+                            app:endIconMode="custom">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputVisitTime"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:cursorVisible="false"
+                                android:focusable="false"
+                                android:inputType="none"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="@string/label_village">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputVillage"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textCapWords"
+                            android:maxLines="1" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Customer contact ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardContact"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="@string/visit_section_contact"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkCustomerMet"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_customer_met" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkFamilyMet"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_family_met" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkHouseLocked"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_house_locked" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkPhoneOff"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_phone_off" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkPhoneContact"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_phone_contact" />
+
+                    <TextView
+                        android:id="@+id/textContactError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_error_contact"
+                        android:textColor="@color/lrms_danger"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        tools:visibility="visible" />
+
+                    <!-- Only relevant when a family member was met -->
+                    <LinearLayout
+                        android:id="@+id/groupFamily"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldFamilyName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/visit_family_name">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputFamilyName"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapWords"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="@string/visit_family_relationship">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputFamilyRelationship"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapWords"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Physical verification ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardVerification"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:text="@string/visit_section_verification"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchBorrowerAlive"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_borrower_alive" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchSameAddress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_same_address" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchShifted"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_shifted" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/visit_occupation"
+                        android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                    <com.google.android.material.chip.ChipGroup
+                        android:id="@+id/chipGroupOccupation"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:singleSelection="true" />
+
+                    <LinearLayout
+                        android:id="@+id/groupOccupationOther"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldOccupationOther"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:hint="@string/visit_occupation_other">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputOccupationOther"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapSentences"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Recovery possibility ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardRecovery"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="@string/visit_section_recovery"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReadyToPay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_ready_to_pay" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkNotReady"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_not_ready" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkInterestPayment"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_interest_payment" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkOts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_ots" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldPromiseAmount"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:hint="@string/visit_promise_amount"
+                            app:prefixText="₹">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputPromiseAmount"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="numberDecimal"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldPromiseDate"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:hint="@string/visit_promise_date"
+                            app:endIconDrawable="@drawable/ic_calendar"
+                            app:endIconMode="custom">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputPromiseDate"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:cursorVisible="false"
+                                android:focusable="false"
+                                android:inputType="none"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/textPromiseHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_promise_incomplete"
+                        android:textColor="@color/lrms_warning"
+                        android:textSize="12sp"
+                        android:visibility="gone"
+                        tools:visibility="visible" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Non-payment reason ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardReasons"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="@string/visit_section_reason"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonFinancial"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_financial" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonCrop"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_crop" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonAnimal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_animal" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonIllness"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_illness" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonUnemployment"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_unemployment" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonDispute"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_dispute" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonOtherLoan"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_other_loan" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkReasonOthers"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_reason_others" />
+
+                    <LinearLayout
+                        android:id="@+id/groupReasonOther"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldReasonOther"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/visit_reason_other_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputReasonOther"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapSentences"
+                                android:maxLines="2" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Agent recommendation + remarks ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardRecommendations"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="@string/visit_section_recommendation"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecRecovery"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_recovery_possible" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecFollowup"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_followup" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecLegal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_legal" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecRc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_rc" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecOts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_ots" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/checkRecOthers"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target"
+                        android:text="@string/visit_rec_others" />
+
+                    <LinearLayout
+                        android:id="@+id/groupRecOther"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/fieldRecOther"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="@string/visit_rec_other_text">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/inputRecOther"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textCapSentences"
+                                android:maxLines="2" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/visit_section_remarks"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/fieldRemarks"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:hint="@string/visit_remarks_hint">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/inputRemarks"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="top"
+                            android:inputType="textMultiLine|textCapSentences"
+                            android:minLines="4" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ Documents & signatures ============ -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/visit_section_documents"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonPhotos"
+                        style="@style/Widget.LRMS.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/photo_title"
+                        app:icon="@drawable/ic_camera" />
+
+                    <TextView
+                        android:id="@+id/textPhotoState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center"
+                        android:textColor="@color/lrms_muted"
+                        android:textSize="12sp"
+                        tools:text="2 photos" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/visit_section_signatures"
+                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_customer_signature"
+                        android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonCustomerSignature"
+                        style="@style/Widget.LRMS.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_capture_signature"
+                        app:icon="@drawable/ic_pen" />
+
+                    <TextView
+                        android:id="@+id/textCustomerSignatureState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textColor="@color/lrms_muted"
+                        android:textSize="12sp"
+                        tools:text="Not captured" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/visit_agent_signature"
+                        android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonAgentSignature"
+                        style="@style/Widget.LRMS.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_capture_signature"
+                        app:icon="@drawable/ic_pen" />
+
+                    <TextView
+                        android:id="@+id/textAgentSignatureState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:textColor="@color/lrms_muted"
+                        android:textSize="12sp"
+                        tools:text="Not captured" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="16dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Submit bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <ProgressBar
+            android:id="@+id/progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:indeterminate="true"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonSubmit"
+            style="@style/Widget.LRMS.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/visit_submit"
+            app:icon="@drawable/ic_check" />
+    </LinearLayout>
+</LinearLayout>

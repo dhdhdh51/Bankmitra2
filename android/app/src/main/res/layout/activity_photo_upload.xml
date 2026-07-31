@@ -1,0 +1,339 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Photo and document capture.
+
+    Three typed slots plus a list of other documents. Each slot shows a preview and
+    its compressed file size, so an agent can see the upload will be small enough
+    to send before leaving the village.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:navigationIconTint="@color/white"
+        app:title="@string/photo_title"
+        app:titleTextColor="@color/white" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- Customer photo -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <ImageView
+                        android:id="@+id/imageCustomer"
+                        android:layout_width="@dimen/photo_thumb_size"
+                        android:layout_height="@dimen/photo_thumb_size"
+                        android:background="@drawable/bg_photo_slot"
+                        android:contentDescription="@string/visit_customer_photo"
+                        android:padding="24dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_image"
+                        app:tint="@color/lrms_muted" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/visit_customer_photo"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/textCustomerSize"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="11sp"
+                            android:visibility="gone"
+                            tools:text="240 KB"
+                            tools:visibility="visible" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonCustomerPhoto"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_take"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_camera" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonRemoveCustomer"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_remove"
+                                android:textColor="@color/lrms_danger"
+                                android:textSize="12sp"
+                                android:visibility="gone"
+                                app:icon="@drawable/ic_delete"
+                                app:iconTint="@color/lrms_danger"
+                                tools:visibility="visible" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- House photo -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <ImageView
+                        android:id="@+id/imageHouse"
+                        android:layout_width="@dimen/photo_thumb_size"
+                        android:layout_height="@dimen/photo_thumb_size"
+                        android:background="@drawable/bg_photo_slot"
+                        android:contentDescription="@string/visit_house_photo"
+                        android:padding="24dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_image"
+                        app:tint="@color/lrms_muted" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/visit_house_photo"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/textHouseSize"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="11sp"
+                            android:visibility="gone"
+                            tools:text="310 KB" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonHousePhoto"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_take"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_camera" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonRemoveHouse"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_remove"
+                                android:textColor="@color/lrms_danger"
+                                android:textSize="12sp"
+                                android:visibility="gone"
+                                app:icon="@drawable/ic_delete"
+                                app:iconTint="@color/lrms_danger" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Aadhaar copy -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <ImageView
+                        android:id="@+id/imageAadhaar"
+                        android:layout_width="@dimen/photo_thumb_size"
+                        android:layout_height="@dimen/photo_thumb_size"
+                        android:background="@drawable/bg_photo_slot"
+                        android:contentDescription="@string/visit_aadhaar_photo"
+                        android:padding="24dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_image"
+                        app:tint="@color/lrms_muted" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/visit_aadhaar_photo"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/textAadhaarSize"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="11sp"
+                            android:visibility="gone"
+                            tools:text="180 KB" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonAadhaarPhoto"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_take"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_camera" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonRemoveAadhaar"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_remove"
+                                android:textColor="@color/lrms_danger"
+                                android:textSize="12sp"
+                                android:visibility="gone"
+                                app:icon="@drawable/ic_delete"
+                                app:iconTint="@color/lrms_danger" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Other documents -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/visit_other_documents"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/textOtherCount"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/lrms_muted"
+                        android:textSize="12sp"
+                        tools:text="2 photos" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonOtherDocs"
+                            style="@style/Widget.Material3.Button.TextButton.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Add document"
+                            android:textSize="12sp"
+                            app:icon="@drawable/ic_camera" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonClearOthers"
+                            style="@style/Widget.Material3.Button.TextButton.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Clear all"
+                            android:textColor="@color/lrms_danger"
+                            android:textSize="12sp"
+                            android:visibility="gone"
+                            app:icon="@drawable/ic_delete"
+                            app:iconTint="@color/lrms_danger" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </ScrollView>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/buttonDone"
+        style="@style/Widget.LRMS.Button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:text="@string/action_save"
+        app:icon="@drawable/ic_check" />
+</LinearLayout>
