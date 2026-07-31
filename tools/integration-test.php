@@ -698,14 +698,70 @@ check('missingRequired shrinks after fill', (function (): bool {
 // ---------------------------------------------------------------------------
 section('Database backup');
 
+// BackupService has two independent code paths - mysqldump when the binary is
+// present, a pure-PHP dump when it is not - and the two produce different SQL.
+// Testing only whichever one the host happens to take hid a failure for a while:
+// this suite passed locally (no mysqldump installed, PHP path) and failed in CI
+// (mysqldump installed) because the assertion below was written against the PHP
+// path's exact spelling, `FOREIGN_KEY_CHECKS = 0`, while mysqldump emits
+// `/*!40014 ... FOREIGN_KEY_CHECKS=0 */`. Both paths are now exercised on every
+// run, and the assertions check the invariant rather than one method's syntax.
+$mysqldumpPresent = false;
+if (function_exists('exec')) {
+    $probe = [];
+    $probeExit = 1;
+    @exec('command -v mysqldump 2>/dev/null', $probe, $probeExit);
+    $mysqldumpPresent = $probeExit === 0 && $probe !== [];
+}
+echo '  ....  mysqldump ' . ($mysqldumpPresent ? 'is' : 'is not') . " installed on this host\n";
+
+/**
+ * The assertions that must hold for a restorable dump, whichever path made it.
+ */
+$checkDump = static function (array $backup, string $label): string {
+    $sql = (string) file_get_contents($backup['path']);
+    check($label . ': created', is_file($backup['path']));
+    check($label . ': non-empty', $backup['size'] > 2000, 'size=' . $backup['size']);
+    check($label . ': has CREATE TABLE', str_contains($sql, 'CREATE TABLE'));
+    check($label . ': has INSERT for loan_accounts', str_contains($sql, 'INSERT INTO `loan_accounts`'));
+    // The invariant, not the spelling: a restore must not trip over a foreign
+    // key pointing at a table that does not exist yet.
+    check(
+        $label . ': disables FK checks',
+        preg_match('/FOREIGN_KEY_CHECKS\s*=\s*0/i', $sql) === 1
+    );
+    // A dump that begins with a stray warning line fails to restore.
+    check(
+        $label . ': starts with SQL or a comment, not a warning',
+        preg_match('/^\s*(--|\/\*|SET|CREATE|DROP|\/\*!)/i', $sql) === 1,
+        'first 60 chars: ' . substr(str_replace("\n", '\\n', $sql), 0, 60)
+    );
+    check($label . ': no mysqldump warning text leaked into the dump',
+        stripos($sql, 'mysqldump:') === false && stripos($sql, '[Warning]') === false);
+    return $sql;
+};
+
+// --- Path 1: whatever this host does by default -----------------------------
 $backup = BackupService::create();
-check('backup created', is_file($backup['path']));
-check('backup non-empty', $backup['size'] > 2000, 'size=' . $backup['size']);
-$sql = (string) file_get_contents($backup['path']);
-check('backup has CREATE TABLE', str_contains($sql, 'CREATE TABLE'));
-check('backup has INSERT for loan_accounts', str_contains($sql, 'INSERT INTO `loan_accounts`'));
-check('backup toggles FK checks', str_contains($sql, 'FOREIGN_KEY_CHECKS = 0'));
-check('backup listed', count(BackupService::list()) >= 1);
+check(
+    'default backup method matches host capability',
+    $backup['method'] === ($mysqldumpPresent ? 'mysqldump' : 'php'),
+    'method=' . $backup['method']
+);
+$sql = $checkDump($backup, 'default backup (' . $backup['method'] . ')');
+
+// --- Path 2: force the pure-PHP dump ----------------------------------------
+// Simulates the common shared-hosting case where exec() works but mysqldump is
+// not installed, which is exactly the environment this project targets.
+Settings::updateMany(['mysqldump_path' => '/nonexistent/lrms-no-such-mysqldump']);
+Settings::flush();
+$phpBackup = BackupService::create();
+check('missing mysqldump falls back to the PHP dump', $phpBackup['method'] === 'php', 'method=' . $phpBackup['method']);
+$checkDump($phpBackup, 'PHP fallback');
+Settings::updateMany(['mysqldump_path' => 'mysqldump']);
+Settings::flush();
+
+check('backup listed', count(BackupService::list()) >= 2);
 check('path traversal rejected', BackupService::resolve('../../../etc/passwd') === null);
 check('non-sql rejected', BackupService::resolve('evil.php') === null);
 check('valid file resolves', BackupService::resolve($backup['file']) !== null);

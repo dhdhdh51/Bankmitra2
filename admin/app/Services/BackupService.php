@@ -26,8 +26,17 @@ final class BackupService
         $dir = self::directory();
 
         $database = (string) Config::require('db.name');
-        $filename = sprintf('lrms_backup_%s_%s.sql', $database, date('Ymd_His'));
+        $stamp = date('Ymd_His');
+
+        // The stamp only has second resolution, so two backups taken in the same
+        // second - a double-clicked button, or a cron overlapping a manual run -
+        // would silently overwrite each other. Add a suffix instead.
+        $filename = sprintf('lrms_backup_%s_%s.sql', $database, $stamp);
         $path = $dir . '/' . $filename;
+        for ($n = 2; is_file($path) && $n < 100; $n++) {
+            $filename = sprintf('lrms_backup_%s_%s_%d.sql', $database, $stamp, $n);
+            $path = $dir . '/' . $filename;
+        }
 
         $method = 'php';
         if (self::mysqldumpAvailable()) {
@@ -146,17 +155,24 @@ final class BackupService
     {
         $binary = (string) Settings::get('mysqldump_path', 'mysqldump');
 
+        // stderr goes to its own file, NOT into the dump. mysqldump writes
+        // warnings to stderr on perfectly successful runs, and `2>&1` would
+        // paste them into the .sql - producing a backup that fails to restore
+        // with a syntax error on line 1.
+        $stderrPath = $path . '.stderr';
+
         // The password goes through an environment variable, never argv, so it
         // does not appear in the process list.
         $command = sprintf(
             '%s --host=%s --port=%d --user=%s --single-transaction --quick --skip-lock-tables '
-            . '--routines --events --default-character-set=utf8mb4 %s > %s 2>&1',
+            . '--routines --events --default-character-set=utf8mb4 %s > %s 2> %s',
             escapeshellcmd($binary),
             escapeshellarg((string) Config::get('db.host', 'localhost')),
             (int) Config::get('db.port', 3306),
             escapeshellarg((string) Config::require('db.user')),
             escapeshellarg((string) Config::require('db.name')),
-            escapeshellarg($path)
+            escapeshellarg($path),
+            escapeshellarg($stderrPath)
         );
 
         $previous = getenv('MYSQL_PWD');
@@ -172,9 +188,35 @@ final class BackupService
             putenv('MYSQL_PWD=' . $previous);
         }
 
-        if ($exitCode !== 0 || !is_file($path) || filesize($path) === 0) {
+        $stderr = is_file($stderrPath) ? trim((string) file_get_contents($stderrPath)) : '';
+        @unlink($stderrPath);
+
+        $reject = static function (string $why) use ($path, $stderr): bool {
             @unlink($path);
+            error_log('[LRMS backup] mysqldump unusable (' . $why . '), falling back to the PHP dump.'
+                . ($stderr === '' ? '' : ' stderr: ' . substr($stderr, 0, 500)));
             return false;
+        };
+
+        if ($exitCode !== 0) {
+            return $reject('exit code ' . $exitCode);
+        }
+        if (!is_file($path) || filesize($path) === 0) {
+            return $reject('empty output');
+        }
+
+        // A non-zero exit is not the only failure mode: a truncated or
+        // error-page dump would restore into a half-built database. Both
+        // markers live in mysqldump's header, well inside the first 64 KB.
+        $head = (string) file_get_contents($path, false, null, 0, 65536);
+        if (!str_contains($head, 'CREATE TABLE')) {
+            return $reject('no CREATE TABLE in the output');
+        }
+        // Without this a restore fails on the first table whose foreign key
+        // points at a table that has not been created yet. mysqldump normally
+        // emits it as /*!40014 ... FOREIGN_KEY_CHECKS=0 */.
+        if (preg_match('/FOREIGN_KEY_CHECKS\s*=\s*0/i', $head) !== 1) {
+            return $reject('the dump does not disable foreign key checks');
         }
 
         return true;
