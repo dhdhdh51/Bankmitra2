@@ -126,7 +126,213 @@
                 "key": "rec_others",
                 "label": "Others"
             }
-        ]
+        ],
+        "report_types": [
+            {
+                "value": "recovery",
+                "label": "Recovery Visit"
+            },
+            {
+                "value": "ots",
+                "label": "KRM / OTS Settlement"
+            },
+            {
+                "value": "ckcc_renewal",
+                "label": "CKCC OD-2 Renewal"
+            }
+        ],
+        "ots": {
+            "schemes": [
+                {
+                    "value": "krm_ots",
+                    "label": "KRM OTS"
+                },
+                {
+                    "value": "general_ots",
+                    "label": "General OTS"
+                }
+            ],
+            "approval_statuses": [
+                {
+                    "value": "pending",
+                    "label": "Pending"
+                },
+                {
+                    "value": "approved",
+                    "label": "Approved"
+                },
+                {
+                    "value": "rejected",
+                    "label": "Rejected"
+                }
+            ],
+            "default_payable_percent": 22.5,
+            "default_initial_deposit_percent": 10
+        },
+        "ckcc": {
+            "due_buckets": [
+                {
+                    "value": "within_30",
+                    "label": "Within 30 Days"
+                },
+                {
+                    "value": "within_15",
+                    "label": "Within 15 Days"
+                },
+                {
+                    "value": "within_7",
+                    "label": "Within 7 Days"
+                },
+                {
+                    "value": "overdue",
+                    "label": "Overdue"
+                }
+            ],
+            "kyc_statuses": [
+                {
+                    "value": "complete",
+                    "label": "Complete"
+                },
+                {
+                    "value": "pending",
+                    "label": "Pending"
+                }
+            ],
+            "eligibility_flags": [
+                {
+                    "key": "eligible_for_renewal",
+                    "label": "Eligible for CKCC Renewal"
+                },
+                {
+                    "key": "aadhaar_seeded",
+                    "label": "Aadhaar Seeded"
+                },
+                {
+                    "key": "mobile_linked",
+                    "label": "Mobile Linked"
+                },
+                {
+                    "key": "aadhaar_auth_completed",
+                    "label": "Aadhaar Authentication Completed"
+                }
+            ],
+            "document_flags": [
+                {
+                    "key": "doc_aadhaar",
+                    "label": "Aadhaar Card"
+                },
+                {
+                    "key": "doc_pan",
+                    "label": "PAN Card"
+                },
+                {
+                    "key": "doc_passbook",
+                    "label": "Passbook"
+                },
+                {
+                    "key": "doc_land_record",
+                    "label": "Land Record"
+                },
+                {
+                    "key": "doc_khasra_khatauni",
+                    "label": "Khasra / Khatauni"
+                },
+                {
+                    "key": "doc_photograph",
+                    "label": "Photograph"
+                },
+                {
+                    "key": "doc_mobile_available",
+                    "label": "Mobile Available"
+                },
+                {
+                    "key": "doc_others",
+                    "label": "Other"
+                }
+            ],
+            "consent_flags": [
+                {
+                    "key": "willing_to_renew",
+                    "label": "Borrower willing to renew CKCC"
+                },
+                {
+                    "key": "documents_handed_over",
+                    "label": "Documents handed over"
+                },
+                {
+                    "key": "renewal_form_signed",
+                    "label": "Renewal Form Signed"
+                },
+                {
+                    "key": "ekyc_completed",
+                    "label": "Aadhaar e-KYC Completed"
+                },
+                {
+                    "key": "biometrics_completed",
+                    "label": "Biometrics Completed"
+                }
+            ],
+            "recommendation_flags": [
+                {
+                    "key": "rec_renew_immediately",
+                    "label": "CKCC Renewal should be processed immediately"
+                },
+                {
+                    "key": "rec_documents_submitted",
+                    "label": "Borrower has submitted all required documents"
+                },
+                {
+                    "key": "rec_followup_required",
+                    "label": "Follow-up Required"
+                },
+                {
+                    "key": "rec_not_interested",
+                    "label": "Customer not interested in renewal"
+                },
+                {
+                    "key": "rec_branch_contact_urgent",
+                    "label": "Branch should contact customer urgently"
+                },
+                {
+                    "key": "rec_others",
+                    "label": "Other"
+                }
+            ],
+            "status_flags": [
+                {
+                    "key": "st_customer_contacted",
+                    "label": "Customer Contacted"
+                },
+                {
+                    "key": "st_customer_verified",
+                    "label": "Customer Verified"
+                },
+                {
+                    "key": "st_documents_collected",
+                    "label": "Renewal Documents Collected"
+                },
+                {
+                    "key": "st_application_submitted",
+                    "label": "Renewal Application Submitted"
+                },
+                {
+                    "key": "st_ckcc_renewed",
+                    "label": "CKCC Renewed"
+                },
+                {
+                    "key": "st_pending_at_branch",
+                    "label": "Pending at Branch"
+                },
+                {
+                    "key": "st_followup_required",
+                    "label": "Follow-up Required"
+                },
+                {
+                    "key": "st_became_npa",
+                    "label": "Account Became NPA"
+                }
+            ]
+        }
     },
     "message": ""
 }

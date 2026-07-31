@@ -54,6 +54,19 @@ object Formatters {
      * Compact form for tight spaces: 1.2L, 45.5K, 2.3Cr.
      * Uses lakh and crore because that is how the figures are discussed.
      */
+    /**
+     * An amount with no grouping or symbol, for putting back INTO an input field.
+     *
+     * [money] is for display and inserts separators; feeding that back into a
+     * numeric field gives the user "45,000.00" to edit and the parser something to
+     * strip. Whole numbers lose the ".0" so a suggestion reads "45000", not
+     * "45000.0".
+     */
+    fun plainAmount(amount: Double?): String {
+        if (amount == null) return ""
+        return if (amount % 1.0 == 0.0) amount.toLong().toString() else amount.toString()
+    }
+
     fun moneyCompact(amount: Double?): String {
         val value = amount ?: 0.0
         val absolute = kotlin.math.abs(value)

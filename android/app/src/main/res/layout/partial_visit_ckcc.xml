@@ -1,0 +1,622 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    CKCC OD-2 renewal section.
+
+    The whole point of this report is the renewal deadline, so that is not just
+    another date field: entering it lights up a banner showing the days left and
+    the date the account is expected to turn NPA if the renewal is missed. The
+    banner turns amber inside a week and red once overdue, because an agent
+    skimming the form on a phone should not have to do the arithmetic.
+
+    There is no GPS or location field here. This system captures no location data.
+-->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="12dp"
+    app:strokeColor="@color/lrms_primary_light"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:background="@color/lrms_primary" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ckcc_section_title"
+                    android:textAppearance="@style/TextAppearance.LRMS.SectionLabel"
+                    android:textColor="@color/lrms_primary" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipCkccBucket"
+                    style="@style/Widget.LRMS.StatusChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    tools:text="Within 7 days"
+                    tools:visibility="visible" />
+            </LinearLayout>
+
+            <!-- ===== Renewal deadline - the reason this report exists ===== -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldCkccRenewalDue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/ckcc_renewal_due"
+                app:endIconDrawable="@drawable/ic_calendar"
+                app:endIconMode="custom"
+                app:helperText="@string/ckcc_renewal_due_helper"
+                app:helperTextEnabled="true">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputCkccRenewalDue"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:cursorVisible="false"
+                    android:focusable="false"
+                    android:inputType="none"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <LinearLayout
+                android:id="@+id/bannerCkccNpa"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_notice"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/textCkccCountdown"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.LRMS.Amount"
+                    tools:text="6 days left to renew" />
+
+                <TextView
+                    android:id="@+id/textCkccNpaDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                    android:textColor="@color/lrms_slate"
+                    tools:text="If the renewal is not completed, this account is expected to turn NPA on 2026-08-15." />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="10dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Account details ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp"
+                android:text="@string/ckcc_group_account"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccCif"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_cif">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccCif"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textCapCharacters"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccSanctionDate"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_sanction_date"
+                    app:endIconDrawable="@drawable/ic_calendar"
+                    app:endIconMode="custom">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccSanctionDate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:cursorVisible="false"
+                        android:focusable="false"
+                        android:inputType="none"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccSanctionLimit"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_sanction_limit"
+                    app:prefixText="@string/rupee">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccSanctionLimit"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccDrawingPower"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_drawing_power"
+                    app:prefixText="@string/rupee">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccDrawingPower"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccOutstanding"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_outstanding"
+                    app:prefixText="@string/rupee">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccOutstanding"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/fieldCkccInterestOverdue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:hint="@string/ckcc_interest_overdue"
+                    app:prefixText="@string/rupee">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/inputCkccInterestOverdue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Renewal eligibility ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ckcc_group_eligibility"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switchCkccEligible"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/ckcc_eligible" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccKyc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_kyc_complete" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccAadhaarSeeded"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_aadhaar_seeded" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccMobileLinked"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_mobile_linked" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccAadhaarAuth"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_aadhaar_auth" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Documents available ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/ckcc_group_documents"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ckcc_group_documents_helper"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                android:textColor="@color/lrms_muted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocAadhaar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_aadhaar" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocPan"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_pan" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocPassbook"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_passbook" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocLandRecord"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_land_record" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocKhasra"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_khasra" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocPhotograph"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_photograph" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocMobile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_mobile" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocOther"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_doc_other" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldCkccDocOtherText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:hint="@string/ckcc_doc_other_text"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputCkccDocOtherText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapSentences"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Renewal consent ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ckcc_group_consent"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccWilling"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_willing" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccDocsHanded"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_documents_handed" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccFormSigned"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_form_signed" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccEkyc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_ekyc" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccBiometrics"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_biometrics" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Observation ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp"
+                android:text="@string/ckcc_group_observation"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldCkccObservation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/ckcc_observation">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputCkccObservation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="top"
+                    android:inputType="textMultiLine|textCapSentences"
+                    android:minLines="3" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Recommendation ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ckcc_group_recommendation"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecRenewNow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_renew_now" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecDocsSubmitted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_docs_submitted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecFollowup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_followup" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecNotInterested"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_not_interested" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecBranchUrgent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_branch_urgent" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecOther"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_other" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldCkccRecOtherText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:hint="@string/ckcc_rec_other_text"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputCkccRecOtherText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapSentences"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Report status ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ckcc_group_status"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStContacted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_contacted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStVerified"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_verified" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStDocsCollected"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_docs_collected" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStSubmitted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_submitted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStRenewed"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_renewed" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStPendingBranch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_pending_branch" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStFollowup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_followup" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccStNpa"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_st_npa" />
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

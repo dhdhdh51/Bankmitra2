@@ -239,6 +239,8 @@ data class MediaDto(
 
 data class VisitSummaryDto(
     @SerializedName("id") val id: Int = 0,
+    /** recovery | ots | ckcc_renewal - lets a list label the kind of report. */
+    @SerializedName("report_type") val reportType: String = "recovery",
     @SerializedName("visit_date") val visitDate: String = "",
     @SerializedName("visit_time") val visitTime: String = "",
     @SerializedName("agent_name") val agentName: String = "",
@@ -434,10 +436,37 @@ data class AgentPromiseCounters(
 
 data class FormOptionsPayload(
     @SerializedName("occupations") val occupations: List<OptionDto> = emptyList(),
+    /**
+     * The three field report types. The app also hard-codes them so the visit
+     * form works with no network round trip, but they are read here too so a
+     * server-side rename shows up as a failing contract test rather than as a
+     * dropdown that silently posts an unknown value.
+     */
+    @SerializedName("report_types") val reportTypes: List<OptionDto> = emptyList(),
+    @SerializedName("ots") val ots: OtsOptions? = null,
+    @SerializedName("ckcc") val ckcc: CkccOptions? = null,
     @SerializedName("contact_flags") val contactFlags: List<FlagDto> = emptyList(),
     @SerializedName("recovery_flags") val recoveryFlags: List<FlagDto> = emptyList(),
     @SerializedName("reason_flags") val reasonFlags: List<FlagDto> = emptyList(),
     @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
+)
+
+data class OtsOptions(
+    @SerializedName("schemes") val schemes: List<OptionDto> = emptyList(),
+    @SerializedName("approval_statuses") val approvalStatuses: List<OptionDto> = emptyList(),
+    /** Scheme defaults the form pre-fills; the agent can override both. */
+    @SerializedName("default_payable_percent") val defaultPayablePercent: Double = 22.50,
+    @SerializedName("default_initial_deposit_percent") val defaultDepositPercent: Double = 10.00,
+)
+
+data class CkccOptions(
+    @SerializedName("due_buckets") val dueBuckets: List<OptionDto> = emptyList(),
+    @SerializedName("kyc_statuses") val kycStatuses: List<OptionDto> = emptyList(),
+    @SerializedName("eligibility_flags") val eligibilityFlags: List<FlagDto> = emptyList(),
+    @SerializedName("document_flags") val documentFlags: List<FlagDto> = emptyList(),
+    @SerializedName("consent_flags") val consentFlags: List<FlagDto> = emptyList(),
+    @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
+    @SerializedName("status_flags") val statusFlags: List<FlagDto> = emptyList(),
 )
 
 data class OptionDto(

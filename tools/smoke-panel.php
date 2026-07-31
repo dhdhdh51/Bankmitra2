@@ -224,6 +224,68 @@ $visitPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('visit report PDF downloads', $visitPdf['status'] === 200 && str_starts_with($visitPdf['body'], '%PDF'),
     'HTTP ' . $visitPdf['status']);
 
+// ---------------------------------------------------------------------------
+// The two report-type sections.
+//
+// Found by walking the visit list for a report of each type rather than assuming
+// an id: the seeder's ordering is not a contract. Without these checks the
+// settlement and renewal cards would ship having never been rendered once.
+// ---------------------------------------------------------------------------
+preg_match_all('#/visits/(\d+)"#', $visits, $allVisitMatches);
+$candidateIds = array_slice(array_unique(array_map('intval', $allVisitMatches[1] ?? [])), 0, 40);
+
+$otsPage = null;
+$ckccPage = null;
+foreach ($candidateIds as $candidateId) {
+    $body = request($base . '/visits/' . $candidateId)['body'];
+    // Match on something only the RENDERED card contains. Looking for the section
+    // title matched the HTML comment above the block on every single page, so this
+    // check passed against a plain recovery report and then failed on all of its
+    // own sub-checks - a false positive that pointed at the wrong bug entirely.
+    if ($otsPage === null && str_contains($body, 'Residual loan balance')) {
+        $otsPage = $body;
+    }
+    if ($ckccPage === null && str_contains($body, 'Documents the borrower had')) {
+        $ckccPage = $body;
+    }
+    if ($otsPage !== null && $ckccPage !== null) {
+        break;
+    }
+}
+
+check('a KRM/OTS settlement report is rendered somewhere in the list', $otsPage !== null);
+if ($otsPage !== null) {
+    check('OTS card shows the scheme', str_contains($otsPage, 'KRM OTS'));
+    check('OTS card shows the approval status', str_contains($otsPage, 'Approved'));
+    check('OTS card shows the settlement figures', str_contains($otsPage, 'Total settlement'));
+    check('OTS card shows the balance payable', str_contains($otsPage, 'Balance payable'));
+    check('OTS card shows the bank receipt reference', str_contains($otsPage, 'RCPT/2026/004417'));
+    // The screen must say plainly that the agent did not take the money.
+    check('OTS card states that agents never collect money',
+        str_contains($otsPage, 'Agents never collect money'));
+}
+
+check('a CKCC renewal report is rendered somewhere in the list', $ckccPage !== null);
+if ($ckccPage !== null) {
+    check('CKCC card shows the renewal countdown',
+        str_contains($ckccPage, 'left to renew')
+        || str_contains($ckccPage, 'due today')
+        || str_contains($ckccPage, 'overdue by'));
+    // The consequence of missing the deadline is the reason this report exists.
+    check('CKCC card spells out the expected NPA date',
+        str_contains($ckccPage, 'expected to turn'));
+    check('CKCC card shows the due bucket badge', str_contains($ckccPage, 'Within 7 Days'));
+    check('CKCC card lists the documents the borrower had',
+        str_contains($ckccPage, 'Documents the borrower had'));
+    check('CKCC card shows renewal consent', str_contains($ckccPage, 'Renewal consent'));
+    check('CKCC card shows the agent observation',
+        str_contains($ckccPage, 'Land records in order'));
+    check('CKCC card shows the report status', str_contains($ckccPage, 'Report status'));
+    // No location data exists anywhere in this system.
+    check('CKCC card shows no GPS or location field',
+        !str_contains($ckccPage, 'GPS') && !stripos($ckccPage, 'Latitude'));
+}
+
 page('GET /promises', '/promises', 200, 'Promises');
 page('GET /promises pending', '/promises?status=pending', 200);
 page('GET /promises kept', '/promises?status=kept', 200);

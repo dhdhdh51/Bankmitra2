@@ -38,6 +38,60 @@
             android:orientation="vertical"
             android:padding="12dp">
 
+            <!-- ============ Report type ============
+                 First thing on the form, because it decides which sections the
+                 agent sees at all. -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardReportType"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="@color/lrms_primary_light"
+                app:strokeColor="@color/lrms_primary"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/fieldReportType"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/visit_report_type"
+                        app:helperText="@string/visit_report_type_helper"
+                        app:helperTextEnabled="true">
+
+                        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                            android:id="@+id/inputReportType"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="none"
+                            android:maxLines="1"
+                            tools:ignore="LabelFor" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Shown when the lead is a CKCC account: a nudge, not a
+                         forced choice - the agent may still be there to recover. -->
+                    <TextView
+                        android:id="@+id/textCkccSuggestion"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:drawablePadding="6dp"
+                        android:text="@string/visit_ckcc_suggested"
+                        android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
+                        android:textColor="@color/lrms_primary_dark"
+                        android:visibility="gone"
+                        app:drawableStartCompat="@drawable/ic_alert"
+                        app:drawableTint="@color/lrms_primary_dark"
+                        tools:visibility="visible" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ============ General ============ -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardGeneral"
@@ -618,6 +672,20 @@
                     </com.google.android.material.textfield.TextInputLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- ============ KRM / OTS settlement ============ -->
+            <include
+                android:id="@+id/sectionOts"
+                layout="@layout/partial_visit_ots"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <!-- ============ CKCC OD-2 renewal ============ -->
+            <include
+                android:id="@+id/sectionCkcc"
+                layout="@layout/partial_visit_ckcc"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
             <!-- ============ Documents & signatures ============ -->
             <com.google.android.material.card.MaterialCardView

@@ -255,5 +255,119 @@
     <string name="cd_back">Back</string>
     <string name="cd_notification_icon">Notification type</string>
     <string name="cd_avatar">Profile initial</string>
+
+    <!-- ===================================================================
+         Report type
+         =================================================================== -->
+    <string name="visit_report_type">Report type</string>
+    <string name="visit_report_type_helper">Choose the form that matches this visit</string>
+    <string name="report_type_recovery">Recovery Visit</string>
+    <string name="report_type_ots">KRM / OTS Settlement</string>
+    <string name="report_type_ckcc">CKCC OD-2 Renewal</string>
+    <string name="visit_ckcc_suggested">This is a CKCC account - the renewal form may be the one you want</string>
+
+    <string name="rupee">\u20B9</string>
+
+    <!-- ===================================================================
+         KRM / OTS settlement
+         =================================================================== -->
+    <string name="ots_section_title">KRM / OTS SETTLEMENT</string>
+    <string name="ots_scheme_none">No scheme</string>
+    <string name="ots_eligible">Eligible for KRM / OTS</string>
+    <string name="ots_scheme">Applicable scheme</string>
+    <string name="ots_group_settlement">Settlement amounts</string>
+    <string name="ots_relief_percent">Relief / waiver</string>
+    <string name="ots_rlb_amount">Residual loan balance (RLB)</string>
+    <string name="ots_rlb_helper">The figure the branch gave you</string>
+    <string name="ots_payable_percent">Payable</string>
+    <string name="ots_payable_amount">Borrower\'s payable amount</string>
+    <string name="ots_total_settlement">Total OTS settlement amount</string>
+    <string name="ots_group_deposit">Initial deposit</string>
+    <string name="ots_deposit_notice">Record a deposit the borrower made at the bank. Never collect money yourself — enter the bank\'s receipt or transaction number as proof.</string>
+    <string name="ots_deposit_percent">Deposit</string>
+    <string name="ots_required_deposit">Required initial deposit</string>
+    <string name="ots_deposit_received">Initial deposit received</string>
+    <string name="ots_deposit_amount">Deposit amount</string>
+    <string name="ots_deposit_date">Deposit date</string>
+    <string name="ots_deposit_reference">Receipt no. / transaction ID</string>
+    <string name="ots_deposit_reference_helper">From the bank\'s receipt</string>
+    <string name="ots_balance_payable">Balance amount payable</string>
+    <string name="ots_final_payment_date">Proposed final payment date</string>
+    <string name="ots_group_approval">Approval and validity</string>
+    <string name="ots_approval_status">OTS approval status</string>
+    <string name="ots_validity_from">Validity from</string>
+    <string name="ots_validity_to">Validity to</string>
+    <string name="ots_expected_closure">Expected account closure date</string>
+    <string name="ots_borrower_accepted">Borrower accepted the OTS terms</string>
+    <string name="ots_rejection_reason">If not accepted, reason</string>
+    <string name="suggestion_tap_to_use">Suggested: %1$s — tap to use</string>
+
+    <!-- ===================================================================
+         CKCC OD-2 renewal
+         =================================================================== -->
+    <string name="ckcc_section_title">CKCC OD-2 RENEWAL</string>
+    <string name="ckcc_group_account">Account details</string>
+    <string name="ckcc_cif">CIF number</string>
+    <string name="ckcc_sanction_date">Sanction date</string>
+    <string name="ckcc_sanction_limit">Sanction limit</string>
+    <string name="ckcc_drawing_power">Drawing power</string>
+    <string name="ckcc_outstanding">Outstanding amount</string>
+    <string name="ckcc_interest_overdue">Interest overdue</string>
+    <string name="ckcc_renewal_due">Renewal due date</string>
+    <string name="ckcc_renewal_due_helper">Required — the NPA date is worked out from this</string>
+    <string name="ckcc_npa_warning">If the renewal is not completed, this account is expected to turn NPA on %1$s.</string>
+    <string name="ckcc_days_remaining">%1$d days left to renew</string>
+    <string name="ckcc_days_overdue">Renewal overdue by %1$d days</string>
+    <string name="ckcc_due_today">Renewal is due today</string>
+    <string name="ckcc_group_eligibility">Renewal eligibility</string>
+    <string name="ckcc_eligible">Eligible for CKCC renewal</string>
+    <string name="ckcc_kyc_complete">KYC complete</string>
+    <string name="ckcc_aadhaar_seeded">Aadhaar seeded</string>
+    <string name="ckcc_mobile_linked">Mobile linked</string>
+    <string name="ckcc_aadhaar_auth">Aadhaar authentication completed</string>
+    <string name="ckcc_group_documents">Documents the borrower had</string>
+    <string name="ckcc_group_documents_helper">What exists, whether or not you photographed it</string>
+    <string name="ckcc_doc_aadhaar">Aadhaar card</string>
+    <string name="ckcc_doc_pan">PAN card</string>
+    <string name="ckcc_doc_passbook">Passbook</string>
+    <string name="ckcc_doc_land_record">Land record</string>
+    <string name="ckcc_doc_khasra">Khasra / Khatauni</string>
+    <string name="ckcc_doc_photograph">Photograph</string>
+    <string name="ckcc_doc_mobile">Mobile available</string>
+    <string name="ckcc_doc_other">Other document</string>
+    <string name="ckcc_doc_other_text">Which other document</string>
+    <string name="ckcc_group_consent">Renewal consent</string>
+    <string name="ckcc_willing">Borrower willing to renew CKCC</string>
+    <string name="ckcc_documents_handed">Documents handed over</string>
+    <string name="ckcc_form_signed">Renewal form signed</string>
+    <string name="ckcc_ekyc">Aadhaar e-KYC completed</string>
+    <string name="ckcc_biometrics">Biometrics completed</string>
+    <string name="ckcc_group_observation">BC agent observation</string>
+    <string name="ckcc_observation">What you saw and were told</string>
+    <string name="ckcc_group_recommendation">BC agent recommendation</string>
+    <string name="ckcc_rec_renew_now">Renewal should be processed immediately</string>
+    <string name="ckcc_rec_docs_submitted">Borrower has submitted all required documents</string>
+    <string name="ckcc_rec_followup">Follow-up required</string>
+    <string name="ckcc_rec_not_interested">Customer not interested in renewal</string>
+    <string name="ckcc_rec_branch_urgent">Branch should contact customer urgently</string>
+    <string name="ckcc_rec_other">Other recommendation</string>
+    <string name="ckcc_rec_other_text">Which other recommendation</string>
+    <string name="ckcc_group_status">Report status</string>
+    <string name="ckcc_st_contacted">Customer contacted</string>
+    <string name="ckcc_st_verified">Customer verified</string>
+    <string name="ckcc_st_docs_collected">Renewal documents collected</string>
+    <string name="ckcc_st_submitted">Renewal application submitted</string>
+    <string name="ckcc_st_renewed">CKCC renewed</string>
+    <string name="ckcc_st_pending_branch">Pending at branch</string>
+    <string name="ckcc_st_followup">Follow-up required</string>
+    <string name="ckcc_st_npa">Account became NPA</string>
+
+    <string name="ckcc_bucket_overdue">Overdue</string>
+    <string name="ckcc_bucket_7">Within 7 Days</string>
+    <string name="ckcc_bucket_15">Within 15 Days</string>
+    <string name="ckcc_bucket_30">Within 30 Days</string>
+
+    <!-- Declaration -->
+    <string name="visit_sp_cbc_name">SP / CBC name</string>
 </resources>
 

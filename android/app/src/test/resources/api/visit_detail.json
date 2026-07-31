@@ -76,8 +76,10 @@
             "remarks": "Customer agreed to pay after selling produce.",
             "source": "android",
             "app_version": "1.0.0",
-            "created_at": "2026-07-31 13:58:42"
+            "created_at": "2026-07-31 15:45:36"
         },
+        "ots": null,
+        "ckcc": null,
         "photos": [],
         "documents": [],
         "signatures": []

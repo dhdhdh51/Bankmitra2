@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Quiet informational panel. Used where the form has to state a rule rather
+    than ask a question - for example that a recorded deposit was paid by the
+    borrower at the bank, not collected by the agent.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <solid android:color="@color/lrms_surface_variant" />
+    <corners android:radius="8dp" />
+    <stroke
+        android:width="1dp"
+        android:color="@color/lrms_border" />
+</shape>

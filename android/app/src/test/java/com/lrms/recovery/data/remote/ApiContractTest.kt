@@ -290,6 +290,70 @@ class ApiContractTest {
         assertTrue("ready_to_pay must be offered", recoveryKeys.contains("ready_to_pay"))
     }
 
+    @Test
+    fun `form options carry the three report types and their option lists`() {
+        val payload = need("form options", envelope<FormOptionsPayload>("form_options").data)
+
+        // The dropdown posts one of these values back. If the server renames one,
+        // the app would post something the enum rejects and the extra section would
+        // be silently dropped from the report.
+        val types = payload.reportTypes.map { it.value }
+        assertEquals(listOf("recovery", "ots", "ckcc_renewal"), types)
+        assertTrue("each type needs a label", payload.reportTypes.all { it.label.isNotBlank() })
+        assertEquals(
+            "the app's hard-coded list must match the server's",
+            types,
+            com.lrms.recovery.domain.VisitFormData.REPORT_TYPES.map { it.first },
+        )
+
+        val ots = need("ots options", payload.ots)
+        assertEquals(listOf("krm_ots", "general_ots"), ots.schemes.map { it.value })
+        assertEquals(listOf("pending", "approved", "rejected"), ots.approvalStatuses.map { it.value })
+        // Scheme defaults. Wrong values here would pre-fill a wrong settlement.
+        assertEquals(22.50, ots.defaultPayablePercent, 0.001)
+        assertEquals(10.00, ots.defaultDepositPercent, 0.001)
+
+        val ckcc = need("ckcc options", payload.ckcc)
+        assertEquals(
+            listOf("within_30", "within_15", "within_7", "overdue"),
+            ckcc.dueBuckets.map { it.value },
+        )
+        // These keys are exactly what the form posts back per checkbox.
+        val docKeys = ckcc.documentFlags.map { it.key }
+        assertTrue("aadhaar", docKeys.contains("doc_aadhaar"))
+        assertTrue("khasra/khatauni", docKeys.contains("doc_khasra_khatauni"))
+        val consentKeys = ckcc.consentFlags.map { it.key }
+        assertTrue("willing to renew", consentKeys.contains("willing_to_renew"))
+        assertTrue("biometrics", consentKeys.contains("biometrics_completed"))
+        val statusKeys = ckcc.statusFlags.map { it.key }
+        assertTrue("renewed", statusKeys.contains("st_ckcc_renewed"))
+        assertTrue("became NPA", statusKeys.contains("st_became_npa"))
+
+        // No location capture exists anywhere in this product.
+        val everyKey = docKeys + consentKeys + statusKeys +
+            ckcc.eligibilityFlags.map { it.key } + ckcc.recommendationFlags.map { it.key }
+        assertTrue(
+            "no option may ask for GPS or location",
+            everyKey.none { it.contains("gps") || it.contains("location") || it.contains("lat") },
+        )
+    }
+
+    @Test
+    fun `visit summaries carry their report type`() {
+        val visits = need("visits", envelope<List<VisitSummaryDto>>("visits_feed").data)
+        assertTrue(visits.isNotEmpty())
+        // Defaulting to "recovery" is fine; being blank is not - a list would then
+        // have nothing to label the row with.
+        assertTrue(
+            "every visit must state its report type",
+            visits.all { it.reportType.isNotBlank() },
+        )
+        assertTrue(
+            "report type must be one of the three known values",
+            visits.all { it.reportType in setOf("recovery", "ots", "ckcc_renewal") },
+        )
+    }
+
     // -----------------------------------------------------------------------
     // Promises, notifications, dashboard
     // -----------------------------------------------------------------------

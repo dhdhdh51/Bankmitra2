@@ -319,6 +319,107 @@ foreach ($assigned as $index => $lead) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// One KRM/OTS settlement and one CKCC renewal report.
+//
+// Without these two, the panel's settlement and renewal cards are never rendered
+// by any test run and the app's contract fixtures cannot capture them - the new
+// view code would ship having never been executed.
+// ---------------------------------------------------------------------------
+$specialLeads = array_slice($assigned, 0, 2);
+
+if (isset($specialLeads[0])) {
+    $otsLeadId = (int) $specialLeads[0]['id'];
+    $otsLead = LoanAccount::find($otsLeadId);
+    $rlb = round((float) $otsLead['outstanding_amount'] * 0.55, 2);
+    $payable = round($rlb * 0.225, 2);
+
+    VisitService::submit([
+        'loan_account_id' => $otsLeadId,
+        'report_type'     => 'ots',
+        'visit_date'      => date('Y-m-d', strtotime('-2 days')),
+        'visit_time'      => '11:20:00',
+        'customer_met'    => '1',
+        'ready_to_pay'    => '1',
+        'ots'             => '1',
+        'rec_ots'         => '1',
+        'remarks'         => 'Borrower willing to settle under KRM OTS.',
+        'sp_cbc_name'     => 'S. Verma',
+        'ots_details[eligible_for_ots]'        => '1',
+        'ots_details[scheme]'                  => 'krm_ots',
+        'ots_details[relief_waiver_percent]'   => '77.5',
+        'ots_details[rlb_amount]'              => (string) $rlb,
+        'ots_details[borrower_payable_amount]' => (string) $payable,
+        'ots_details[total_settlement_amount]' => (string) $payable,
+        'ots_details[required_deposit_amount]' => (string) round($payable * 0.10, 2),
+        'ots_details[deposit_received]'        => '1',
+        'ots_details[deposit_amount]'          => (string) round($payable * 0.10, 2),
+        'ots_details[deposit_date]'            => date('Y-m-d', strtotime('-1 day')),
+        'ots_details[deposit_reference]'       => 'RCPT/2026/004417',
+        'ots_details[balance_payable]'         => (string) round($payable * 0.90, 2),
+        'ots_details[proposed_final_payment_date]' => date('Y-m-d', strtotime('+60 days')),
+        'ots_details[approval_status]'         => 'approved',
+        'ots_details[validity_from]'           => date('Y-m-d', strtotime('-1 day')),
+        'ots_details[validity_to]'             => date('Y-m-d', strtotime('+89 days')),
+        'ots_details[expected_closure_date]'   => date('Y-m-d', strtotime('+92 days')),
+        'ots_details[borrower_accepted]'       => '1',
+    ], $agentCtx);
+    $visitCount++;
+}
+
+if (isset($specialLeads[1])) {
+    $ckccLeadId = (int) $specialLeads[1]['id'];
+
+    // A renewal six days out, so the seeded data exercises the amber "within 7
+    // days" state rather than the calm one.
+    Database::instance()->query(
+        'UPDATE loan_accounts
+            SET loan_type = ?, cif_number = ?, sanction_date = ?, sanction_limit = ?,
+                drawing_power = ?, interest_overdue = ?, ckcc_renewal_due_date = ?
+          WHERE id = ?',
+        [
+            'CKCC', 'CIF' . str_pad((string) $ckccLeadId, 7, '0', STR_PAD_LEFT),
+            date('Y-m-d', strtotime('-19 months')), 300000, 285000, 14250,
+            date('Y-m-d', strtotime('+6 days')), $ckccLeadId,
+        ]
+    );
+
+    VisitService::submit([
+        'loan_account_id' => $ckccLeadId,
+        'report_type'     => 'ckcc_renewal',
+        'visit_date'      => date('Y-m-d', strtotime('-1 day')),
+        'visit_time'      => '09:45:00',
+        'customer_met'    => '1',
+        'borrower_alive'  => '1',
+        'same_address'    => '1',
+        'occupation'      => 'agriculture',
+        'remarks'         => 'Renewal papers collected, e-KYC done on the spot.',
+        'sp_cbc_name'     => 'S. Verma',
+        'ckcc_details[eligible_for_renewal]'   => '1',
+        'ckcc_details[kyc_status]'             => 'complete',
+        'ckcc_details[aadhaar_seeded]'         => '1',
+        'ckcc_details[mobile_linked]'          => '1',
+        'ckcc_details[aadhaar_auth_completed]' => '1',
+        'ckcc_details[doc_aadhaar]'            => '1',
+        'ckcc_details[doc_passbook]'           => '1',
+        'ckcc_details[doc_khasra_khatauni]'    => '1',
+        'ckcc_details[doc_photograph]'         => '1',
+        'ckcc_details[doc_mobile_available]'   => '1',
+        'ckcc_details[willing_to_renew]'       => '1',
+        'ckcc_details[documents_handed_over]'  => '1',
+        'ckcc_details[renewal_form_signed]'    => '1',
+        'ckcc_details[ekyc_completed]'         => '1',
+        'ckcc_details[agent_observation]'      => 'Borrower cooperative. Land records in order, crop standing.',
+        'ckcc_details[rec_renew_immediately]'  => '1',
+        'ckcc_details[rec_documents_submitted]' => '1',
+        'ckcc_details[st_customer_contacted]'  => '1',
+        'ckcc_details[st_customer_verified]'   => '1',
+        'ckcc_details[st_documents_collected]' => '1',
+        'ckcc_details[st_application_submitted]' => '1',
+    ], $agentCtx);
+    $visitCount++;
+}
+
 // Settle some promises so the promise report has all statuses.
 foreach ($promiseIds as $index => $promiseId) {
     if ($index % 3 === 0) {
