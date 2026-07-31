@@ -291,6 +291,12 @@ Notable choices:
   applied, so the project builds in CI out of the box. In-app notifications are the
   source of truth; push is opt-in and configured server-side.
 
+The API host is **compiled into the APK** (`https://my.controversy.blog/api/v1/`)
+and is not editable in the app. An app holding borrower PII that will talk to any
+host someone types into it is a phishing target. A debug build sets
+`ALLOW_CUSTOM_SERVER = true` so it can be aimed at a laptop; the release build has
+no code path that reads a typed address.
+
 Build it yourself:
 
 ```bash
@@ -341,13 +347,13 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **130** panel + **162** API |
-| Android | `sh tools/verify-android.sh` | **112** unit tests + both APKs |
+| Android | `sh tools/verify-android.sh` | **118** unit tests + both APKs |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**915 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
+**921 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 

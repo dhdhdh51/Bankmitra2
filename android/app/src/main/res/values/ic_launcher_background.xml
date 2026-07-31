@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    The navy field of the D2 mark. This is the adaptive-icon BACKGROUND layer, so
+    it must be a flat colour with no detail: launchers crop it to their own shape
+    and shift it independently of the foreground for the parallax effect, and
+    anything drawn here would be cut or slide out of alignment.
+-->
 <resources>
-    <color name="ic_launcher_background">#123F8F</color>
+    <color name="ic_launcher_background">#0B2A5B</color>
 </resources>

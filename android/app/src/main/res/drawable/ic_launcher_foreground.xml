@@ -1,8 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "LR" monogram, matching the admin panel brand mark. -->
+<!--
+    D2 launcher mark: white "D" and gold "2", a rising bar chart inside the D, a
+    growth arrow sweeping under both, and a shield with a tick.
+
+    Drawn as vector rather than dropped in as the supplied PNG for three reasons:
+
+      * An adaptive icon has to survive being masked into a circle, a squircle, a
+        rounded square or a teardrop depending on the launcher. A raster square
+        gets cropped by those masks, and the corners of the original artwork -
+        including part of the arrow - would be cut off.
+      * Vector scales to every density from one file. The raster equivalent is
+        five PNGs that all have to be regenerated whenever the mark changes.
+      * It stays crisp on a 640dpi screen and costs about 2 KB instead of ~150 KB.
+
+    Everything sits inside the central 66dp safe zone of the 108dp canvas, because
+    launchers crop the outer 18dp on every edge and animate parallax within it.
+
+    This is a faithful redraw, not a pixel copy: the gradients and bevels of the
+    original cannot be reproduced exactly in a launcher-safe vector, and would be
+    lost to masking anyway. To use the exact raster instead, see the note in
+    DEPLOYMENT.md section 6.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M36,38h6v26h14v6H36zM60,38h12a9,9 0 0,1 0,18h-2l8,14h-7l-8,-14h-3v14h-6V38zM66,44v6h6a3,3 0 0,0 0,-6z" />
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Growth arrow, sweeping up from under the D to the right of the 2. Drawn
+         first so both letters sit on top of it. -->
+    <path
+        android:fillColor="#F2B21C"
+        android:pathData="M25,74c6,7 16,11 27,11c12,0 22,-5 29,-13l-4,-3c-6,7 -15,11 -25,11c-9,0 -18,-3 -23,-9z" />
+    <path
+        android:fillColor="#F2B21C"
+        android:pathData="M76,60l12,1l-3,12l-4,-4l-6,-5z" />
+
+    <!-- White D -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,26h14c12,0 20,8 20,21c0,13 -8,21 -20,21h-14V26zM36,34v26h5c8,0 13,-5 13,-13c0,-8 -5,-13 -13,-13z" />
+
+    <!-- Bar chart inside the bowl of the D: three rising columns. Reads as
+         recovery progress at icon size, where finer detail would turn to mud. -->
+    <path
+        android:fillColor="#2C6BD4"
+        android:pathData="M39,52h3v8h-3zM44,47h3v13h-3zM49,41h3v19h-3z" />
+
+    <!-- Gold 2 -->
+    <path
+        android:fillColor="#F2B21C"
+        android:pathData="M64,34c2,-5 7,-8 13,-8c8,0 13,5 13,12c0,5 -3,9 -8,14l-10,10h19v6H63v-5l15,-15c4,-4 5,-6 5,-9c0,-4 -3,-6 -6,-6c-4,0 -6,2 -7,6z" />
+
+    <!-- Shield with a tick, overlapping the foot of the 2. Gold outline, navy
+         face, white tick - the same three tones as the rest of the mark. -->
+    <path
+        android:fillColor="#F2B21C"
+        android:pathData="M60,62h20v12c0,8 -6,13 -10,15c-4,-2 -10,-7 -10,-15z" />
+    <path
+        android:fillColor="#0E2F63"
+        android:pathData="M63,65h14v9c0,6 -4,10 -7,11c-3,-1 -7,-5 -7,-11z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,74l2,-2l3,3l5,-6l2,2l-7,8z" />
 </vector>

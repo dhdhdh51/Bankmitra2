@@ -37,10 +37,12 @@
         <item name="textInputStyle">@style/Widget.LRMS.TextInputLayout</item>
     </style>
 
+    <!-- Splash uses the icon's navy, so tapping the icon does not flash a
+         different blue before the app appears. -->
     <style name="Theme.LRMS.Splash" parent="Theme.LRMS">
-        <item name="android:windowBackground">@color/lrms_primary_dark</item>
-        <item name="android:statusBarColor">@color/lrms_primary_dark</item>
-        <item name="android:navigationBarColor">@color/lrms_primary_dark</item>
+        <item name="android:windowBackground">@color/lrms_brand_navy</item>
+        <item name="android:statusBarColor">@color/lrms_brand_navy</item>
+        <item name="android:navigationBarColor">@color/lrms_brand_navy</item>
     </style>
 
     <!-- Full-screen theme for the landscape signature pad. -->

@@ -103,17 +103,36 @@ class SessionStore(context: Context) {
 
     /**
      * Base URL of the API, always with a trailing slash (Retrofit requires it).
-     * Configurable so one APK can serve several deployments.
+     *
+     * In a release build this is ALWAYS the address compiled into the APK. Any
+     * stored value is ignored rather than deleted, which matters for an app that
+     * is already installed: an earlier build let the agent type a host, so a
+     * phone in the field may still hold the old placeholder domain. Reading the
+     * built-in value means the update simply starts working, with no reinstall
+     * and nothing for the agent to fix.
+     *
+     * Only a debug build honours a stored override.
      */
     var baseUrl: String
-        get() = prefs.getString(KEY_BASE_URL, null) ?: com.lrms.recovery.BuildConfig.DEFAULT_API_BASE_URL
+        get() {
+            val builtIn = com.lrms.recovery.BuildConfig.DEFAULT_API_BASE_URL
+            if (!com.lrms.recovery.BuildConfig.ALLOW_CUSTOM_SERVER) {
+                return builtIn
+            }
+            return prefs.getString(KEY_BASE_URL, null) ?: builtIn
+        }
         set(value) {
+            if (!com.lrms.recovery.BuildConfig.ALLOW_CUSTOM_SERVER) {
+                return
+            }
             val normalised = if (value.endsWith("/")) value else "$value/"
             prefs.edit().putString(KEY_BASE_URL, normalised).apply()
         }
 
+    /** True when a debug build is pointed somewhere other than the built-in host. */
     val hasCustomBaseUrl: Boolean
-        get() = prefs.getString(KEY_BASE_URL, null) != null
+        get() = com.lrms.recovery.BuildConfig.ALLOW_CUSTOM_SERVER
+            && prefs.getString(KEY_BASE_URL, null) != null
 
     // ---------------------------------------------------------------------
     // Preferences

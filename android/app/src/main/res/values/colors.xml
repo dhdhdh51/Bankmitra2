@@ -6,6 +6,12 @@
 <resources>
 
     <!-- Brand -->
+    <!-- The navy and gold of the D2 mark. Used for the launcher icon and the
+         splash, so the first thing on screen matches the icon just tapped. The
+         panel-matching blue below stays the UI colour. -->
+    <color name="lrms_brand_navy">#0B2A5B</color>
+    <color name="lrms_brand_gold">#F2B21C</color>
+
     <color name="lrms_primary">#1957C2</color>
     <color name="lrms_primary_dark">#123F8F</color>
     <color name="lrms_primary_light">#E8F0FD</color>

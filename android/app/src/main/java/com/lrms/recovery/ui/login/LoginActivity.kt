@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.lifecycle.lifecycleScope
+import com.lrms.recovery.BuildConfig
 import com.lrms.recovery.R
 import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.data.remote.ApiClient
@@ -35,15 +36,23 @@ class LoginActivity : BaseActivity() {
         binding.checkRemember.isChecked = session.rememberMe
         binding.inputServer.setText(session.baseUrl)
 
-        binding.buttonToggleServer.setOnClickListener {
-            val visible = binding.groupServer.visibility == View.VISIBLE
-            binding.groupServer.visibility = if (visible) View.GONE else View.VISIBLE
-        }
-
-        // Show the server field automatically when it has never been set, so the
-        // very first launch does not silently point at the placeholder domain.
-        if (!session.hasCustomBaseUrl) {
-            binding.groupServer.visibility = View.VISIBLE
+        // In a release build there is nothing to configure: the server is compiled
+        // in, so the toggle and the field are removed outright rather than merely
+        // hidden. Leaving a disabled control on screen only invites the question.
+        if (BuildConfig.ALLOW_CUSTOM_SERVER) {
+            binding.buttonToggleServer.visibility = View.VISIBLE
+            binding.buttonToggleServer.setOnClickListener {
+                val visible = binding.groupServer.visibility == View.VISIBLE
+                binding.groupServer.visibility = if (visible) View.GONE else View.VISIBLE
+            }
+            // A debug build that has never been pointed anywhere shows the field,
+            // so a developer is not left wondering which host it is talking to.
+            if (!session.hasCustomBaseUrl) {
+                binding.groupServer.visibility = View.VISIBLE
+            }
+        } else {
+            binding.buttonToggleServer.visibility = View.GONE
+            binding.groupServer.visibility = View.GONE
         }
 
         binding.buttonLogin.setOnClickListener { attemptLogin() }
@@ -60,7 +69,13 @@ class LoginActivity : BaseActivity() {
     private fun attemptLogin() {
         val employeeCode = binding.inputEmployeeCode.text?.toString()?.trim().orEmpty()
         val password = binding.inputPassword.text?.toString().orEmpty()
-        val serverUrl = binding.inputServer.text?.toString()?.trim().orEmpty()
+        // Release builds never read the field - the compiled-in host is the only
+        // address this app will talk to.
+        val serverUrl = if (BuildConfig.ALLOW_CUSTOM_SERVER) {
+            binding.inputServer.text?.toString()?.trim().orEmpty()
+        } else {
+            session.baseUrl
+        }
 
         binding.fieldEmployeeCode.error = null
         binding.fieldPassword.error = null

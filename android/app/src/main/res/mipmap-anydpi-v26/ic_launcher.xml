@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon. The launcher masks these layers into whatever shape it uses
+    (circle, squircle, rounded square, teardrop) and shifts them against each
+    other for parallax, which is why the background is a flat colour and every
+    part of the foreground stays inside the central safe zone.
+
+    monochrome is used only on Android 13+ with themed icons enabled; earlier
+    versions ignore the tag and render the two colour layers as before.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>

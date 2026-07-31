@@ -349,26 +349,76 @@ Or use the helper, which installs the SDK on first run:
 sh tools/verify-android.sh
 ```
 
-### 6.3 Pointing the app at your server
+### 6.3 The server address
 
-The API base URL is configurable at the login screen — tap **Change server** and
-enter:
-
-```
-https://your-domain.com/api/v1/
-```
-
-The trailing slash is required. On first launch the field is shown automatically.
-
-To bake in a default instead, edit `android/app/build.gradle.kts`:
+**The API host is compiled into the APK. Agents never type a URL and cannot
+change one.** It is set in `android/app/build.gradle.kts`:
 
 ```kotlin
-buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://lrms.yourbank.com/api/v1/\"")
+buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://my.controversy.blog/api/v1/\"")
+buildConfigField("boolean", "ALLOW_CUSTOM_SERVER", "false")
 ```
+
+Change the first line and rebuild if the domain ever moves. The trailing slash is
+required: without it Retrofit drops the last path segment and every call resolves
+against `/api/` instead of `/api/v1/`.
+
+Why it is not editable in the app: an application holding borrower PII that will
+talk to whatever host someone types into it is a phishing target. Anyone who can
+persuade an agent to paste a link collects their password on the first login and
+their assigned leads immediately after. A **debug** build sets
+`ALLOW_CUSTOM_SERVER = true` so a developer can still aim it at a laptop; the
+release build has no code path that reads the field at all.
+
+Upgrading an existing install needs nothing extra. Earlier builds let the agent
+type a host and saved it, so phones in the field may still hold the old
+placeholder domain. A release build ignores any stored address rather than
+deleting it, so the update simply starts working — no reinstall, nothing for the
+agent to fix.
 
 > HTTPS is mandatory in release builds. Cleartext is permitted only for
 > `localhost`, `127.0.0.1` and `10.0.2.2` (the emulator's host alias), so a
 > developer can test against a local PHP server.
+
+Check a deployment from anywhere with:
+
+```bash
+curl -s https://my.controversy.blog/api/v1/ping
+# {"success":true,"data":{"status":"ok","api_version":"v1",...}}
+```
+
+### 6.3.1 App icon
+
+The launcher icon is an **adaptive icon** built from vectors:
+
+| File | Layer |
+|---|---|
+| `res/values/ic_launcher_background.xml` | flat navy background |
+| `res/drawable/ic_launcher_foreground.xml` | D2 mark, bar chart, arrow, shield |
+| `res/drawable/ic_launcher_monochrome.xml` | silhouette for Android 13+ themed icons |
+| `res/mipmap-anydpi-v26/ic_launcher.xml` | ties the three together |
+
+It is drawn as vector rather than shipped as a PNG because a launcher masks the
+icon into its own shape — circle, squircle, rounded square or teardrop — and
+shifts the layers for parallax. A square raster gets its corners cropped by those
+masks, and it needs five files, one per density, regenerated on every change.
+Everything in the foreground stays inside the central 66dp of the 108dp canvas,
+which is the area no mask can cut.
+
+**To use an exact raster instead**, put your PNG at these sizes and delete
+`mipmap-anydpi-v26/ic_launcher.xml` and `ic_launcher_round.xml`:
+
+```
+res/mipmap-mdpi/ic_launcher.png      48x48
+res/mipmap-hdpi/ic_launcher.png      72x72
+res/mipmap-xhdpi/ic_launcher.png     96x96
+res/mipmap-xxhdpi/ic_launcher.png    144x144
+res/mipmap-xxxhdpi/ic_launcher.png   192x192
+```
+
+Keep the important part within the middle ~66% or the launcher mask will clip it,
+and add a 512x512 copy for a Play Store listing. You lose themed-icon support
+this way, since a raster cannot be tinted meaningfully.
 
 ### 6.4 Signing a release build
 
@@ -471,7 +521,7 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
 | `sh tools/smoke-panel.sh` | 130 panel + 162 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 112 unit tests (incl. 20 app/API contract checks), debug + release APK |
+| `sh tools/verify-android.sh` | 118 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |

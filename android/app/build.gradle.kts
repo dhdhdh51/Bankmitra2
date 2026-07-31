@@ -41,9 +41,17 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // The API host is configurable per build type rather than hardcoded, so
-        // the same source tree can point at staging or production.
-        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://lrms.example.com/api/v1/\"")
+        // The production server, baked into the build. Agents must never have to
+        // type a URL - and must not be able to point the app somewhere else.
+        //
+        // ALLOW_CUSTOM_SERVER decides whether the address is editable at all. It
+        // is false for release and true for debug, so a developer can still aim a
+        // debug build at a laptop without shipping that hole to the field: a
+        // borrower-data app that accepts an arbitrary API host is a phishing
+        // target, since anyone who can get an agent to paste a URL gets their
+        // credentials and their leads.
+        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://my.controversy.blog/api/v1/\"")
+        buildConfigField("boolean", "ALLOW_CUSTOM_SERVER", "false")
 
         resourceConfigurations += listOf("en", "hi")
     }
@@ -66,6 +74,8 @@ android {
             isMinifyEnabled = false
             // Cleartext is allowed in debug only, so a local http:// server works.
             buildConfigField("boolean", "ALLOW_CLEARTEXT", "true")
+            // Only a debug build may be re-pointed at another host.
+            buildConfigField("boolean", "ALLOW_CUSTOM_SERVER", "true")
         }
 
         release {
