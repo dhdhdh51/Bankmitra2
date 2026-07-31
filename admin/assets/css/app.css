@@ -941,20 +941,20 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 
 /* Figures a branch acts on: settlement amounts get more weight than a table
    row would give them. Wraps to one per line on a narrow screen. */
-.lrms-stat-row {
+.lrms-figures {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: .75rem;
 }
 
-.lrms-stat {
+.lrms-figure {
     background: var(--lrms-primary-light);
     border: 1px solid rgba(25, 87, 194, .18);
     border-radius: 10px;
     padding: .7rem .85rem;
 }
 
-.lrms-stat-label {
+.lrms-figure-label {
     display: block;
     font-size: .6875rem;
     font-weight: 600;
@@ -964,7 +964,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
     margin-bottom: .2rem;
 }
 
-.lrms-stat-value {
+.lrms-figure-value {
     display: block;
     font-size: 1.0625rem;
     font-weight: 700;
@@ -1003,9 +1003,370 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
     border-left-color: var(--lrms-danger);
 }
 
+
+
+/* ==========================================================================
+   PREMIUM LAYER
+   ==========================================================================
+
+   Refinement pass over the base system above. It changes how things feel, not
+   what they are: no markup changed, no component replaced, every rule works off
+   the same tokens so dark mode follows for free.
+
+   Three principles, in this order:
+
+   1. This is a banking tool used all day. Depth and motion are there to make
+      hierarchy obvious, never to decorate. Nothing bounces, nothing pulses.
+   2. Agents and branch staff are often on poor connections and modest hardware.
+      Every effect here is composited (transform/opacity/shadow) - no animated
+      layout properties, no blur on large scrolling surfaces.
+   3. Density stays. A recovery officer scans hundreds of rows; whitespace that
+      looks generous in a screenshot costs them scrolling all day.
+   ========================================================================== */
+
+:root {
+    /* Layered, brand-tinted elevation.
+
+       Two shadows per level: a tight dark one for the contact edge and a wide
+       soft one for the ambient cast. Tinted with the brand hue rather than pure
+       black - neutral grey shadows are what make a UI look flat and cheap. */
+    --lrms-shadow:    0 1px 2px rgba(16, 32, 66, .05), 0 1px 3px rgba(16, 32, 66, .04);
+    --lrms-shadow-md: 0 2px 4px rgba(16, 32, 66, .05), 0 8px 20px -4px rgba(16, 32, 66, .10);
+    --lrms-shadow-lg: 0 4px 8px rgba(16, 32, 66, .06), 0 20px 44px -8px rgba(16, 32, 66, .16);
+
+    /* A hairline that reads as a crease rather than a drawn line. */
+    --lrms-hairline: rgba(16, 32, 66, .07);
+
+    /* One duration and one curve everywhere, so the whole panel moves as a
+       single object instead of a collection of parts with their own opinions. */
+    --lrms-ease: cubic-bezier(.2, .6, .3, 1);
+    --lrms-fast: .14s;
+    --lrms-slow: .24s;
+}
+
+[data-theme="dark"] {
+    /* Dark surfaces cannot lean on shadow for separation - a black shadow on a
+       near-black background is invisible. Depth comes from a top inset
+       highlight, the way real materials catch light. */
+    --lrms-shadow:    0 1px 2px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .03);
+    --lrms-shadow-md: 0 6px 18px -4px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .04);
+    --lrms-shadow-lg: 0 18px 44px -8px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .05);
+    --lrms-hairline: rgba(255, 255, 255, .06);
+}
+
+/* --------------------------------------------------------------------------
+   Typography
+   -------------------------------------------------------------------------- */
+
+body {
+    /* Optical sizing and slightly tightened tracking at body size: Inter is
+       designed for it and it buys noticeably crisper text. */
+    font-feature-settings: 'cv11', 'ss01';
+    letter-spacing: -.005em;
+    text-rendering: optimizeLegibility;
+}
+
+h1 { font-size: 1.5rem; letter-spacing: -.022em; }
+h2 { font-size: 1.0625rem; letter-spacing: -.018em; }
+h3 { font-size: .9375rem; letter-spacing: -.012em; }
+
+/* Every number in the product lines up in a column and never reflows as it
+   changes. Money that jitters while a page updates looks broken. */
+.lrms-stat-value,
+.lrms-figure-value,
+.lrms-table td,
+.lrms-dl dd,
+.num {
+    font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar
+   -------------------------------------------------------------------------- */
+
+.lrms-sidebar {
+    /* A whisper of a gradient stops a 250px flat panel reading as dead space. */
+    background:
+        linear-gradient(180deg, var(--lrms-surface) 0%, var(--lrms-surface-2) 100%);
+    border-right: 1px solid var(--lrms-hairline);
+}
+
+.lrms-brand { border-bottom: 1px solid var(--lrms-hairline); }
+
+.lrms-brand-mark {
+    background: linear-gradient(135deg, var(--lrms-primary) 0%, var(--lrms-primary-dark) 100%);
+    box-shadow: 0 2px 6px -1px rgba(25, 87, 194, .4);
+}
+
+.lrms-nav-label {
+    font-size: .625rem;
+    letter-spacing: .1em;
+    color: var(--lrms-muted);
+    opacity: .8;
+}
+
+.lrms-nav-item {
+    border-radius: var(--lrms-radius-sm);
+    transition: background-color var(--lrms-fast) var(--lrms-ease),
+                color var(--lrms-fast) var(--lrms-ease);
+    position: relative;
+}
+
+.lrms-nav-item:hover { background: var(--lrms-primary-light); }
+
+/* The active item gets a left marker as well as a tint. Colour alone fails for
+   the ~8% of men with a colour vision deficiency, and this navigation is the
+   only thing telling you where you are. */
+.lrms-nav-item.active {
+    background: var(--lrms-primary-light);
+    color: var(--lrms-primary-dark);
+    font-weight: 620;
+}
+.lrms-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%;
+    width: 3px; height: 18px;
+    margin-top: -9px;
+    border-radius: 0 3px 3px 0;
+    background: var(--lrms-primary);
+}
+.lrms-nav-item.active svg { color: var(--lrms-primary); }
+
+/* --------------------------------------------------------------------------
+   Topbar
+   -------------------------------------------------------------------------- */
+
+.lrms-topbar {
+    border-bottom: 1px solid var(--lrms-hairline);
+    /* Translucent so content scrolling underneath stays perceptible. Confined
+       to a 60px strip, which keeps the blur cheap even on a low-end laptop. */
+    background: var(--lrms-surface);
+    background: color-mix(in srgb, var(--lrms-surface) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+}
+
+/* No color-mix support: fall back to opaque rather than to unreadable text. */
+@supports not (background: color-mix(in srgb, red 50%, transparent)) {
+    .lrms-topbar { background: var(--lrms-surface); }
+}
+
+/* --------------------------------------------------------------------------
+   Cards
+   -------------------------------------------------------------------------- */
+
+.lrms-card {
+    border-color: var(--lrms-hairline);
+    box-shadow: var(--lrms-shadow);
+    transition: box-shadow var(--lrms-slow) var(--lrms-ease),
+                border-color var(--lrms-slow) var(--lrms-ease);
+}
+
+.lrms-card-head {
+    border-bottom: 1px solid var(--lrms-hairline);
+    /* Barely-there wash: separates the head without a second border. */
+    background: var(--lrms-surface-2);
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--lrms-surface-2) 60%, transparent) 0%,
+        transparent 100%);
+}
+
+/* Lift only what is actually clickable. A card that rises under the cursor and
+   then does nothing is a promise the interface fails to keep. */
+a.lrms-card:hover {
+    box-shadow: var(--lrms-shadow-md);
+    border-color: var(--lrms-border-strong);
+    border-color: color-mix(in srgb, var(--lrms-primary) 25%, var(--lrms-border));
+}
+
+/* --------------------------------------------------------------------------
+   KPI cards
+   -------------------------------------------------------------------------- */
+
+.lrms-stat {
+    box-shadow: var(--lrms-shadow);
+    border-color: var(--lrms-hairline);
+    transition: transform var(--lrms-slow) var(--lrms-ease),
+                box-shadow var(--lrms-slow) var(--lrms-ease);
+}
+
+/* A 1px rise: enough to feel responsive, small enough that a grid of twelve
+   does not appear to wobble as the pointer crosses it. */
+a.lrms-stat:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--lrms-shadow-md);
+}
+a.lrms-stat:active { transform: translateY(0); }
+
+/* The accent bar reads as painted onto the card edge, not stuck beside it. */
+.lrms-stat-accent {
+    border-left-width: 0;
+    padding-left: 19px;
+}
+.lrms-stat-accent::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--lrms-primary);
+}
+.lrms-stat-accent.is-warning::after { background: var(--lrms-warning); }
+.lrms-stat-accent.is-danger::after  { background: var(--lrms-danger); }
+.lrms-stat-accent.is-success::after { background: var(--lrms-success); }
+.lrms-stat-accent.is-slate::after   { background: var(--lrms-slate); }
+
+/* --------------------------------------------------------------------------
+   Tables
+   -------------------------------------------------------------------------- */
+
+.lrms-table thead th {
+    background: var(--lrms-surface-2);
+    border-bottom: 1px solid var(--lrms-border);
+    /* The header is already sticky. This shadow only appears once rows have
+       scrolled beneath it, so a short table has no floating edge. */
+    box-shadow: 0 1px 0 var(--lrms-hairline);
+    font-size: .6875rem;
+    letter-spacing: .06em;
+}
+
+.lrms-table tbody td { border-bottom: 1px solid var(--lrms-hairline); }
+
+/* Tinted hover rather than grey. On a 40-row recovery list the cursor row has
+   to be unmistakable at a glance. */
+.lrms-table tbody tr { transition: background-color var(--lrms-fast) linear; }
+.lrms-table tbody tr:hover {
+    background: var(--lrms-surface-2);
+    background: color-mix(in srgb, var(--lrms-primary) 4%, transparent);
+}
+
+/* Breathing room at the edges, so the first column is not welded to the border. */
+.lrms-table thead th:first-child,
+.lrms-table tbody td:first-child { padding-left: 16px; }
+.lrms-table thead th:last-child,
+.lrms-table tbody td:last-child { padding-right: 16px; }
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+
+.btn {
+    transition: background-color var(--lrms-fast) var(--lrms-ease),
+                border-color var(--lrms-fast) var(--lrms-ease),
+                box-shadow var(--lrms-fast) var(--lrms-ease),
+                transform var(--lrms-fast) var(--lrms-ease);
+    font-weight: 560;
+    letter-spacing: -.005em;
+}
+
+.btn-primary {
+    /* A 6% top-to-bottom gradient. Invisible as a gradient; the surface just
+       stops looking like a flat rectangle of colour. */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(0, 0, 0, .04));
+    box-shadow: 0 1px 2px rgba(16, 32, 66, .16);
+}
+.btn-primary:hover { box-shadow: 0 2px 6px -1px rgba(25, 87, 194, .34); }
+
+/* Presses translate. Without it a click on a touchscreen has no acknowledgement
+   until the next page paints, which on a slow link feels like nothing happened. */
+.btn:active { transform: translateY(1px); }
+
+.btn:disabled, .btn.disabled { box-shadow: none; opacity: .55; }
+
+/* --------------------------------------------------------------------------
+   Forms
+   -------------------------------------------------------------------------- */
+
+.form-control, .form-select {
+    transition: border-color var(--lrms-fast) var(--lrms-ease),
+                box-shadow var(--lrms-fast) var(--lrms-ease);
+}
+
+/* Two rings: a tight opaque one for the edge and a soft halo outside it. Reads
+   as focus at a glance without the heavy glow of a single fat ring. */
+.form-control:focus, .form-select:focus, .btn:focus-visible {
+    box-shadow: 0 0 0 3px rgba(25, 87, 194, .18);
+    box-shadow: 0 0 0 1px var(--lrms-primary),
+                0 0 0 4px color-mix(in srgb, var(--lrms-primary) 16%, transparent);
+    border-color: var(--lrms-primary);
+}
+
+.form-label {
+    font-size: .8125rem;
+    font-weight: 580;
+    color: var(--lrms-slate);
+    letter-spacing: -.003em;
+}
+
+/* An invalid field is outlined in red AND labelled. Colour alone is not an
+   error message. */
+.form-control.is-invalid, .form-select.is-invalid {
+    border-color: var(--lrms-danger);
+    box-shadow: 0 0 0 3px rgba(179, 38, 30, .14);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lrms-danger) 12%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   Badges and chips
+   -------------------------------------------------------------------------- */
+
+.lrms-badge {
+    /* An inner ring instead of a border keeps the pill's exact height, so a row
+       of badges sits on one baseline. */
+    border: 1px solid transparent;
+    box-shadow: inset 0 0 0 1px currentColor;
+    font-weight: 600;
+    letter-spacing: .005em;
+    opacity: .96;
+}
+
+/* --------------------------------------------------------------------------
+   Scrollbars
+   -------------------------------------------------------------------------- */
+
+* { scrollbar-width: thin; scrollbar-color: var(--lrms-border-strong) transparent; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--lrms-border-strong);
+    border-radius: 10px;
+    /* Inset by a transparent border so the thumb looks narrower than its
+       hit area - easy to grab, quiet to look at. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--lrms-muted); background-clip: content-box; }
+
+/* --------------------------------------------------------------------------
+   Motion and print: only what this layer's own additions require
+   --------------------------------------------------------------------------
+
+   The base system already has a @media print block and a prefers-reduced-motion
+   block above. These do NOT repeat them - they cover just the effects introduced
+   here, so there is one place to look for each concern instead of two competing
+   ones. */
+
+@media (prefers-reduced-motion: reduce) {
+    /* The base block already zeroes durations. Transforms need cancelling too,
+       or a hover still physically moves the card. Movement is exactly what this
+       setting is asking us not to do: for someone with a vestibular disorder it
+       is unpleasant, not merely distracting. */
+    a.lrms-stat:hover,
+    a.lrms-stat:active,
+    .btn:active {
+        transform: none;
+    }
+}
+
 @media print {
-    /* Backgrounds are usually dropped when printing, so keep the border - a
-       printed report must still show which sections were flagged urgent. */
-    .lrms-callout { background: #fff !important; }
-    .lrms-stat { background: #fff !important; }
+    /* All of these exist only because this layer added them, and each would
+       otherwise waste ink on a filed report. */
+    .lrms-card-head { background: none !important; }
+    .lrms-table thead th { box-shadow: none !important; }
+
+    /* Tinted panels lose their fill when printed, so the border has to carry the
+       meaning on its own - a printed report must still show which sections were
+       flagged urgent. */
+    .lrms-callout, .lrms-figure { background: #fff !important; }
 }

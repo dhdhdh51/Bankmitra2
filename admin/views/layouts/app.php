@@ -39,7 +39,24 @@ $unread = $unreadNotifications ?? 0;
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
           integrity="sha384-QWTKZyjpPEjISmX7cW6xJjSptHmA4Zq+7pF7ZOgh8216DIvUZmg2fnGGvorRFnMH" crossorigin="anonymous">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!--
+        Inter as a VARIABLE font (wght@400..700), not four static cuts.
+
+        The stylesheet asks for intermediate weights - 560 on buttons, 620 on an
+        active nav item, 650 on headings - and with static cuts the browser has to
+        round or synthesise them, which is exactly the mushy look this palette is
+        trying to avoid. One variable file also weighs less than four static ones.
+
+        preconnect matters more than it looks: a webfont request blocks first
+        paint, and agents open this panel over rural links. Warming both the CSS
+        and the font-file origins removes two round trips of DNS and TLS from the
+        critical path. Both are needed - the stylesheet and the font binaries come
+        from different hosts - and gstatic must be crossorigin because fonts are
+        fetched in CORS mode.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet">
     <link href="<?= e(asset('css/app.css')) ?>" rel="stylesheet">
 </head>
 <body>
