@@ -45,6 +45,16 @@ cPanel → **MySQL Databases**:
 
 ### 2.2 Import the schema
 
+> ### `schema.sql` destroys data. Run it once, on an empty database.
+>
+> Every table in it begins with `DROP TABLE IF EXISTS`, so importing it into a
+> database that already holds records **deletes all of them** — every customer,
+> visit, promise and user account. It is an install script, not a migration.
+>
+> Never import it to "refresh" or "repair" a live site. To upgrade, apply the
+> migration named in the release notes, and take a backup first:
+> `php ~/public_html/cron/backup.php`
+
 cPanel → **phpMyAdmin** → select the database → **Import** → upload `schema.sql`
 → **Go**.
 
@@ -433,8 +443,10 @@ Everything in the repository is covered by runnable checks.
 | Command | What it proves |
 | --- | --- |
 | `php tools/selftest-core.php` | 91 checks — crypto, JWT, XLSX, PDF, validator, paginator |
-| `sh tools/verify-schema.sh` | `schema.sql` imports cleanly into MySQL 8 |
+| `sh tools/verify-schema.sh` | 24 checks — 21 tables, 39 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
 | `sh tools/integration-test.sh` | 264 checks — import, visits, promises, reports, backup |
+| `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
+| `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
 | `sh tools/smoke-panel.sh` | 114 panel + 158 API checks over real HTTP |
 | `sh tools/verify-android.sh` | 69 unit tests, debug + release APK |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
@@ -605,6 +617,10 @@ before copying the files. Take a backup first:
 ```bash
 php ~/public_html/cron/backup.php
 ```
+
+> **Do not re-import `schema.sql` as part of an upgrade.** It begins each table
+> with `DROP TABLE IF EXISTS` and would delete every record you have. Only ever
+> run it on a fresh, empty database.
 
 ### AGP 9.x
 
