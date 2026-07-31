@@ -1,0 +1,323 @@
+<?php
+/**
+ * Seeds a small but realistic demo dataset: branches, a manager, agents,
+ * imported leads, visits, promises and notifications.
+ *
+ * Used by tools/smoke-panel.sh, and handy for a first look at the panel.
+ *
+ *   LRMS_DB_HOST=... LRMS_DB_PORT=... php tools/seed-demo.php
+ */
+
+declare(strict_types=1);
+
+$root = dirname(__DIR__) . '/admin';
+define('APP_PATH', $root . '/app');
+define('ROOT_PATH', $root);
+
+spl_autoload_register(static function (string $class) use ($root): void {
+    if (!str_starts_with($class, 'App\\')) {
+        return;
+    }
+    $file = $root . '/app/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+    if (is_file($file)) {
+        require $file;
+    }
+});
+require $root . '/app/Core/helpers.php';
+
+use App\Core\Auth;
+use App\Core\Config;
+use App\Core\Database;
+use App\Core\Settings;
+use App\Models\Branch;
+use App\Models\LoanAccount;
+use App\Models\Promise;
+use App\Models\User;
+use App\Services\ImportService;
+use App\Services\VisitService;
+
+// Prefer an existing config.php (written by the smoke script); fall back to env.
+$configFile = $root . '/config/config.php';
+if (is_file($configFile)) {
+    Config::load(require $configFile);
+} else {
+    Config::load([
+        'db' => [
+            'host'    => getenv('LRMS_DB_HOST') ?: '127.0.0.1',
+            'port'    => (int) (getenv('LRMS_DB_PORT') ?: 3306),
+            'name'    => getenv('LRMS_DB_NAME') ?: 'lrms',
+            'user'    => getenv('LRMS_DB_USER') ?: 'root',
+            'pass'    => getenv('LRMS_DB_PASS') ?: 'root',
+            'charset' => 'utf8mb4',
+        ],
+        'app_key'     => bin2hex(random_bytes(32)),
+        'data_key'    => bin2hex(random_bytes(32)),
+        'hash_pepper' => bin2hex(random_bytes(32)),
+        'app'         => ['debug' => true, 'timezone' => 'Asia/Kolkata'],
+        'paths'       => ['uploads' => $root . '/uploads', 'storage' => $root . '/storage'],
+        'uploads'     => [
+            'max_photo_bytes'    => 8388608,
+            'max_document_bytes' => 12582912,
+            'max_import_bytes'   => 26214400,
+            'allowed_image_mime' => ['image/jpeg', 'image/png', 'image/webp'],
+            'allowed_doc_mime'   => ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+        ],
+        'session'     => ['name' => 'lrms_seed', 'lifetime' => 7200, 'secure' => false],
+    ]);
+}
+
+date_default_timezone_set('Asia/Kolkata');
+$_SERVER['REQUEST_METHOD'] = 'GET';
+$_SERVER['REQUEST_URI'] = '/seed';
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$_SERVER['HTTP_USER_AGENT'] = 'lrms-seed';
+
+$db = Database::instance();
+
+if ((int) $db->scalar('SELECT COUNT(*) FROM loan_accounts') > 0) {
+    echo "demo data already present, skipping\n";
+    exit(0);
+}
+
+// Act as the super admin so audit/timeline entries have an author.
+Auth::loginSession(Auth::loadActiveUser(1));
+
+Settings::updateMany([
+    'bank_name'   => 'Gramin Vikas Bank',
+    'sms_provider' => 'demo',
+    'sms_api_url' => 'https://example.invalid/send?to={mobile}&text={message}&key={key}',
+    'sms_api_key' => 'demo-key',
+], 1);
+
+// ---------------------------------------------------------------------------
+// Branches
+// ---------------------------------------------------------------------------
+$branchIds = [];
+foreach ([
+    ['BR001', 'Bhilwara Main', 'Bhilwara', 'Rajasthan', '311001'],
+    ['BR002', 'Kotri Rural', 'Bhilwara', 'Rajasthan', '311022'],
+    ['BR003', 'Mandal Branch', 'Bhilwara', 'Rajasthan', '311604'],
+] as [$code, $name, $district, $state, $pin]) {
+    $branchIds[$code] = Branch::create([
+        'branch_code' => $code, 'name' => $name, 'district' => $district,
+        'state' => $state, 'pincode' => $pin, 'status' => 'active',
+    ]);
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+User::create([
+    'employee_code' => 'MGR001', 'name' => 'Suresh Chandra', 'email' => 'suresh@example.com',
+    'designation' => 'Branch Manager', 'role_id' => 2, 'branch_id' => $branchIds['BR001'],
+    'status' => 'active', 'must_change_password' => 0,
+], 'Manager@123', '9811100001');
+
+$agents = [];
+foreach ([
+    ['AGT001', 'Ramesh Kumar', 'BC-001', 'BR001'],
+    ['AGT002', 'Sunita Devi', 'BC-002', 'BR001'],
+    ['AGT003', 'Mohan Lal', 'BC-003', 'BR002'],
+    ['AGT004', 'Kavita Sharma', 'BC-004', 'BR003'],
+] as $index => [$code, $name, $bcCode, $branchCode]) {
+    $agents[$code] = User::create([
+        'employee_code' => $code, 'name' => $name, 'bc_code' => $bcCode,
+        'designation' => 'BC/DC Agent', 'role_id' => 3, 'branch_id' => $branchIds[$branchCode],
+        'status' => 'active', 'must_change_password' => 0,
+    ], 'Agent@123', '982220000' . ($index + 1));
+}
+
+// ---------------------------------------------------------------------------
+// Leads, imported through the real import pipeline
+// ---------------------------------------------------------------------------
+$villages = ['Kotri', 'Mandal', 'Sahada', 'Gulabpura', 'Hurda', 'Banera'];
+$loanTypes = ['Crop Loan', 'Dairy Loan', 'KCC', 'SHG Loan', 'Tractor Loan'];
+$names = [
+    'Ramesh Kumar', 'Sita Devi', 'Gopal Singh', 'Anita Sharma', 'Mahesh Jat',
+    'Kamla Bai', 'Prakash Meena', 'Sunita Kumari', 'Rajesh Gurjar', 'Leela Devi',
+    'Naresh Chand', 'Pushpa Devi', 'Dinesh Sharma', 'Radha Bai', 'Suresh Meena',
+    'Manju Devi', 'Vijay Singh', 'Geeta Kumari', 'Arjun Lal', 'Shanti Bai',
+    'Hariram Jat', 'Bhagwati Devi', 'Om Prakash', 'Rekha Sharma', 'Kailash Chand',
+];
+
+$csvPath = sys_get_temp_dir() . '/lrms_demo_leads.csv';
+$rows = ['Branch,BC Code,Loan Account Number,Customer Name,Father/Husband Name,Mobile,Aadhaar,Village,Address,Loan Type,Outstanding Amount,Overdue Amount,NPA Date,Remarks'];
+
+$branchCodes = array_keys($branchIds);
+for ($i = 1; $i <= 60; $i++) {
+    $branchCode = $branchCodes[$i % count($branchCodes)];
+    $name = $names[($i - 1) % count($names)];
+    $village = $villages[$i % count($villages)];
+    $loanType = $loanTypes[$i % count($loanTypes)];
+    $outstanding = 25000 + ($i * 3175);
+    $overdue = (int) round($outstanding * (0.08 + (($i % 5) * 0.04)));
+    $npaDate = $i % 3 === 0 ? sprintf('%02d/%02d/2024', ($i % 28) + 1, ($i % 12) + 1) : '';
+
+    $rows[] = sprintf(
+        '%s,BC-00%d,LN%08d,%s,%s,98765%05d,1234%08d,%s,"House %d, %s",%s,%s,%s,%s,%s',
+        $branchCode,
+        ($i % 4) + 1,
+        100000 + $i,
+        $name,
+        'Father of ' . $name,
+        10000 + $i,
+        10000000 + $i,
+        $village,
+        $i,
+        $village,
+        $loanType,
+        number_format($outstanding, 2, '.', ''),
+        number_format($overdue, 2, '.', ''),
+        $npaDate,
+        $i % 7 === 0 ? 'Chronic defaulter' : ''
+    );
+}
+
+file_put_contents($csvPath, implode("\n", $rows));
+
+$result = ImportService::run(
+    ['name' => 'demo_leads.csv', 'tmp_name' => $csvPath, 'error' => UPLOAD_ERR_OK, 'size' => filesize($csvPath)],
+    null,
+    null,
+    1,
+    'System Administrator'
+);
+printf("imported: %d new, %d updated, %d skipped\n", $result['inserted'], $result['updated'], $result['skipped']);
+
+// ---------------------------------------------------------------------------
+// Assign leads round-robin to the agents in each branch
+// ---------------------------------------------------------------------------
+$agentsByBranch = [];
+foreach ($agents as $code => $agentId) {
+    $agent = User::find($agentId);
+    $agentsByBranch[(int) $agent['branch_id']][] = $agentId;
+}
+
+$leadRows = $db->all('SELECT id, branch_id FROM loan_accounts ORDER BY id');
+$counter = 0;
+foreach ($leadRows as $lead) {
+    $pool = $agentsByBranch[(int) $lead['branch_id']] ?? [];
+    if ($pool === []) {
+        continue;
+    }
+    // Leave roughly a fifth unassigned so the "Unassigned" filter has data.
+    if ($counter % 5 === 4) {
+        $counter++;
+        continue;
+    }
+    $agentId = $pool[$counter % count($pool)];
+    $db->update('loan_accounts', [
+        'assigned_agent_id' => $agentId,
+        'assigned_at'       => date('Y-m-d H:i:s'),
+        'assigned_by'       => 1,
+    ], ['id' => (int) $lead['id']]);
+    \App\Models\Timeline::record(
+        (int) $lead['id'],
+        'assigned',
+        'Assigned to agent',
+        'Initial allocation.',
+        1,
+        'System Administrator'
+    );
+    $counter++;
+}
+
+// ---------------------------------------------------------------------------
+// Visits spread over the last 20 days, some with promises
+// ---------------------------------------------------------------------------
+$assigned = $db->all(
+    'SELECT la.id, la.assigned_agent_id, la.branch_id, c.village
+       FROM loan_accounts la JOIN customers c ON c.id = la.customer_id
+      WHERE la.assigned_agent_id IS NOT NULL ORDER BY la.id LIMIT 40'
+);
+
+$visitCount = 0;
+$promiseIds = [];
+
+foreach ($assigned as $index => $lead) {
+    $agentId = (int) $lead['assigned_agent_id'];
+    $agentRow = User::find($agentId);
+    $agentCtx = [
+        'id'        => $agentId,
+        'name'      => (string) $agentRow['name'],
+        'bc_code'   => (string) ($agentRow['bc_code'] ?? ''),
+        'branch_id' => (int) $lead['branch_id'],
+    ];
+
+    $daysAgo = $index % 20;
+    $visitDate = date('Y-m-d', strtotime("-{$daysAgo} days"));
+
+    $makesPromise = $index % 3 === 0;
+    $notReady = $index % 3 === 1;
+    $locked = $index % 3 === 2;
+
+    $payload = [
+        'loan_account_id' => (int) $lead['id'],
+        'visit_date'      => $visitDate,
+        'visit_time'      => sprintf('%02d:%02d', 9 + ($index % 8), ($index * 7) % 60),
+        'village'         => (string) $lead['village'],
+        'borrower_alive'  => '1',
+        'same_address'    => '1',
+        'occupation'      => ['agriculture', 'dairy', 'business', 'labour'][$index % 4],
+        'client_uuid'     => sprintf('%08x-0000-4000-8000-%012x', $index, $index),
+        'app_version'     => '1.0.0',
+    ];
+
+    if ($makesPromise) {
+        $payload['customer_met'] = '1';
+        $payload['ready_to_pay'] = '1';
+        $payload['promise_amount'] = (string) (5000 + ($index * 750));
+        $payload['promise_date'] = date('Y-m-d', strtotime('+' . (($index % 14) - 5) . ' days'));
+        $payload['rec_recovery_possible'] = '1';
+        $payload['remarks'] = 'Customer agreed to pay after selling produce.';
+    } elseif ($notReady) {
+        $payload['customer_met'] = '1';
+        $payload['not_ready'] = '1';
+        $payload['reason_crop_loss'] = '1';
+        $payload['rec_regular_followup'] = '1';
+        $payload['remarks'] = 'Crop loss this season; requested more time.';
+    } else {
+        $payload['house_locked'] = '1';
+        $payload['phone_switched_off'] = '1';
+        $payload['rec_legal_action'] = $index % 9 === 2 ? '1' : '0';
+        $payload['remarks'] = 'House locked, neighbours say borrower is away.';
+    }
+
+    $visit = VisitService::submit($payload, $agentCtx);
+    $visitCount++;
+
+    if ($visit['promise_id'] !== null) {
+        $promiseIds[] = (int) $visit['promise_id'];
+    }
+}
+
+// Settle some promises so the promise report has all statuses.
+foreach ($promiseIds as $index => $promiseId) {
+    if ($index % 3 === 0) {
+        Promise::settle($promiseId, 'kept', 1, 'System Administrator', 'Paid at branch counter.');
+    } elseif ($index % 3 === 1) {
+        Promise::settle($promiseId, 'broken', 1, 'System Administrator', 'Did not turn up.');
+    }
+}
+
+// Close a handful of leads.
+$toClose = array_slice(array_column($assigned, 'id'), 0, 4);
+\App\Services\AssignmentService::setStatus(array_map('intval', $toClose), 'closed', 'Fully recovered.');
+
+\App\Models\Notification::broadcast(
+    'Recovery drive this Saturday',
+    'All BC/DC agents please cover the pending NPA accounts in your village allocation.',
+    null,
+    1
+);
+
+printf(
+    "seeded: %d branches, %d users, %d leads, %d visits, %d promises\n",
+    count($branchIds),
+    (int) $db->scalar('SELECT COUNT(*) FROM users'),
+    (int) $db->scalar('SELECT COUNT(*) FROM loan_accounts'),
+    $visitCount,
+    (int) $db->scalar('SELECT COUNT(*) FROM promises')
+);
+
+@unlink($csvPath);

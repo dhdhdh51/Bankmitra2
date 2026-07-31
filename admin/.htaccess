@@ -1,0 +1,104 @@
+# ===========================================================================
+# LRMS - Apache / LiteSpeed configuration (cPanel shared hosting friendly)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Pretty URLs: route everything through index.php
+# ---------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # If the app lives in a sub-directory, uncomment and set it:
+    # RewriteBase /lrms
+
+    # Force HTTPS. Comment out only while a certificate is still pending.
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+    # Serve real files and directories directly (assets).
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Everything else goes to the front controller.
+    RewriteRule ^ index.php [L]
+
+    # Pass the Authorization header through to PHP. Some CGI/FastCGI setups
+    # strip it, which would break Bearer-token API auth from the Android app.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always unset X-Powered-By
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# Block direct access to application internals.
+# The front controller is the only entry point.
+# ---------------------------------------------------------------------------
+RedirectMatch 404 ^/(app|config|views|storage)(/|$)
+RedirectMatch 404 /\.git(/|$)
+
+<FilesMatch "\.(sql|log|md|json|lock|ini|sh|bak|dist|sample)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# config.php holds the database credentials and crypto keys.
+<Files "config.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Files>
+
+# ---------------------------------------------------------------------------
+# No directory listings
+# ---------------------------------------------------------------------------
+Options -Indexes
+
+# ---------------------------------------------------------------------------
+# Static asset caching
+# ---------------------------------------------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain application/javascript application/json
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# PHP limits. Excel lead files can be large; raise these if your host allows.
+# On LiteSpeed/cPanel these may need to go in the MultiPHP INI editor instead.
+# ---------------------------------------------------------------------------
+<IfModule mod_php.c>
+    php_value upload_max_filesize 32M
+    php_value post_max_size 40M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+    php_flag display_errors off
+</IfModule>
+
+DirectoryIndex index.php

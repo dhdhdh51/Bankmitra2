@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# LRMS
+# ---------------------------------------------------------------------------
+
+# Real credentials and crypto keys never enter version control.
+admin/config/config.php
+
+# Runtime artefacts
+admin/uploads/*
+!admin/uploads/.gitkeep
+!admin/uploads/.htaccess
+admin/storage/logs/*
+!admin/storage/logs/.gitkeep
+admin/storage/backups/*
+!admin/storage/backups/.gitkeep
+admin/storage/imports/*
+!admin/storage/imports/.gitkeep
+admin/storage/tmp/*
+!admin/storage/tmp/.gitkeep
+
+# Local verification output
+.verify/
+
+# ---------------------------------------------------------------------------
+# Android
+# ---------------------------------------------------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/.idea/
+android/app/release/
+android/app/debug/
+*.apk
+*.aab
+*.keystore
+*.jks
+keystore.properties
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
