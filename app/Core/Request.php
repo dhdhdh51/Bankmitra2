@@ -223,16 +223,28 @@ final class Request
     {
         $header = $this->header('Authorization');
 
-        // Some Apache/CGI setups strip Authorization; these are the usual fallbacks.
+        // Apache does not forward Authorization to a FastCGI/CGI/LSAPI backend,
+        // so .htaccess re-injects it as an environment variable. After the
+        // front-controller rewrite that arrives prefixed with REDIRECT_.
         if ($header === null) {
             $header = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
         }
-        if ($header === null && function_exists('apache_request_headers')) {
-            $headers = apache_request_headers();
-            foreach ($headers as $name => $value) {
-                if (strcasecmp($name, 'Authorization') === 0) {
-                    $header = $value;
-                    break;
+        // Doubly prefixed when more than one internal redirect happened.
+        if ($header === null) {
+            $header = $_SERVER['REDIRECT_REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+        }
+        if ($header === null) {
+            foreach (['apache_request_headers', 'getallheaders'] as $fn) {
+                if (!function_exists($fn)) {
+                    continue;
+                }
+                /** @var array<string,string> $headers */
+                $headers = (array) $fn();
+                foreach ($headers as $name => $value) {
+                    if (strcasecmp((string) $name, 'Authorization') === 0) {
+                        $header = (string) $value;
+                        break 2;
+                    }
                 }
             }
         }

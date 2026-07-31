@@ -74,6 +74,39 @@ chmod -R 755 storage uploads
 **5. Log in** at `https://your-domain.com/` with `ADMIN001` / `Admin@123`. You
 are forced to set a new password immediately. Do that before anything else.
 
+## Something wrong? Run the self-check first
+
+```
+https://your-domain.com/diag.php?i-understand=1
+```
+
+It checks the PHP version and extensions, the upload layout, file permissions,
+`mod_rewrite`, whether `config.php` is filled in, and whether it can connect to
+the database and see all the tables — then prints the specific fix for anything
+that is wrong. It never prints your credentials or keys.
+
+**Delete `diag.php` once the site works.**
+
+### If you get 403 Forbidden
+
+Almost always permissions. The web server must be able to read and enter every
+directory:
+
+```bash
+cd ~/public_html
+find . -type d -exec chmod 755 {} \;
+find . -type f -exec chmod 644 {} \;
+chmod -R 755 storage uploads
+```
+
+**Never use 777.** cPanel hosts running suPHP or suexec refuse to serve a
+group- or world-writable directory and answer 403 — so `chmod 777`, the usual
+reflex for a permissions problem, actually causes this one.
+
+If you get **404** on every page instead, you uploaded the folder rather than its
+contents: `index.php` must sit directly in `public_html`, not in
+`public_html/admin/` or `public_html/lrms/`.
+
 ## Cron jobs
 
 cPanel → *Cron Jobs*. Adjust the PHP path and home directory to match your host:

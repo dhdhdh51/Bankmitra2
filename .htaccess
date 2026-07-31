@@ -5,11 +5,43 @@
 # ---------------------------------------------------------------------------
 # Pretty URLs: route everything through index.php
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Pass the Authorization header through to PHP.
+#
+# THIS IS NOT OPTIONAL. Apache reserves the Authorization header for its own
+# authentication and does NOT forward it to a FastCGI/CGI/LSAPI backend, which
+# is how PHP runs on essentially every cPanel host. Without one of the rules
+# below, $_SERVER has no Authorization at all, every Bearer token from the
+# Android app is invisible, and the whole /api/v1 surface answers 401 while the
+# admin panel works perfectly - a maddening thing to debug.
+#
+# Two independent mechanisms, because hosts disable different modules:
+#   1. mod_setenvif  - copies the header into the CGI environment.
+#   2. mod_rewrite   - same thing via an environment variable; PHP then sees it
+#                      as REDIRECT_HTTP_AUTHORIZATION after the internal
+#                      redirect, which Request::bearerToken() also reads.
+#
+# Both were verified against a real Apache + php-fpm by tools/verify-apache.sh.
+# On Apache 2.4.13+ `CGIPassAuth On` does the same job; it is left out because
+# an unknown directive is a hard 500 on older hosts.
+# ---------------------------------------------------------------------------
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# Pretty URLs: route everything through index.php
+# ---------------------------------------------------------------------------
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
     # If the app lives in a sub-directory, uncomment and set it:
     # RewriteBase /lrms
+
+    # Authorization fallback. This MUST come before the front-controller rule:
+    # that rule ends in [L], so anything after it never runs for an API request.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
     # Force HTTPS. Comment out only while a certificate is still pending.
     RewriteCond %{HTTPS} !=on
@@ -23,11 +55,6 @@
 
     # Everything else goes to the front controller.
     RewriteRule ^ index.php [L]
-
-    # Pass the Authorization header through to PHP. Some CGI/FastCGI setups
-    # strip it, which would break Bearer-token API auth from the Android app.
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 </IfModule>
 
 <IfModule mod_headers.c>

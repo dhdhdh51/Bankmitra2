@@ -93,7 +93,30 @@ UPDATE users SET password_hash = '<paste hash>' WHERE employee_code = 'ADMIN001'
 The **contents of `admin/`** go into your web root — not the `admin` folder
 itself.
 
-**Option A — Git (preferred)**
+**Option A — the `hosting` branch (easiest)**
+
+That branch *is* the web root: it holds the contents of `admin/` at its top
+level, plus `schema.sql` and the docs, and nothing else. No Android project, no
+test harnesses, no CI files.
+
+```bash
+cd ~
+git clone -b hosting https://github.com/dhdhdh51/Bankmitra2.git lrms
+cp -r lrms/. public_html/
+rm -rf public_html/.git
+```
+
+Or download the branch ZIP from GitHub (*Code → Download ZIP* with the `hosting`
+branch selected) and upload the extracted contents.
+
+To rebuild that branch from source after a change:
+
+```bash
+sh tools/make-hosting-package.sh
+LRMS_DOCROOT=.verify/hosting sh tools/smoke-panel.sh   # verify before publishing
+```
+
+**Option B — Git from source**
 
 ```bash
 cd ~
@@ -101,7 +124,7 @@ git clone https://github.com/dhdhdh51/Bankmitra2.git lrms-src
 cp -r lrms-src/admin/. public_html/
 ```
 
-**Option B — ZIP**
+**Option C — ZIP of the full repository**
 
 Download the repository ZIP, extract locally, and upload everything inside
 `admin/` to `public_html/` with File Manager or FTP. Make sure hidden files
@@ -468,6 +491,39 @@ By design, and worth confirming against your compliance requirements:
 
 ## 9. Troubleshooting
 
+**Start here:** upload nothing extra — the hosting package already contains a
+self-check page. Open `https://your-domain.com/diag.php?i-understand=1`. It
+verifies the PHP version and extensions, the upload layout, file permissions,
+`mod_rewrite`, the config keys, and the database connection and table count, then
+prints the specific fix for whatever is wrong. It never prints credentials or
+keys. **Delete `diag.php` once the site works.**
+
+**403 Forbidden on every page**
+Permissions, in almost every case. The web server must be able to read files and
+*enter* directories:
+
+```bash
+cd ~/public_html
+find . -type d -exec chmod 755 {} \;
+find . -type f -exec chmod 644 {} \;
+chmod -R 755 storage uploads
+```
+
+Measured behaviour, reproduced against a real Apache: a document root at `700`
+returns exactly this bare 403. And do **not** reach for `chmod 777` — hosts
+running suPHP or suexec refuse to serve a group- or world-writable directory and
+answer 403, so the usual reflex for a permissions problem causes this one.
+
+Other causes, in order of likelihood: ModSecurity blocking the request (ask the
+host to check its audit log), a `Require`/`Deny` rule in a parent `.htaccess`
+such as `~/.htaccess`, or hotlink protection enabled in cPanel.
+
+**404 on every page**
+You uploaded the folder instead of its contents. `index.php` must sit directly in
+`public_html`, not in `public_html/admin/` or `public_html/lrms/`. Reproduced:
+that layout answers 404 for every URL, whereas a permissions fault answers 403 —
+so the status code tells you which of the two you have.
+
 **"Configuration missing" page**
 `config/config.php` does not exist. Copy it from `config.sample.php`.
 
@@ -483,10 +539,30 @@ Almost always the session cookie. If the site is not yet on HTTPS, set
 Confirm the base URL ends with `/api/v1/`, that HTTPS works in a browser, and
 that `https://your-domain.com/api/v1/ping` returns JSON.
 
-**Android app: 401 on every request after a while**
-The `Authorization` header is being stripped. The `.htaccess` already contains
-the `HTTP_AUTHORIZATION` rewrite; if your host ignores it, ask them to enable
-`CGIPassAuth`.
+**Android app: 401 on everything, while the admin panel works fine**
+The `Authorization` header is not reaching PHP. Apache reserves that header for
+its own authentication and does **not** forward it to a FastCGI/CGI/LSAPI
+backend, which is how PHP runs on practically every cPanel host, so this is the
+default behaviour rather than an unusual fault.
+
+`.htaccess` handles it two ways — a `mod_setenvif` rule and a `mod_rewrite`
+rule placed *before* the front-controller rule (it must come first: that rule
+ends in `[L]`, which stops processing). Confirm with:
+
+```bash
+curl -s -H 'Authorization: Bearer test' \
+     'https://your-domain.com/diag.php?i-understand=1' | grep Authorization
+```
+
+Expect `Authorization reaches PHP  yes`. If it says otherwise, both modules are
+disabled on your host; add this as the first line of `.htaccess`:
+
+```apache
+CGIPassAuth On
+```
+
+That needs Apache 2.4.13 or newer. It is not the default here because an unknown
+directive in `.htaccess` is an immediate 500 on older Apache.
 
 **`.xlsx` upload rejected**
 `ZipArchive` is missing. Enable the `zip` extension, or upload `.csv`.
