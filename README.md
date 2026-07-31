@@ -406,6 +406,35 @@ and that the debug APK passes it.
 
 ---
 
+## Branches
+
+| Branch | Contents |
+|---|---|
+| `main` | full source: backend, Android app, tests, CI, docs |
+| [`hosting`](../../tree/hosting) | **upload-ready package** — drop straight into `public_html` |
+
+The `hosting` branch is generated, never edited by hand:
+
+```bash
+sh tools/make-hosting-package.sh                    # build into .verify/hosting
+LRMS_DOCROOT=.verify/hosting sh tools/smoke-panel.sh   # prove it serves traffic
+```
+
+It contains the *contents* of `admin/` at the root, plus `schema.sql`,
+`DEPLOYMENT.md` and a hosting-specific README — no Android project, no test
+harnesses, no CI config, and no `config.php`. The builder reads from the
+committed git tree rather than the working directory, precisely so local run
+artefacts (error logs, imported CSVs, a real `config.php` with live credentials)
+cannot leak into a published package, and it fails the build if any of them
+appear.
+
+To install:
+
+```bash
+git clone -b hosting https://github.com/dhdhdh51/Bankmitra2.git lrms
+cp -r lrms/. public_html/ && rm -rf public_html/.git
+```
+
 ## Deployment
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** — requirements, database import, upload layout,

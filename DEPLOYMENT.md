@@ -93,7 +93,30 @@ UPDATE users SET password_hash = '<paste hash>' WHERE employee_code = 'ADMIN001'
 The **contents of `admin/`** go into your web root — not the `admin` folder
 itself.
 
-**Option A — Git (preferred)**
+**Option A — the `hosting` branch (easiest)**
+
+That branch *is* the web root: it holds the contents of `admin/` at its top
+level, plus `schema.sql` and the docs, and nothing else. No Android project, no
+test harnesses, no CI files.
+
+```bash
+cd ~
+git clone -b hosting https://github.com/dhdhdh51/Bankmitra2.git lrms
+cp -r lrms/. public_html/
+rm -rf public_html/.git
+```
+
+Or download the branch ZIP from GitHub (*Code → Download ZIP* with the `hosting`
+branch selected) and upload the extracted contents.
+
+To rebuild that branch from source after a change:
+
+```bash
+sh tools/make-hosting-package.sh
+LRMS_DOCROOT=.verify/hosting sh tools/smoke-panel.sh   # verify before publishing
+```
+
+**Option B — Git from source**
 
 ```bash
 cd ~
@@ -101,7 +124,7 @@ git clone https://github.com/dhdhdh51/Bankmitra2.git lrms-src
 cp -r lrms-src/admin/. public_html/
 ```
 
-**Option B — ZIP**
+**Option C — ZIP of the full repository**
 
 Download the repository ZIP, extract locally, and upload everything inside
 `admin/` to `public_html/` with File Manager or FTP. Make sure hidden files
