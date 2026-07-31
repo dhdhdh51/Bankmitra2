@@ -252,15 +252,29 @@ Both scripts refuse to run over HTTP; they are CLI-only.
 
 ### 6.1 CI build (recommended)
 
-`.github/workflows/build-android.yml` builds on every push to `main` and on
-manual dispatch:
+`.github/workflows/build-android.yml` builds on every push to `main`, `feat/**`
+and `fix/**`, on pull requests, and on manual dispatch:
 
 1. GitHub → **Actions** → *Build Android APK* → **Run workflow**
-2. Download the `lrms-debug-*` or `lrms-release-*` artefact from the run summary
+2. Download the artefact from the run summary and install it with
+   `adb install -r <file>.apk`, or copy it to the phone and open it
 
-The release APK from CI is **unsigned** (no keystore is committed). That is fine
-for internal distribution via a signed rebuild, but Play Store upload needs
-signing — see below.
+What you get depends on whether release signing secrets are configured:
+
+| Secrets | Artefact | Installable |
+|---|---|---|
+| configured | `lrms-release-*` → `app-release.apk`, signed and R8-minified | yes |
+| not configured | `lrms-debug-*` → `app-debug.apk`, debug-signed | yes |
+
+CI never uploads an unsigned release APK, because **Android cannot install one**.
+When no keystore is available the debug APK is built instead, so the artefact is
+always something you can put on a phone. The run summary states which one it is.
+
+> **Actions must be enabled for the repository.** If the *Actions* tab shows
+> nothing and `/actions/workflows` reports no workflows, turn it on under
+> Settings → Actions → General → *Allow all actions*. Workflows are also only
+> triggered on branches matching the list above, and `workflow_dispatch` requires
+> the workflow file to exist on the repository's **default branch**.
 
 ### 6.2 Local build
 
@@ -306,7 +320,7 @@ Create a keystore once and keep it safe — losing it means you can never update
 an app published under that key.
 
 ```bash
-keytool -genkey -v -keystore lrms-release.jks \
+keytool -genkeypair -v -keystore lrms-release.jks \
   -keyalg RSA -keysize 2048 -validity 10000 -alias lrms
 ```
 
@@ -319,9 +333,60 @@ keyAlias=lrms
 keyPassword=...
 ```
 
+> **Use the same value for `storePassword` and `keyPassword`.**
+>
+> Since Java 9 `keytool` creates **PKCS12** keystores, which encrypt the private
+> key with the *store* password and cannot hold a separate key password. If you
+> pass `-keypass`, keytool prints `Different store and key passwords not
+> supported for PKCS12 KeyStores. Ignoring user-specified -keypass value` and
+> uses the store password anyway. Put the ignored value in `keystore.properties`
+> and the build dies with:
+>
+> ```
+> com.android.ide.common.signing.KeytoolException: Failed to read key lrms from
+> store "...": Get Key failed: Given final block not properly padded.
+> ```
+>
+> which never mentions passwords. If you genuinely need different passwords, add
+> `-storetype JKS` when creating the keystore.
+
 `assembleRelease` picks the signing config up automatically when this file is
 present, and produces an unsigned APK when it is not — so CI never fails on a
 missing keystore.
+
+#### Signing in GitHub Actions
+
+Add four repository secrets (Settings → Secrets and variables → Actions) and
+`build-android.yml` recreates `keystore.properties` on the runner, signs the
+release APK, verifies it with `apksigner`, and deletes the keystore afterwards:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 lrms-release.jks` |
+| `KEYSTORE_PASSWORD` | the `-storepass` you chose |
+| `KEY_ALIAS` | `lrms` |
+| `KEY_PASSWORD` | same as `KEYSTORE_PASSWORD` for a PKCS12 keystore |
+
+```bash
+base64 -w0 lrms-release.jks > keystore.b64   # paste the contents as KEYSTORE_BASE64
+```
+
+**Without the secrets the workflow builds the debug APK**, not a release APK.
+That is deliberate: `assembleRelease` with no signing config produces
+`app-release-unsigned.apk`, and Android will not install an unsigned APK, so
+publishing one as "the build artefact" would hand you a file you cannot use. The
+debug APK is signed with the auto-generated debug key and installs immediately.
+The run summary says which of the two you got.
+
+The workflow also fails early, with an explanation, rather than after a long
+build if `KEYSTORE_BASE64` is set but any other secret is missing, if the decoded
+keystore cannot be opened, if the alias is absent, or if the key password cannot
+work for the keystore format.
+
+Differences between the debug and release builds, so the debug APK is not a
+surprise: application ID `com.lrms.recovery.debug` (it installs alongside a
+release build rather than replacing it), version name suffixed `-debug`, no R8
+minification, and cleartext HTTP allowed so it can talk to a local dev server.
 
 ### 6.5 Firebase push (optional)
 
@@ -349,6 +414,7 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/integration-test.sh` | 253 checks — import, visits, promises, reports, backup |
 | `sh tools/smoke-panel.sh` | 114 panel + 158 API checks over real HTTP |
 | `sh tools/verify-android.sh` | 69 unit tests, debug + release APK |
+| `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
 
 The Docker-based scripts need Docker; the rest need only PHP.

@@ -317,9 +317,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Integration | `sh tools/integration-test.sh` | **253** |
 | Panel smoke | `sh tools/smoke-panel.sh` | **114** panel + **158** API |
 | Android | `sh tools/verify-android.sh` | **69** unit tests + both APKs |
+| Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 
-**685 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB.
+**704 assertions total.** Release APK is 2.7 MB after R8; debug APK is 7.7 MB
+(measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
+disk, so plain `du -h` overstates it as 6.7 MB).
 
 Exported files are cross-validated by a *second, independent* implementation: the
 generated `.xlsx` and `.pdf` are re-read in Python (`openpyxl` / `pypdf`) and the
@@ -349,6 +352,19 @@ Kept here because they are the reason the tests exist:
    them as null.
 6. PHP 8.4 deprecations in `fgetcsv` / `fputcsv` (`$escape` must now be explicit).
 7. A Kotlin expression-body function containing `return` — a hard compile error.
+8. **The CI release-signing step did not exist**, despite this README once claiming
+   it did. `tools/verify-signing.sh` was written to test the claim, which is how the
+   gap surfaced; the step now exists and is verified end to end.
+9. **A `keytool` keystore with different store and key passwords cannot work.**
+   Since Java 9 keytool defaults to PKCS12, which encrypts the key with the *store*
+   password and silently ignores `-keypass`. Gradle then fails with
+   `Given final block not properly padded`, which never mentions passwords. The
+   workflow now rejects that combination up front with an explanation, and no
+   `keytool` probe can detect it — proven in the test, which is why the check
+   compares the two values instead.
+10. **`du -h` overstated the APK size by 2.5×.** A signed, zipaligned APK is
+    block-padded on disk, so the build summary would have reported a 2.7 MB app as
+    6.7 MB. Size reporting now uses `--apparent-size`.
 
 ---
 
@@ -357,11 +373,22 @@ Kept here because they are the reason the tests exist:
 | Workflow | Trigger | Output |
 |---|---|---|
 | `.github/workflows/verify-backend.yml` | push / PR | `php -l` sweep, core self-test, schema import and integration suite against a MySQL 8 service container |
-| `.github/workflows/build-android.yml` | push / PR / manual | JDK 17 + Android SDK, unit tests, debug **and** release APK uploaded as artifacts |
+| `.github/workflows/build-android.yml` | push / PR / manual | JDK 17 + Android SDK, unit tests, and an **installable** APK as an artifact |
 
-`build-android.yml` also signs the release APK when the repository provides
-`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` secrets;
-without them it still produces an unsigned release build, so a fork never fails CI.
+Both trigger on `main` and on `feat/**` / `fix/**` branches.
+
+`build-android.yml` produces a signed release APK when the repository provides
+`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` secrets —
+it recreates the keystore on the runner, verifies the signature with `apksigner`,
+and deletes the keystore afterwards.
+
+**Without those secrets it builds the debug APK instead.** That is the important
+part: `assembleRelease` with no signing config emits `app-release-unsigned.apk`,
+and **Android refuses to install an unsigned APK**, so uploading one as "the
+build" would give you a file you cannot put on a phone. The debug APK is signed
+with the auto-generated debug key and installs immediately. `tools/verify-signing.sh`
+asserts both halves of this: that the unsigned release APK fails `apksigner verify`,
+and that the debug APK passes it.
 
 ---
 

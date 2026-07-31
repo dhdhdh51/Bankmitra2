@@ -1,11 +1,20 @@
 name: Build Android APK
 
-# Builds the LRMS agent app on every push to main, on pull requests, and on
-# manual dispatch. Produces debug and release APKs plus the test reports as
-# downloadable artefacts.
+# Builds the LRMS agent app on every push to main or a feature branch, on pull
+# requests, and on manual dispatch. Produces the test report plus an APK you can
+# actually install:
+#
+#   * Keystore secrets configured  -> a signed release APK (and the debug APK).
+#   * No keystore secrets          -> the DEBUG APK only.
+#
+# The second case matters. `assembleRelease` without a signing config emits
+# app-release-unsigned.apk, and Android refuses to install an unsigned APK, so
+# shipping one as "the artefact" would hand you a file you cannot use. The debug
+# APK is signed with the auto-generated debug key and installs straight away, so
+# that is what an unsigned build uploads instead.
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**', 'fix/**']
     paths:
       - 'android/**'
       - '.github/workflows/build-android.yml'
@@ -17,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Which variants to build'
+        description: 'Which variants to build (release needs keystore secrets)'
         required: false
         default: 'both'
         type: choice
@@ -40,6 +49,15 @@ jobs:
     name: Unit tests and APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
+    # Lifted to job level so the steps below can branch on whether a keystore
+    # was supplied: the `secrets` context is not usable in a step-level `if`,
+    # but `env` is.
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -72,6 +90,47 @@ jobs:
           echo "Gradle: $(./gradlew --version | grep '^Gradle' | head -1)"
           echo "SDK:    ${ANDROID_HOME:-unset}"
 
+      # Decides up front which variants are worth building, so every later step
+      # is a simple flag check and the reason is visible in the log.
+      - name: Plan the build
+        id: plan
+        run: |
+          set -eu
+          WANT="${{ github.event.inputs.build_type }}"
+          [ -n "$WANT" ] || WANT=both
+
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then SIGN=yes; else SIGN=no; fi
+
+          DEBUG=no
+          RELEASE=no
+          case "$WANT" in
+            debug)
+              DEBUG=yes
+              ;;
+            release)
+              if [ "$SIGN" = yes ]; then
+                RELEASE=yes
+              else
+                # An unsigned release APK cannot be installed, so asking for one
+                # without a keystore gets a debug APK and a clear warning.
+                DEBUG=yes
+                echo "::warning::No keystore secrets are configured, so a signed release APK cannot be produced. Building the installable debug APK instead."
+              fi
+              ;;
+            *)
+              DEBUG=yes
+              [ "$SIGN" = yes ] && RELEASE=yes
+              ;;
+          esac
+
+          {
+            echo "sign=$SIGN"
+            echo "debug=$DEBUG"
+            echo "release=$RELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "requested=$WANT  signing=$SIGN  ->  debug=$DEBUG  release=$RELEASE"
+
       - name: Run unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
@@ -88,15 +147,92 @@ jobs:
           if-no-files-found: warn
 
       - name: Build debug APK
-        if: ${{ github.event.inputs.build_type != 'release' }}
+        if: ${{ steps.plan.outputs.debug == 'yes' }}
         run: ./gradlew --no-daemon assembleDebug
 
+      # app/build.gradle.kts wires up a release signingConfig only when
+      # android/keystore.properties exists, so materialising that file from the
+      # secrets is all that is needed.
+      - name: Configure release signing
+        if: ${{ steps.plan.outputs.release == 'yes' }}
+        run: |
+          set -eu
+          if [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::KEYSTORE_BASE64 is set but KEYSTORE_PASSWORD, KEY_ALIAS or KEY_PASSWORD is missing."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
+
+          # A truncated or mis-pasted secret is an obscure Gradle failure later,
+          # so check the keystore opens before spending 20 minutes on a build.
+          if ! keytool -list -keystore release.keystore -storepass "$KEYSTORE_PASSWORD" > /dev/null 2>&1; then
+            echo "::error::The decoded keystore could not be opened. Check KEYSTORE_BASE64 and KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          if ! keytool -list -keystore release.keystore -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::Alias '$KEY_ALIAS' is not in the keystore. Aliases present:"
+            keytool -list -keystore release.keystore -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | grep -i 'PrivateKeyEntry' || true
+            exit 1
+          fi
+
+          # A wrong KEY_PASSWORD surfaces much later as Gradle's baffling
+          # "Given final block not properly padded", so probe it now. How to
+          # probe depends on the keystore format, which is why this is not a
+          # one-liner:
+          #
+          #   PKCS12 (keytool's default since Java 9) encrypts the key with the
+          #   STORE password and ignores any key password entirely - keytool even
+          #   ignores -keypass at creation time with a warning. So a differing
+          #   KEY_PASSWORD can never work, and no keytool probe detects it
+          #   because every probe silently falls back to the store password.
+          #   Comparing the two values is the only reliable check.
+          #
+          #   JKS encrypts each key separately, so -certreq is a real probe.
+          STORE_TYPE=$(keytool -list -keystore release.keystore -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | sed -n 's/^Keystore type: //p' | head -1)
+          echo "Keystore format: ${STORE_TYPE:-unknown}"
+
+          if [ "$STORE_TYPE" = "PKCS12" ]; then
+            if [ "$KEY_PASSWORD" != "$KEYSTORE_PASSWORD" ]; then
+              echo "::error::KEY_PASSWORD differs from KEYSTORE_PASSWORD, but this is a PKCS12 keystore, which encrypts the private key with the store password and cannot hold a separate key password. keytool silently ignored the -keypass you gave when the keystore was created. Set KEY_PASSWORD to the same value as KEYSTORE_PASSWORD."
+              exit 1
+            fi
+          else
+            if ! keytool -certreq -alias "$KEY_ALIAS" -keystore release.keystore \
+                   -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" > /dev/null 2>&1; then
+              echo "::error::KEY_PASSWORD does not open the private key for alias '$KEY_ALIAS'."
+              exit 1
+            fi
+          fi
+
+          umask 077
+          {
+            echo "storeFile=release.keystore"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+          echo "Release signing configured for alias '$KEY_ALIAS'."
+
       - name: Build release APK
-        if: ${{ github.event.inputs.build_type != 'debug' }}
-        # No signing config is committed, so this produces an unsigned release
-        # APK. Add a keystore and keystore.properties to get a signed build; see
-        # DEPLOYMENT.md.
+        if: ${{ steps.plan.outputs.release == 'yes' }}
         run: ./gradlew --no-daemon assembleRelease
+
+      - name: Verify the release signature
+        if: ${{ steps.plan.outputs.release == 'yes' }}
+        run: |
+          set -eu
+          if [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            echo "::error::Gradle produced an unsigned APK despite keystore.properties being present."
+            exit 1
+          fi
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+
+      # The keystore must never survive into an artefact, a cache or a log.
+      - name: Remove the keystore
+        if: always()
+        run: rm -f release.keystore keystore.properties
 
       - name: Read the app version
         id: version
@@ -106,7 +242,7 @@ jobs:
           echo "App version: ${VERSION}"
 
       - name: Upload debug APK
-        if: ${{ github.event.inputs.build_type != 'release' }}
+        if: ${{ steps.plan.outputs.debug == 'yes' }}
         uses: actions/upload-artifact@v4
         with:
           name: lrms-debug-v${{ steps.version.outputs.name }}-${{ github.run_number }}
@@ -114,17 +250,17 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Upload release APK
-        if: ${{ github.event.inputs.build_type != 'debug' }}
+      - name: Upload signed release APK
+        if: ${{ steps.plan.outputs.release == 'yes' }}
         uses: actions/upload-artifact@v4
         with:
           name: lrms-release-v${{ steps.version.outputs.name }}-${{ github.run_number }}
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
           if-no-files-found: error
 
       - name: Upload R8 mapping file
-        if: ${{ github.event.inputs.build_type != 'debug' }}
+        if: ${{ steps.plan.outputs.release == 'yes' }}
         # Required to symbolise a stack trace from a minified release build.
         uses: actions/upload-artifact@v4
         with:
@@ -144,19 +280,29 @@ jobs:
             echo "| Version | ${{ steps.version.outputs.name }} |"
             echo "| Run | #${{ github.run_number }} |"
             echo "| Commit | \`${GITHUB_SHA:0:8}\` |"
+            echo "| Release signing | ${{ steps.plan.outputs.sign == 'yes' && 'configured' || 'not configured' }} |"
             echo ""
-            if ls app/build/outputs/apk/debug/*.apk >/dev/null 2>&1; then
-              echo "**Debug APK**"
+            # --apparent-size, not plain du: a signed and zipaligned APK is
+            # block-padded on disk, so `du -h` reports roughly 6.7M for a 2.7M
+            # file and makes the app look bloated in the summary.
+            if ls app/build/outputs/apk/debug/*.apk > /dev/null 2>&1; then
+              echo "**Debug APK** — debug-signed, installs on any device"
               for f in app/build/outputs/apk/debug/*.apk; do
-                echo "- \`$(basename "$f")\` ($(du -h "$f" | cut -f1))"
+                echo "- \`$(basename "$f")\` ($(du -h --apparent-size "$f" | cut -f1))"
               done
-            fi
-            if ls app/build/outputs/apk/release/*.apk >/dev/null 2>&1; then
               echo ""
-              echo "**Release APK** (unsigned unless a keystore is configured)"
-              for f in app/build/outputs/apk/release/*.apk; do
-                echo "- \`$(basename "$f")\` ($(du -h "$f" | cut -f1))"
-              done
+            fi
+            if ls app/build/outputs/apk/release/app-release.apk > /dev/null 2>&1; then
+              echo "**Release APK** — signed with your keystore, minified by R8"
+              f=app/build/outputs/apk/release/app-release.apk
+              echo "- \`$(basename "$f")\` ($(du -h --apparent-size "$f" | cut -f1))"
+              echo ""
+            fi
+            if [ "${{ steps.plan.outputs.sign }}" != "yes" ]; then
+              echo "> No keystore secrets are configured, so no release APK was built."
+              echo "> Install the **debug APK** above. To get a signed release build, add the"
+              echo "> \`KEYSTORE_BASE64\`, \`KEYSTORE_PASSWORD\`, \`KEY_ALIAS\` and \`KEY_PASSWORD\`"
+              echo "> secrets — see DEPLOYMENT.md section 6.4."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

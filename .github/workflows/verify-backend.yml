@@ -4,7 +4,7 @@ name: Verify backend
 # suite against a real MySQL service.
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**', 'fix/**']
     paths:
       - 'admin/**'
       - 'schema.sql'
@@ -94,11 +94,15 @@ jobs:
           MYSQL_DATABASE: lrms
         ports:
           - 3306:3306
+        # `mysqladmin ping` answers successfully while the entrypoint's temporary
+        # initialisation server is still up, so it reports ready too early. An
+        # actual query against the target database is the only honest check.
         options: >-
-          --health-cmd="mysqladmin ping -uroot -proot"
-          --health-interval=10s
+          --health-cmd="mysql -uroot -proot -e 'SELECT 1' lrms"
+          --health-interval=5s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=20
+          --health-start-period=30s
 
     steps:
       - uses: actions/checkout@v4
@@ -109,11 +113,14 @@ jobs:
           extensions: pdo_mysql, mbstring, zip, gd, openssl, fileinfo
           coverage: none
 
+      # Belt and braces: poll with a real query rather than `mysqladmin ping`,
+      # which returns success against the temporary init server and caused
+      # intermittent "table does not exist" failures during local development.
       - name: Wait for MySQL
         run: |
-          for i in $(seq 1 30); do
-            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent; then
-              echo "MySQL is ready"
+          for i in $(seq 1 60); do
+            if mysql -h 127.0.0.1 -P 3306 -uroot -proot -e "SELECT 1" lrms > /dev/null 2>&1; then
+              echo "MySQL is ready after ${i} attempt(s)"
               exit 0
             fi
             sleep 2
