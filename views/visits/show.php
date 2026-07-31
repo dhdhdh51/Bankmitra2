@@ -4,6 +4,8 @@
  * report row (not from current customer data).
  *
  * @var array<string,mixed>       $report
+ * @var array<string,mixed>|null  $ots   KRM / OTS settlement section, when filed
+ * @var array<string,mixed>|null  $ckcc  CKCC OD-2 renewal section, when filed
  * @var list<array<string,mixed>> $photos
  * @var list<array<string,mixed>> $documents
  * @var list<array<string,mixed>> $signatures
@@ -183,6 +185,182 @@ foreach ($signatures as $signature) {
                 </dl>
             </div>
         </div>
+
+        <!-- ================= KRM / OTS settlement =================
+             Only rendered when the agent filed this section. -->
+        <?php if ($ots !== null): ?>
+            <div class="lrms-card lrms-card-accent mb-3">
+                <div class="lrms-card-head">
+                    <h2>KRM / OTS settlement</h2>
+                    <?php if (!empty($ots['scheme'])): ?>
+                        <span class="lrms-badge badge-promise">
+                            <?= e(VisitReport::OTS_SCHEMES[$ots['scheme']] ?? $ots['scheme']) ?>
+                        </span>
+                    <?php endif; ?>
+                    <?php
+                    $statusTone = [
+                        'approved' => 'badge-visited',
+                        'rejected' => 'badge-legal',
+                        'pending'  => 'badge-pending',
+                    ][$ots['approval_status']] ?? 'badge-pending';
+                    ?>
+                    <span class="lrms-badge <?= e($statusTone) ?>">
+                        <?= e(VisitReport::OTS_APPROVAL_STATUSES[$ots['approval_status']] ?? $ots['approval_status']) ?>
+                    </span>
+                </div>
+                <div class="lrms-card-body">
+                    <dl class="lrms-dl">
+                        <div><dt>Eligible for KRM / OTS</dt><dd><?= yes_no($ots['eligible_for_ots']) ?></dd></div>
+                        <div><dt>Outstanding at visit</dt><dd><?= e(rupees($ots['outstanding_amount'])) ?></dd></div>
+                        <div>
+                            <dt>Relief / waiver</dt>
+                            <dd><?= $ots['relief_waiver_percent'] === null ? '&mdash;' : e(rtrim(rtrim(number_format((float) $ots['relief_waiver_percent'], 2), '0'), '.')) . '%' ?></dd>
+                        </div>
+                        <div><dt>Residual loan balance</dt><dd><?= e(rupees($ots['rlb_amount'])) ?></dd></div>
+                    </dl>
+
+                    <!-- The settlement figures are what the branch acts on, so they
+                         are given the prominence a table row would not. -->
+                    <div class="lrms-stat-row mt-3">
+                        <div class="lrms-stat">
+                            <span class="lrms-stat-label">Borrower&rsquo;s payable
+                                <?php if ($ots['payable_percent'] !== null): ?>
+                                    (<?= e(rtrim(rtrim(number_format((float) $ots['payable_percent'], 2), '0'), '.')) ?>%)
+                                <?php endif; ?>
+                            </span>
+                            <span class="lrms-stat-value"><?= e(rupees($ots['borrower_payable_amount'])) ?></span>
+                        </div>
+                        <div class="lrms-stat">
+                            <span class="lrms-stat-label">Total settlement</span>
+                            <span class="lrms-stat-value"><?= e(rupees($ots['total_settlement_amount'])) ?></span>
+                        </div>
+                        <div class="lrms-stat">
+                            <span class="lrms-stat-label">Balance payable</span>
+                            <span class="lrms-stat-value"><?= e(rupees($ots['balance_payable'])) ?></span>
+                        </div>
+                    </div>
+
+                    <h3 class="lrms-subhead mt-4">Initial deposit</h3>
+                    <!-- Stated on screen, not just in the schema: the agent records
+                         a payment the borrower made to the bank. -->
+                    <p class="lrms-note">
+                        Paid by the borrower at the bank and evidenced by the bank&rsquo;s own
+                        receipt. Agents never collect money.
+                    </p>
+                    <dl class="lrms-dl">
+                        <div>
+                            <dt>Required deposit
+                                <?php if ($ots['initial_deposit_percent'] !== null): ?>
+                                    (<?= e(rtrim(rtrim(number_format((float) $ots['initial_deposit_percent'], 2), '0'), '.')) ?>%)
+                                <?php endif; ?>
+                            </dt>
+                            <dd><?= e(rupees($ots['required_deposit_amount'])) ?></dd>
+                        </div>
+                        <div><dt>Deposit received</dt><dd><?= yes_no($ots['deposit_received']) ?></dd></div>
+                        <div><dt>Deposit amount</dt><dd><?= e(rupees($ots['deposit_amount'])) ?></dd></div>
+                        <div><dt>Deposit date</dt><dd><?= $ots['deposit_date'] === null ? '&mdash;' : fmt_date($ots['deposit_date']) ?></dd></div>
+                        <div><dt>Receipt / transaction ID</dt><dd><?= nullable($ots['deposit_reference']) ?></dd></div>
+                        <div><dt>Proposed final payment</dt><dd><?= $ots['proposed_final_payment_date'] === null ? '&mdash;' : fmt_date($ots['proposed_final_payment_date']) ?></dd></div>
+                    </dl>
+
+                    <h3 class="lrms-subhead mt-4">Validity</h3>
+                    <dl class="lrms-dl">
+                        <div><dt>Valid from</dt><dd><?= $ots['validity_from'] === null ? '&mdash;' : fmt_date($ots['validity_from']) ?></dd></div>
+                        <div><dt>Valid to</dt><dd><?= $ots['validity_to'] === null ? '&mdash;' : fmt_date($ots['validity_to']) ?></dd></div>
+                        <div><dt>Expected closure</dt><dd><?= $ots['expected_closure_date'] === null ? '&mdash;' : fmt_date($ots['expected_closure_date']) ?></dd></div>
+                        <div><dt>Borrower accepted terms</dt><dd><?= yes_no($ots['borrower_accepted']) ?></dd></div>
+                    </dl>
+
+                    <?php if (!empty($ots['rejection_reason'])): ?>
+                        <div class="lrms-callout lrms-callout-danger mt-3">
+                            <strong>Not accepted:</strong> <?= e($ots['rejection_reason']) ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- ================= CKCC OD-2 renewal ================= -->
+        <?php if ($ckcc !== null): ?>
+            <?php
+            $days = $ckcc['days_remaining'] === null ? null : (int) $ckcc['days_remaining'];
+            // The deadline is the whole point of this report, so its consequence is
+            // spelled out rather than left as arithmetic for the reader.
+            $tone = 'lrms-callout-info';
+            if ($days !== null) {
+                $tone = $days < 0 ? 'lrms-callout-danger' : ($days <= 7 ? 'lrms-callout-warning' : 'lrms-callout-info');
+            }
+            ?>
+            <div class="lrms-card lrms-card-accent mb-3">
+                <div class="lrms-card-head">
+                    <h2>CKCC OD-2 renewal</h2>
+                    <?php if (!empty($ckcc['renewal_due_bucket'])): ?>
+                        <span class="lrms-badge <?= $ckcc['renewal_due_bucket'] === 'overdue' ? 'badge-legal' : 'badge-pending' ?>">
+                            <?= e(VisitReport::CKCC_DUE_BUCKETS[$ckcc['renewal_due_bucket']] ?? $ckcc['renewal_due_bucket']) ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
+                <div class="lrms-card-body">
+                    <?php if ($days !== null): ?>
+                        <div class="lrms-callout <?= e($tone) ?>">
+                            <strong>
+                                <?php if ($days < 0): ?>
+                                    Renewal overdue by <?= e((string) abs($days)) ?> day<?= abs($days) === 1 ? '' : 's' ?>
+                                <?php elseif ($days === 0): ?>
+                                    Renewal is due today
+                                <?php else: ?>
+                                    <?= e((string) $days) ?> day<?= $days === 1 ? '' : 's' ?> left to renew
+                                <?php endif; ?>
+                            </strong>
+                            <?php if (!empty($ckcc['expected_npa_date'])): ?>
+                                <div class="mt-1">
+                                    If the renewal is not completed, this account is expected to turn
+                                    NPA on <strong><?= fmt_date($ckcc['expected_npa_date']) ?></strong>.
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <dl class="lrms-dl mt-3">
+                        <div><dt>CIF number</dt><dd><?= nullable($ckcc['cif_number']) ?></dd></div>
+                        <div><dt>Sanction date</dt><dd><?= $ckcc['sanction_date'] === null ? '&mdash;' : fmt_date($ckcc['sanction_date']) ?></dd></div>
+                        <div><dt>Sanction limit</dt><dd><?= e(rupees($ckcc['sanction_limit'])) ?></dd></div>
+                        <div><dt>Drawing power</dt><dd><?= e(rupees($ckcc['drawing_power'])) ?></dd></div>
+                        <div><dt>Outstanding</dt><dd><?= e(rupees($ckcc['outstanding_amount'])) ?></dd></div>
+                        <div><dt>Interest overdue</dt><dd><?= e(rupees($ckcc['interest_overdue'])) ?></dd></div>
+                        <div><dt>Renewal due</dt><dd><?= $ckcc['renewal_due_date'] === null ? '&mdash;' : fmt_date($ckcc['renewal_due_date']) ?></dd></div>
+                        <div><dt>KYC status</dt><dd><?= $ckcc['kyc_status'] === null ? '&mdash;' : e(ucfirst((string) $ckcc['kyc_status'])) ?></dd></div>
+                    </dl>
+
+                    <h3 class="lrms-subhead mt-4">Renewal eligibility</h3>
+                    <?= $flagBlock(VisitReport::CKCC_ELIGIBILITY_FLAGS, $ckcc) ?>
+
+                    <h3 class="lrms-subhead mt-4">Documents the borrower had</h3>
+                    <p class="lrms-note">What exists, whether or not it was photographed.</p>
+                    <?= $flagBlock(VisitReport::CKCC_DOCUMENT_FLAGS, $ckcc) ?>
+                    <?php if (!empty($ckcc['doc_other_text'])): ?>
+                        <p class="text-muted mt-2">Other: <?= e($ckcc['doc_other_text']) ?></p>
+                    <?php endif; ?>
+
+                    <h3 class="lrms-subhead mt-4">Renewal consent</h3>
+                    <?= $flagBlock(VisitReport::CKCC_CONSENT_FLAGS, $ckcc) ?>
+
+                    <?php if (!empty($ckcc['agent_observation'])): ?>
+                        <h3 class="lrms-subhead mt-4">BC agent observation</h3>
+                        <p class="lrms-prose"><?= nl2br(e($ckcc['agent_observation'])) ?></p>
+                    <?php endif; ?>
+
+                    <h3 class="lrms-subhead mt-4">BC agent recommendation</h3>
+                    <?= $flagBlock(VisitReport::CKCC_RECOMMENDATION_FLAGS, $ckcc) ?>
+                    <?php if (!empty($ckcc['rec_other_text'])): ?>
+                        <p class="text-muted mt-2">Other: <?= e($ckcc['rec_other_text']) ?></p>
+                    <?php endif; ?>
+
+                    <h3 class="lrms-subhead mt-4">Report status</h3>
+                    <?= $flagBlock(VisitReport::CKCC_STATUS_FLAGS, $ckcc) ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- Recovery possibility -->
         <div class="lrms-card mb-3">

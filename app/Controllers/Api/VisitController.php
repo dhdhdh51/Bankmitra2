@@ -172,8 +172,16 @@ final class VisitController extends Controller
             Auth::assertBranchAccess((int) $report['branch_id']);
         }
 
+        // Present as null rather than an empty object when the section was not
+        // filled in: the app renders the card only when there is something in it,
+        // and an empty object would produce a heading over nothing.
+        $ots = VisitReport::otsDetails($id);
+        $ckcc = VisitReport::ckccDetails($id);
+
         Response::success([
             'report'     => $this->presentVisitFull($report, $withPii),
+            'ots'        => $ots === null ? null : $this->presentOts($ots),
+            'ckcc'       => $ckcc === null ? null : $this->presentCkcc($ckcc),
             'photos'     => array_map(fn (array $m): array => $this->presentMedia($m, 'photo'), VisitReport::photos($id)),
             'documents'  => array_map(fn (array $m): array => $this->presentMedia($m, 'document'), VisitReport::documents($id)),
             'signatures' => array_map(fn (array $m): array => $this->presentMedia($m, 'signature'), VisitReport::signatures($id)),
@@ -197,6 +205,29 @@ final class VisitController extends Controller
             'recovery_flags'       => $this->flagList(VisitReport::RECOVERY_FLAGS),
             'reason_flags'         => $this->flagList(VisitReport::REASON_FLAGS),
             'recommendation_flags' => $this->flagList(VisitReport::RECOMMENDATION_FLAGS),
+
+            // Which kind of report the agent is filing. The app shows the extra
+            // sections only for the type selected, so a plain recovery visit is
+            // not buried under forty settlement fields.
+            'report_types' => $this->optionList(VisitReport::REPORT_TYPES),
+
+            'ots' => [
+                'schemes'          => $this->optionList(VisitReport::OTS_SCHEMES),
+                'approval_statuses' => $this->optionList(VisitReport::OTS_APPROVAL_STATUSES),
+                // Scheme defaults the app pre-fills; both stay editable per case.
+                'default_payable_percent'         => 22.50,
+                'default_initial_deposit_percent' => 10.00,
+            ],
+
+            'ckcc' => [
+                'due_buckets'          => $this->optionList(VisitReport::CKCC_DUE_BUCKETS),
+                'kyc_statuses'         => $this->optionList(VisitReport::CKCC_KYC_STATUSES),
+                'eligibility_flags'    => $this->flagList(VisitReport::CKCC_ELIGIBILITY_FLAGS),
+                'document_flags'       => $this->flagList(VisitReport::CKCC_DOCUMENT_FLAGS),
+                'consent_flags'        => $this->flagList(VisitReport::CKCC_CONSENT_FLAGS),
+                'recommendation_flags' => $this->flagList(VisitReport::CKCC_RECOMMENDATION_FLAGS),
+                'status_flags'         => $this->flagList(VisitReport::CKCC_STATUS_FLAGS),
+            ],
         ]);
     }
 
@@ -209,6 +240,122 @@ final class VisitController extends Controller
         $out = [];
         foreach ($map as $key => $label) {
             $out[] = ['key' => $key, 'label' => $label];
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function presentOts(array $row): array
+    {
+        $amount = static fn (string $k): ?float => $row[$k] === null ? null : round((float) $row[$k], 2);
+        $percent = static fn (string $k): ?float => $row[$k] === null ? null : round((float) $row[$k], 2);
+
+        return [
+            'eligible_for_ots' => (int) $row['eligible_for_ots'] === 1,
+            'scheme'           => $row['scheme'] === null ? null : (string) $row['scheme'],
+            'scheme_label'     => $row['scheme'] === null
+                ? null
+                : (VisitReport::OTS_SCHEMES[(string) $row['scheme']] ?? (string) $row['scheme']),
+
+            'outstanding_amount'      => $amount('outstanding_amount'),
+            'relief_waiver_percent'   => $percent('relief_waiver_percent'),
+            'rlb_amount'              => $amount('rlb_amount'),
+            'payable_percent'         => $percent('payable_percent'),
+            'borrower_payable_amount' => $amount('borrower_payable_amount'),
+            'total_settlement_amount' => $amount('total_settlement_amount'),
+
+            'initial_deposit_percent' => $percent('initial_deposit_percent'),
+            'required_deposit_amount' => $amount('required_deposit_amount'),
+            'deposit_received'        => (int) $row['deposit_received'] === 1,
+            'deposit_amount'          => $amount('deposit_amount'),
+            'deposit_date'            => $row['deposit_date'] === null ? null : (string) $row['deposit_date'],
+            'deposit_reference'       => $row['deposit_reference'] === null ? null : (string) $row['deposit_reference'],
+            'balance_payable'         => $amount('balance_payable'),
+            'proposed_final_payment_date' => $row['proposed_final_payment_date'] === null ? null : (string) $row['proposed_final_payment_date'],
+
+            'approval_status'       => (string) $row['approval_status'],
+            'approval_status_label' => VisitReport::OTS_APPROVAL_STATUSES[(string) $row['approval_status']] ?? (string) $row['approval_status'],
+            'validity_from'         => $row['validity_from'] === null ? null : (string) $row['validity_from'],
+            'validity_to'           => $row['validity_to'] === null ? null : (string) $row['validity_to'],
+            'expected_closure_date' => $row['expected_closure_date'] === null ? null : (string) $row['expected_closure_date'],
+
+            'borrower_accepted' => (int) $row['borrower_accepted'] === 1,
+            'rejection_reason'  => $row['rejection_reason'] === null ? null : (string) $row['rejection_reason'],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function presentCkcc(array $row): array
+    {
+        $flags = static function (array $map) use ($row): array {
+            $out = [];
+            foreach ($map as $key => $label) {
+                $out[] = [
+                    'key'     => $key,
+                    'label'   => $label,
+                    'checked' => (int) ($row[$key] ?? 0) === 1,
+                ];
+            }
+            return $out;
+        };
+
+        $amount = static fn (string $k): ?float => $row[$k] === null ? null : round((float) $row[$k], 2);
+        $date = static fn (string $k): ?string => $row[$k] === null ? null : (string) $row[$k];
+
+        return [
+            'cif_number'         => $row['cif_number'] === null ? null : (string) $row['cif_number'],
+            'sanction_date'      => $date('sanction_date'),
+            'sanction_limit'     => $amount('sanction_limit'),
+            'drawing_power'      => $amount('drawing_power'),
+            'outstanding_amount' => $amount('outstanding_amount'),
+            'interest_overdue'   => $amount('interest_overdue'),
+            'renewal_due_date'   => $date('renewal_due_date'),
+            'expected_npa_date'  => $date('expected_npa_date'),
+            'days_remaining'     => $row['days_remaining'] === null ? null : (int) $row['days_remaining'],
+
+            'eligible_for_renewal' => (int) $row['eligible_for_renewal'] === 1,
+            'renewal_due_bucket'   => $row['renewal_due_bucket'] === null ? null : (string) $row['renewal_due_bucket'],
+            'renewal_due_label'    => $row['renewal_due_bucket'] === null
+                ? null
+                : (VisitReport::CKCC_DUE_BUCKETS[(string) $row['renewal_due_bucket']] ?? null),
+            'kyc_status'           => $row['kyc_status'] === null ? null : (string) $row['kyc_status'],
+            'aadhaar_seeded'         => (int) $row['aadhaar_seeded'] === 1,
+            'mobile_linked'          => (int) $row['mobile_linked'] === 1,
+            'aadhaar_auth_completed' => (int) $row['aadhaar_auth_completed'] === 1,
+
+            'documents'      => $flags(VisitReport::CKCC_DOCUMENT_FLAGS),
+            'doc_other_text' => $row['doc_other_text'] === null ? null : (string) $row['doc_other_text'],
+            'consent'        => $flags(VisitReport::CKCC_CONSENT_FLAGS),
+            'recommendations' => $flags(VisitReport::CKCC_RECOMMENDATION_FLAGS),
+            'rec_other_text' => $row['rec_other_text'] === null ? null : (string) $row['rec_other_text'],
+            'report_status'  => $flags(VisitReport::CKCC_STATUS_FLAGS),
+
+            'agent_observation' => $row['agent_observation'] === null ? null : (string) $row['agent_observation'],
+        ];
+    }
+
+    /**
+     * Same data, but keyed `value`/`label` rather than `key`/`label`.
+     *
+     * The two shapes are not interchangeable on the wire: a flag is a checkbox
+     * the app posts back by name, an option is a dropdown choice it posts as a
+     * value. The app's DTOs are typed accordingly, so mixing them up produces
+     * empty dropdowns.
+     *
+     * @param array<string,string> $map
+     * @return list<array{value:string,label:string}>
+     */
+    private function optionList(array $map): array
+    {
+        $out = [];
+        foreach ($map as $value => $label) {
+            $out[] = ['value' => $value, 'label' => $label];
         }
         return $out;
     }

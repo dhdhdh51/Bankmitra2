@@ -897,3 +897,115 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
         transition-duration: .001ms !important;
     }
 }
+
+
+/* ==========================================================================
+   Report-type sections  (KRM/OTS settlement, CKCC OD-2 renewal)
+
+   These are additional sections of a field visit report rather than separate
+   pages, so they reuse the card shell and only add what is genuinely new: an
+   accent to mark them apart from the standard recovery sections, a figure row
+   for amounts a branch acts on, and callouts for a deadline or a refusal.
+   ========================================================================== */
+
+/* A top edge in the brand colour. Cheaper to scan than a differently coloured
+   card, and it survives printing to PDF as a visible rule. */
+.lrms-card-accent { border-top: 3px solid var(--lrms-primary); }
+
+.lrms-card-head h2 + .lrms-badge { margin-left: .5rem; }
+
+/* Subheading inside a card body, for the groups within a long section. */
+.lrms-subhead {
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--lrms-muted);
+    margin: 0 0 .5rem;
+}
+
+/* A quiet line of explanation under a subheading - used where the form has to
+   state a rule, e.g. that a deposit was paid at the bank, not to the agent. */
+.lrms-note {
+    font-size: .8125rem;
+    color: var(--lrms-muted);
+    margin: -.25rem 0 .75rem;
+}
+
+.lrms-prose {
+    margin: 0;
+    color: var(--lrms-ink);
+    line-height: 1.65;
+    white-space: pre-line;
+}
+
+/* Figures a branch acts on: settlement amounts get more weight than a table
+   row would give them. Wraps to one per line on a narrow screen. */
+.lrms-stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: .75rem;
+}
+
+.lrms-stat {
+    background: var(--lrms-primary-light);
+    border: 1px solid rgba(25, 87, 194, .18);
+    border-radius: 10px;
+    padding: .7rem .85rem;
+}
+
+.lrms-stat-label {
+    display: block;
+    font-size: .6875rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--lrms-primary-dark);
+    margin-bottom: .2rem;
+}
+
+.lrms-stat-value {
+    display: block;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--lrms-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Callout: a consequence, not a field. The renewal deadline uses the tone to
+   carry urgency so nobody has to work out the arithmetic while skimming. */
+.lrms-callout {
+    border: 1px solid var(--lrms-border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    padding: .75rem .9rem;
+    font-size: .875rem;
+    line-height: 1.55;
+    background: var(--lrms-surface-variant);
+    color: var(--lrms-ink);
+}
+
+.lrms-callout-info {
+    background: var(--lrms-info-light);
+    border-color: rgba(25, 87, 194, .22);
+    border-left-color: var(--lrms-primary);
+}
+
+.lrms-callout-warning {
+    background: var(--lrms-warning-light);
+    border-color: rgba(183, 121, 31, .22);
+    border-left-color: var(--lrms-warning);
+}
+
+.lrms-callout-danger {
+    background: var(--lrms-danger-light);
+    border-color: rgba(179, 38, 30, .22);
+    border-left-color: var(--lrms-danger);
+}
+
+@media print {
+    /* Backgrounds are usually dropped when printing, so keep the border - a
+       printed report must still show which sections were flagged urgent. */
+    .lrms-callout { background: #fff !important; }
+    .lrms-stat { background: #fff !important; }
+}

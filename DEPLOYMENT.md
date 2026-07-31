@@ -447,8 +447,8 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/integration-test.sh` | 264 checks — import, visits, promises, reports, backup |
 | `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 114 panel + 162 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 87 unit tests (incl. 18 app/API contract checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 130 panel + 162 API checks over real HTTP |
+| `sh tools/verify-android.sh` | 110 unit tests (incl. 20 app/API contract checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |

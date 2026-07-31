@@ -134,6 +134,9 @@ abstract class Controller
     {
         return [
             'id'                 => (int) $visit['id'],
+            // Which kind of report this is, so a list can label a settlement or a
+            // renewal instead of showing every row as a plain recovery visit.
+            'report_type'        => (string) ($visit['report_type'] ?? 'recovery'),
             'visit_date'         => (string) $visit['visit_date'],
             'visit_time'         => (string) $visit['visit_time'],
             'agent_name'         => (string) $visit['agent_name'],

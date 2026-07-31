@@ -255,6 +255,18 @@ CREATE TABLE `loan_accounts` (
   `overdue_amount`       DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `npa_date`             DATE         DEFAULT NULL,
   `is_npa`              TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'derived: npa_date IS NOT NULL',
+
+  -- ---- CKCC / cash-credit attributes -------------------------------------
+  -- Imported from the bank's file. A CKCC OD account has to be renewed before
+  -- its due date or it slips into NPA, so these drive the renewal worklist and
+  -- pre-fill the agent's renewal report instead of making them copy figures off
+  -- a passbook in the field.
+  `cif_number`             VARCHAR(40)   DEFAULT NULL,
+  `sanction_date`          DATE          DEFAULT NULL,
+  `sanction_limit`         DECIMAL(15,2) DEFAULT NULL,
+  `drawing_power`          DECIMAL(15,2) DEFAULT NULL,
+  `interest_overdue`       DECIMAL(15,2) DEFAULT NULL,
+  `ckcc_renewal_due_date`  DATE          DEFAULT NULL COMMENT 'renewal deadline; NPA follows if missed',
   `current_status`       ENUM('pending','visited','promise','followup','legal','closed') NOT NULL DEFAULT 'pending',
   `assigned_agent_id`    INT UNSIGNED DEFAULT NULL,
   `assigned_at`          DATETIME     DEFAULT NULL,
@@ -277,6 +289,8 @@ CREATE TABLE `loan_accounts` (
   KEY `idx_loan_type` (`loan_type`),
   KEY `idx_loan_npa` (`is_npa`, `npa_date`),
   KEY `idx_loan_followup` (`next_followup_date`),
+  KEY `idx_loan_ckcc_renewal` (`ckcc_renewal_due_date`),
+  KEY `idx_loan_cif` (`cif_number`),
   KEY `idx_loan_import` (`import_id`),
   KEY `idx_loan_last_visit` (`last_visit_at`),
   CONSTRAINT `fk_loan_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE,
@@ -306,6 +320,16 @@ CREATE TABLE `visit_reports` (
   `agent_name`           VARCHAR(150) NOT NULL COMMENT 'snapshot',
   `branch_name`          VARCHAR(150) DEFAULT NULL COMMENT 'snapshot',
   `village`              VARCHAR(150) DEFAULT NULL,
+
+  -- Which kind of field report this is. The sections common to all three live in
+  -- this table; the extra ones live in visit_ots_details / visit_ckcc_details so
+  -- that this row does not grow another fifty mostly-null columns.
+  `report_type`          ENUM('recovery','ots','ckcc_renewal') NOT NULL DEFAULT 'recovery',
+
+  -- ---- Declaration ---------------------------------------------------------
+  `sp_cbc_name`          VARCHAR(150) DEFAULT NULL COMMENT 'SP / CBC the BC agent reports to',
+  `supervisor_name`      VARCHAR(150) DEFAULT NULL,
+  `supervisor_verified_at` DATE       DEFAULT NULL,
 
   -- ---- Borrower details (snapshot) ---------------------------------------
   `customer_name`        VARCHAR(150) NOT NULL,
@@ -398,6 +422,164 @@ CREATE TABLE `visit_reports` (
 -- 8. PROMISES
 -- ============================================================================
 
+-- ============================================================================
+-- KRM / OTS settlement details  (report_type = 'ots')
+--
+-- One row per visit report, created only when the agent filled the OTS section.
+-- Append-only, like its parent.
+--
+-- NO MONEY PASSES THROUGH THE AGENT OR THIS SYSTEM.
+--   `deposit_*` records that the BORROWER paid the bank directly, evidenced by
+--   the bank's own receipt or transaction id which the agent copies down. The
+--   agent never collects cash and this app never processes a payment. The fields
+--   exist so a branch can see, from the field report, whether the 10% condition
+--   of an OTS offer has actually been met.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `visit_ots_details`;
+CREATE TABLE `visit_ots_details` (
+  `visit_report_id`  BIGINT UNSIGNED NOT NULL,
+  `loan_account_id`  BIGINT UNSIGNED NOT NULL,
+
+  -- ---- Eligibility ---------------------------------------------------------
+  `eligible_for_ots` TINYINT(1) NOT NULL DEFAULT 0,
+  `scheme`           ENUM('krm_ots','general_ots') DEFAULT NULL,
+
+  -- ---- Settlement arithmetic ----------------------------------------------
+  -- Every figure the agent wrote down is stored as entered. The app suggests
+  -- values (payable = rlb_amount x payable_percent) but never overwrites what
+  -- the agent typed: the branch's sanction letter is the authority, not our
+  -- arithmetic, and a silent recalculation would misstate a settlement.
+  `outstanding_amount`        DECIMAL(15,2) DEFAULT NULL COMMENT 'snapshot at visit time',
+  `relief_waiver_percent`     DECIMAL(5,2)  DEFAULT NULL,
+  `rlb_amount`                DECIMAL(15,2) DEFAULT NULL COMMENT 'Residual Loan Balance the payable % applies to',
+  `payable_percent`           DECIMAL(5,2)  DEFAULT 22.50 COMMENT 'scheme default; overridable per case',
+  `borrower_payable_amount`   DECIMAL(15,2) DEFAULT NULL,
+  `total_settlement_amount`   DECIMAL(15,2) DEFAULT NULL,
+
+  -- ---- Initial deposit (paid by the borrower AT THE BANK) -------------------
+  `initial_deposit_percent`   DECIMAL(5,2)  DEFAULT 10.00,
+  `required_deposit_amount`   DECIMAL(15,2) DEFAULT NULL,
+  `deposit_received`          TINYINT(1) NOT NULL DEFAULT 0,
+  `deposit_amount`            DECIMAL(15,2) DEFAULT NULL,
+  `deposit_date`              DATE          DEFAULT NULL,
+  `deposit_reference`         VARCHAR(120)  DEFAULT NULL COMMENT "bank's receipt no. / transaction id",
+  `balance_payable`           DECIMAL(15,2) DEFAULT NULL,
+  `proposed_final_payment_date` DATE        DEFAULT NULL,
+
+  -- ---- Approval and validity ----------------------------------------------
+  `approval_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `validity_from`          DATE DEFAULT NULL,
+  `validity_to`            DATE DEFAULT NULL,
+  `expected_closure_date`  DATE DEFAULT NULL,
+
+  -- ---- Borrower's response -------------------------------------------------
+  `borrower_accepted`      TINYINT(1) NOT NULL DEFAULT 0,
+  `rejection_reason`       VARCHAR(500) DEFAULT NULL COMMENT 'why the borrower declined',
+
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`visit_report_id`),
+  KEY `idx_ots_loan` (`loan_account_id`),
+  KEY `idx_ots_status` (`approval_status`),
+  KEY `idx_ots_validity` (`validity_to`),
+  CONSTRAINT `fk_ots_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ots_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- CKCC OD-2 renewal details  (report_type = 'ckcc_renewal')
+--
+-- One row per visit report. A CKCC cash-credit account must be renewed before
+-- its due date; if it is not, it turns NPA. This report exists to catch that
+-- window, so the account figures are snapshotted alongside the renewal
+-- paperwork the agent collected.
+--
+-- Sections 5 (Customer Verification) and Occupation are NOT repeated here -
+-- visit_reports already carries customer_met, family_member_met, house_locked,
+-- phone_contact, borrower_alive, same_address, shifted and occupation, and
+-- duplicating them would let one report disagree with itself.
+--
+-- Deliberately absent: any GPS or location field. This system captures no
+-- location data of any kind.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `visit_ckcc_details`;
+CREATE TABLE `visit_ckcc_details` (
+  `visit_report_id`  BIGINT UNSIGNED NOT NULL,
+  `loan_account_id`  BIGINT UNSIGNED NOT NULL,
+
+  -- ---- Account snapshot ----------------------------------------------------
+  `cif_number`        VARCHAR(40)   DEFAULT NULL,
+  `sanction_date`     DATE          DEFAULT NULL,
+  `sanction_limit`    DECIMAL(15,2) DEFAULT NULL,
+  `drawing_power`     DECIMAL(15,2) DEFAULT NULL,
+  `outstanding_amount` DECIMAL(15,2) DEFAULT NULL,
+  `interest_overdue`  DECIMAL(15,2) DEFAULT NULL,
+  `renewal_due_date`  DATE          DEFAULT NULL,
+  -- Computed by the server from renewal_due_date at submit time and stored, so
+  -- the report reads the same in six months as it did on the day of the visit.
+  `expected_npa_date` DATE          DEFAULT NULL COMMENT 'if the renewal is not completed',
+  `days_remaining`    INT           DEFAULT NULL COMMENT 'negative once overdue',
+
+  -- ---- Renewal eligibility -------------------------------------------------
+  `eligible_for_renewal`     TINYINT(1) NOT NULL DEFAULT 0,
+  `renewal_due_bucket`       ENUM('within_30','within_15','within_7','overdue') DEFAULT NULL,
+  `kyc_status`               ENUM('complete','pending') DEFAULT NULL,
+  `aadhaar_seeded`           TINYINT(1) NOT NULL DEFAULT 0,
+  `mobile_linked`            TINYINT(1) NOT NULL DEFAULT 0,
+  `aadhaar_auth_completed`   TINYINT(1) NOT NULL DEFAULT 0,
+
+  -- ---- Documents the borrower actually had in hand -------------------------
+  -- Distinct from the `documents` table, which holds files the agent uploaded.
+  -- This records what exists, even when nothing was photographed.
+  `doc_aadhaar`         TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_pan`             TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_passbook`        TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_land_record`     TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_khasra_khatauni` TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_photograph`      TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_mobile_available` TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_others`          TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_other_text`      VARCHAR(255) DEFAULT NULL,
+
+  -- ---- Renewal consent -----------------------------------------------------
+  `willing_to_renew`      TINYINT(1) NOT NULL DEFAULT 0,
+  `documents_handed_over` TINYINT(1) NOT NULL DEFAULT 0,
+  `renewal_form_signed`   TINYINT(1) NOT NULL DEFAULT 0,
+  `ekyc_completed`        TINYINT(1) NOT NULL DEFAULT 0,
+  `biometrics_completed`  TINYINT(1) NOT NULL DEFAULT 0,
+
+  -- ---- Agent observation and recommendation --------------------------------
+  `agent_observation`          TEXT DEFAULT NULL,
+  `rec_renew_immediately`      TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_documents_submitted`    TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_followup_required`      TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_not_interested`         TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_branch_contact_urgent`  TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_others`                 TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_other_text`             VARCHAR(255) DEFAULT NULL,
+
+  -- ---- Report status -------------------------------------------------------
+  `st_customer_contacted`     TINYINT(1) NOT NULL DEFAULT 0,
+  `st_customer_verified`      TINYINT(1) NOT NULL DEFAULT 0,
+  `st_documents_collected`    TINYINT(1) NOT NULL DEFAULT 0,
+  `st_application_submitted`  TINYINT(1) NOT NULL DEFAULT 0,
+  `st_ckcc_renewed`           TINYINT(1) NOT NULL DEFAULT 0,
+  `st_pending_at_branch`      TINYINT(1) NOT NULL DEFAULT 0,
+  `st_followup_required`      TINYINT(1) NOT NULL DEFAULT 0,
+  `st_became_npa`             TINYINT(1) NOT NULL DEFAULT 0,
+
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`visit_report_id`),
+  KEY `idx_ckcc_loan` (`loan_account_id`),
+  KEY `idx_ckcc_due` (`renewal_due_date`),
+  KEY `idx_ckcc_bucket` (`renewal_due_bucket`),
+  CONSTRAINT `fk_ckcc_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_ckcc_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 DROP TABLE IF EXISTS `promises`;
 CREATE TABLE `promises` (
   `id`               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -471,7 +653,7 @@ CREATE TABLE `photos` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `visit_report_id` BIGINT UNSIGNED DEFAULT NULL,
   `loan_account_id` BIGINT UNSIGNED NOT NULL,
-  `photo_type`      ENUM('customer','house','aadhaar','other') NOT NULL DEFAULT 'other',
+  `photo_type`      ENUM('customer','house','land','aadhaar','passbook','renewal_form','other') NOT NULL DEFAULT 'other',
   `file_path`       VARCHAR(500) NOT NULL COMMENT 'relative to uploads root',
   `original_name`   VARCHAR(255) DEFAULT NULL,
   `mime_type`       VARCHAR(100) DEFAULT NULL,

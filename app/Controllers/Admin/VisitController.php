@@ -59,6 +59,10 @@ final class VisitController extends Controller
         $this->view($request, 'visits/show', [
             'title'      => 'Visit report',
             'report'     => $report,
+            // Null unless this report carried that section, so the view can skip
+            // the whole card rather than print a heading over nothing.
+            'ots'        => VisitReport::otsDetails((int) $report['id']),
+            'ckcc'       => VisitReport::ckccDetails((int) $report['id']),
             'photos'     => VisitReport::photos((int) $report['id']),
             'documents'  => VisitReport::documents((int) $report['id']),
             'signatures' => VisitReport::signatures((int) $report['id']),
