@@ -1,0 +1,653 @@
+<?php
+/**
+ * Customer profile: loan info, promise history, visit history, media and the
+ * append-only timeline.
+ *
+ * @var array<string,mixed>       $lead
+ * @var bool                      $showPii
+ * @var list<array<string,mixed>> $timeline
+ * @var list<array<string,mixed>> $visits
+ * @var list<array<string,mixed>> $promises
+ * @var list<array<string,mixed>> $photos
+ * @var list<array<string,mixed>> $documents
+ * @var list<array<string,mixed>> $signatures
+ * @var list<array<string,mixed>> $otherLoans
+ * @var list<array<string,mixed>> $agents
+ * @var list<array<string,mixed>> $branches
+ */
+
+use App\Core\Url;
+
+$mobile = $showPii ? ($lead['mobile'] ?? null) : null;
+$aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
+?>
+
+<div class="lrms-page-head">
+    <div>
+        <nav aria-label="Breadcrumb" class="mb-1" style="font-size:.75rem">
+            <a href="<?= e(url('/customers')) ?>" class="text-muted">Customers &amp; Leads</a>
+            <span class="text-muted mx-1">/</span>
+            <span class="text-muted"><?= e($lead['loan_account_number']) ?></span>
+        </nav>
+        <h1 class="d-flex align-items-center gap-2 flex-wrap">
+            <?= e($lead['customer_name']) ?>
+            <?= status_badge($lead['current_status']) ?>
+            <?php if ((int) $lead['is_npa'] === 1): ?>
+                <span class="lrms-npa">NPA</span>
+            <?php endif; ?>
+        </h1>
+        <p>
+            <span class="font-mono"><?= e($lead['loan_account_number']) ?></span>
+            <a href="#" data-copy="<?= e($lead['loan_account_number']) ?>" class="text-muted ms-1"
+               title="Copy account number" data-bs-toggle="tooltip">⧉</a>
+            · <?= e($lead['branch_name']) ?>
+            <?php if (!empty($lead['village'])): ?> · <?= e($lead['village']) ?><?php endif; ?>
+        </p>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap no-print">
+        <?php if (can('customers.update')): ?>
+            <a href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit')) ?>" class="btn btn-outline-secondary btn-sm">
+                <?= icon('edit') ?> Edit borrower
+            </a>
+        <?php endif; ?>
+
+        <?php if ($agents !== [] && (string) $lead['current_status'] !== 'closed'): ?>
+            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignModal">
+                <?= icon('user') ?> <?= $lead['assigned_agent_id'] === null ? 'Assign agent' : 'Reassign' ?>
+            </button>
+        <?php endif; ?>
+
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false">
+                More
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <button class="dropdown-item d-flex align-items-center gap-2" onclick="window.print()">
+                        <?= icon('print') ?> Print profile
+                    </button>
+                </li>
+                <?php if (can('leads.close')): ?>
+                    <li><hr class="dropdown-divider"></li>
+                    <?php if ((string) $lead['current_status'] !== 'closed'): ?>
+                        <li>
+                            <form method="post" action="<?= e(url('/customers/bulk')) ?>" class="m-0"
+                                  data-confirm="Close this lead? Visit history is preserved.">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="lead_ids[]" value="<?= e((string) $lead['id']) ?>">
+                                <input type="hidden" name="bulk_action" value="close">
+                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2">
+                                    <?= icon('lock') ?> Close lead
+                                </button>
+                            </form>
+                        </li>
+                    <?php else: ?>
+                        <li>
+                            <form method="post" action="<?= e(url('/customers/bulk')) ?>" class="m-0">
+                                <?= csrf_field() ?>
+                                <input type="hidden" name="lead_ids[]" value="<?= e((string) $lead['id']) ?>">
+                                <input type="hidden" name="bulk_action" value="reopen">
+                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2">
+                                    <?= icon('unlock') ?> Reopen lead
+                                </button>
+                            </form>
+                        </li>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== Loan summary ==================== -->
+<div class="lrms-stats">
+    <div class="lrms-stat lrms-stat-accent">
+        <div class="lrms-stat-label"><?= icon('money') ?> Outstanding</div>
+        <div class="lrms-stat-value sm"><?= e(rupees($lead['outstanding_amount'])) ?></div>
+    </div>
+    <div class="lrms-stat lrms-stat-accent is-danger">
+        <div class="lrms-stat-label"><?= icon('alert') ?> Overdue</div>
+        <div class="lrms-stat-value sm" style="color:var(--lrms-danger)">
+            <?= e(rupees($lead['overdue_amount'])) ?>
+        </div>
+    </div>
+    <div class="lrms-stat lrms-stat-accent is-success">
+        <div class="lrms-stat-label"><?= icon('clipboard') ?> Visits</div>
+        <div class="lrms-stat-value sm"><?= e((string) (int) $lead['visit_count']) ?></div>
+        <div class="lrms-stat-sub">
+            <?= $lead['last_visit_at'] !== null ? 'Last ' . e(time_ago((string) $lead['last_visit_at'])) : 'Never visited' ?>
+        </div>
+    </div>
+    <div class="lrms-stat lrms-stat-accent is-warning">
+        <div class="lrms-stat-label"><?= icon('handshake') ?> Promises</div>
+        <div class="lrms-stat-value sm"><?= e((string) count($promises)) ?></div>
+        <div class="lrms-stat-sub">
+            <?php
+            $kept = 0;
+            $broken = 0;
+            foreach ($promises as $p) {
+                if ((string) $p['status'] === 'kept') { $kept++; }
+                if ((string) $p['status'] === 'broken') { $broken++; }
+            }
+            ?>
+            <?= e((string) $kept) ?> kept · <?= e((string) $broken) ?> broken
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- ==================== Left column ==================== -->
+    <div class="col-xl-5">
+
+        <!-- Borrower -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2><?= icon('user') ?> Borrower details</h2>
+            </div>
+            <div class="lrms-card-body">
+                <dl class="lrms-dl">
+                    <div>
+                        <dt>Customer name</dt>
+                        <dd><?= e($lead['customer_name']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Father / husband name</dt>
+                        <dd><?= nullable($lead['father_husband_name']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Mobile</dt>
+                        <dd class="font-mono">
+                            <?php if ($showPii && $mobile !== null): ?>
+                                <a href="tel:<?= e($mobile) ?>"><?= e($mobile) ?></a>
+                            <?php else: ?>
+                                <?= nullable($lead['mobile_masked']) ?>
+                                <?php if (!$showPii && !empty($lead['mobile_masked'])): ?>
+                                    <span class="text-muted" style="font-size:.6875rem"
+                                          title="You do not have permission to view full PII"
+                                          data-bs-toggle="tooltip"><?= icon('lock') ?></span>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Aadhaar</dt>
+                        <dd class="font-mono">
+                            <?= $showPii && $aadhaar !== null
+                                ? e(trim(chunk_split($aadhaar, 4, ' ')))
+                                : nullable($lead['aadhaar_masked']) ?>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Village</dt>
+                        <dd><?= nullable($lead['village']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>BC / DC code</dt>
+                        <dd><?= nullable($lead['bc_code']) ?></dd>
+                    </div>
+                    <div style="grid-column:1/-1">
+                        <dt>Address</dt>
+                        <dd><?= nullable($lead['address']) ?></dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Loan -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2><?= icon('money') ?> Loan details</h2>
+            </div>
+            <div class="lrms-card-body">
+                <dl class="lrms-dl">
+                    <div>
+                        <dt>Loan account number</dt>
+                        <dd class="font-mono"><?= e($lead['loan_account_number']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Loan type</dt>
+                        <dd><?= nullable($lead['loan_type']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Outstanding</dt>
+                        <dd class="lg"><?= e(rupees($lead['outstanding_amount'])) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Overdue</dt>
+                        <dd class="lg" style="color:var(--lrms-danger)"><?= e(rupees($lead['overdue_amount'])) ?></dd>
+                    </div>
+                    <div>
+                        <dt>NPA date</dt>
+                        <dd>
+                            <?php if ($lead['npa_date'] !== null): ?>
+                                <?= e(fmt_date((string) $lead['npa_date'])) ?>
+                                <span class="lrms-npa">NPA</span>
+                            <?php else: ?>
+                                <span class="text-muted">Not classified</span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Current status</dt>
+                        <dd><?= status_badge($lead['current_status']) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Branch</dt>
+                        <dd><?= e($lead['branch_name']) ?> <span class="text-muted">(<?= e($lead['branch_code']) ?>)</span></dd>
+                    </div>
+                    <div>
+                        <dt>Assigned agent</dt>
+                        <dd>
+                            <?php if (!empty($lead['agent_name'])): ?>
+                                <?= e($lead['agent_name']) ?>
+                                <span class="text-muted" style="font-size:.75rem">(<?= e($lead['agent_code'] ?? '') ?>)</span>
+                            <?php else: ?>
+                                <span class="lrms-badge badge-pending">Unassigned</span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <?php if ($lead['next_followup_date'] !== null): ?>
+                        <div>
+                            <dt>Next follow-up</dt>
+                            <dd><?= e(fmt_date((string) $lead['next_followup_date'])) ?></dd>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($lead['remarks'])): ?>
+                        <div style="grid-column:1/-1">
+                            <dt>Remarks from import</dt>
+                            <dd style="font-weight:400"><?= e($lead['remarks']) ?></dd>
+                        </div>
+                    <?php endif; ?>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Other loans for the same borrower -->
+        <?php if (count($otherLoans) > 1): ?>
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <h2><?= icon('file') ?> Other accounts for this borrower</h2>
+                </div>
+                <div class="lrms-table-wrap">
+                    <table class="lrms-table">
+                        <thead>
+                            <tr><th>Account</th><th>Type</th><th class="text-end">Outstanding</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($otherLoans as $other): ?>
+                                <?php if ((int) $other['id'] === (int) $lead['id']) { continue; } ?>
+                                <tr>
+                                    <td>
+                                        <a href="<?= e(url('/customers/' . (int) $other['id'])) ?>"
+                                           class="font-mono" style="font-size:.75rem">
+                                            <?= e($other['loan_account_number']) ?>
+                                        </a>
+                                    </td>
+                                    <td style="font-size:.8125rem"><?= nullable($other['loan_type']) ?></td>
+                                    <td class="num"><?= e(money($other['outstanding_amount'], false)) ?></td>
+                                    <td><?= status_badge($other['current_status']) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Promise history -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2><?= icon('handshake') ?> Promise history</h2>
+                <span class="text-muted" style="font-size:.75rem"><?= e((string) count($promises)) ?> record(s)</span>
+            </div>
+
+            <?php if ($promises === []): ?>
+                <div class="lrms-card-body">
+                    <p class="text-muted mb-0" style="font-size:.875rem">No promises recorded for this account.</p>
+                </div>
+            <?php else: ?>
+                <div class="lrms-table-wrap">
+                    <table class="lrms-table">
+                        <thead>
+                            <tr>
+                                <th class="text-end">Amount</th>
+                                <th>Promise date</th>
+                                <th>Agent</th>
+                                <th>Status</th>
+                                <?php if (can('promises.update')): ?><th></th><?php endif; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($promises as $promise): ?>
+                                <tr>
+                                    <td class="num" style="font-weight:620">
+                                        <?= e(money($promise['promise_amount'])) ?>
+                                    </td>
+                                    <td class="nowrap" style="font-size:.8125rem">
+                                        <?= e(fmt_date((string) $promise['promise_date'])) ?>
+                                    </td>
+                                    <td style="font-size:.8125rem"><?= e($promise['agent_name']) ?></td>
+                                    <td><?= promise_badge($promise['status']) ?></td>
+                                    <?php if (can('promises.update')): ?>
+                                        <td class="text-end nowrap">
+                                            <?php if ((string) $promise['status'] === 'pending'): ?>
+                                                <form method="post" class="d-inline m-0"
+                                                      action="<?= e(url('/promises/' . (int) $promise['id'] . '/settle')) ?>">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="status" value="kept">
+                                                    <input type="hidden" name="return_to"
+                                                           value="<?= e('/customers/' . (int) $lead['id']) ?>">
+                                                    <button class="btn btn-ghost btn-sm text-success" title="Mark kept"
+                                                            data-bs-toggle="tooltip"><?= icon('check') ?></button>
+                                                </form>
+                                                <form method="post" class="d-inline m-0"
+                                                      action="<?= e(url('/promises/' . (int) $promise['id'] . '/settle')) ?>">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="status" value="broken">
+                                                    <input type="hidden" name="return_to"
+                                                           value="<?= e('/customers/' . (int) $lead['id']) ?>">
+                                                    <button class="btn btn-ghost btn-sm text-danger" title="Mark broken"
+                                                            data-bs-toggle="tooltip"><?= icon('x') ?></button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ==================== Right column ==================== -->
+    <div class="col-xl-7">
+
+        <!-- Timeline -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <div>
+                    <h2><?= icon('clock') ?> Timeline</h2>
+                    <p>Append-only history &mdash; entries are never edited or removed</p>
+                </div>
+                <span class="text-muted" style="font-size:.75rem"><?= e((string) count($timeline)) ?> event(s)</span>
+            </div>
+            <div class="lrms-card-body">
+                <?php if ($timeline === []): ?>
+                    <p class="text-muted mb-0" style="font-size:.875rem">No events recorded yet.</p>
+                <?php else: ?>
+                    <ul class="lrms-timeline">
+                        <?php foreach ($timeline as $event): ?>
+                            <?php $meta = $event['event_meta']; ?>
+                            <li class="lrms-tl-item">
+                                <span class="lrms-tl-dot tone-<?= e($meta['tone']) ?>">
+                                    <?= icon($meta['icon']) ?>
+                                </span>
+
+                                <div class="lrms-tl-head">
+                                    <span class="lrms-tl-title"><?= e($event['title']) ?></span>
+                                    <span class="lrms-tl-time">
+                                        <?= e(fmt_datetime((string) $event['event_at'])) ?>
+                                    </span>
+                                </div>
+
+                                <?php if (!empty($event['description'])): ?>
+                                    <div class="lrms-tl-body"><?= e($event['description']) ?></div>
+                                <?php endif; ?>
+
+                                <div class="lrms-tl-meta">
+                                    <?php if (!empty($event['actor_name'])): ?>
+                                        <span><?= icon('user') ?> <?= e($event['actor_name']) ?></span>
+                                    <?php endif; ?>
+
+                                    <?php if ((int) ($event['photo_count'] ?? 0) > 0): ?>
+                                        <span><?= icon('image') ?> <?= e((string) (int) $event['photo_count']) ?> photo(s)</span>
+                                    <?php endif; ?>
+
+                                    <?php if ((int) ($event['signature_count'] ?? 0) > 0): ?>
+                                        <span><?= icon('pen') ?> <?= e((string) (int) $event['signature_count']) ?> signature(s)</span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($event['promise_amount'])): ?>
+                                        <span><?= icon('handshake') ?>
+                                            <?= e(money($event['promise_amount'], false)) ?>
+                                            by <?= e(fmt_date((string) $event['promise_date'])) ?>
+                                        </span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($event['visit_report_id']) && can('visits.view')): ?>
+                                        <a href="<?= e(url('/visits/' . (int) $event['visit_report_id'])) ?>">
+                                            View full report
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Visit history -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <div>
+                    <h2><?= icon('clipboard') ?> Visit history</h2>
+                    <p>Newest first</p>
+                </div>
+            </div>
+
+            <?php if ($visits === []): ?>
+                <div class="lrms-card-body">
+                    <p class="text-muted mb-0" style="font-size:.875rem">No field visits submitted yet.</p>
+                </div>
+            <?php else: ?>
+                <div class="lrms-table-wrap">
+                    <table class="lrms-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Agent</th>
+                                <th>Contact</th>
+                                <th>Recovery</th>
+                                <th>Attachments</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($visits as $visit): ?>
+                                <tr>
+                                    <td class="nowrap" style="font-size:.8125rem">
+                                        <?= e(fmt_date((string) $visit['visit_date'], 'd M y')) ?>
+                                        <div class="text-muted" style="font-size:.6875rem">
+                                            <?= e(fmt_time((string) $visit['visit_time'])) ?>
+                                        </div>
+                                    </td>
+                                    <td style="font-size:.8125rem"><?= e($visit['agent_name']) ?></td>
+                                    <td>
+                                        <?php if ((int) $visit['customer_met'] === 1): ?>
+                                            <span class="lrms-badge badge-visited">Customer met</span>
+                                        <?php elseif ((int) $visit['family_member_met'] === 1): ?>
+                                            <span class="lrms-badge badge-promise">Family met</span>
+                                        <?php elseif ((int) $visit['house_locked'] === 1): ?>
+                                            <span class="lrms-badge badge-pending">House locked</span>
+                                        <?php elseif ((int) $visit['phone_switched_off'] === 1): ?>
+                                            <span class="lrms-badge badge-legal">Phone off</span>
+                                        <?php elseif ((int) $visit['phone_contact'] === 1): ?>
+                                            <span class="lrms-badge badge-followup">Phone contact</span>
+                                        <?php else: ?>
+                                            <span class="text-muted">—</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ((float) ($visit['promise_amount'] ?? 0) > 0): ?>
+                                            <span class="lrms-badge badge-promise">
+                                                <?= e(money($visit['promise_amount'], false)) ?>
+                                            </span>
+                                        <?php elseif ((int) $visit['ready_to_pay'] === 1): ?>
+                                            <span class="lrms-badge badge-visited">Ready to pay</span>
+                                        <?php elseif ((int) $visit['not_ready'] === 1): ?>
+                                            <span class="lrms-badge badge-legal">Not ready</span>
+                                        <?php else: ?>
+                                            <span class="text-muted">—</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="nowrap text-muted" style="font-size:.75rem">
+                                        <?php if ((int) $visit['photo_count'] > 0): ?>
+                                            <?= icon('image') ?> <?= e((string) (int) $visit['photo_count']) ?>
+                                        <?php endif; ?>
+                                        <?php if ((int) $visit['signature_count'] > 0): ?>
+                                            <?= icon('pen') ?> <?= e((string) (int) $visit['signature_count']) ?>
+                                        <?php endif; ?>
+                                        <?php if ((int) $visit['document_count'] > 0): ?>
+                                            <?= icon('file') ?> <?= e((string) (int) $visit['document_count']) ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="text-end">
+                                        <?php if (can('visits.view')): ?>
+                                            <a href="<?= e(url('/visits/' . (int) $visit['id'])) ?>"
+                                               class="btn btn-ghost btn-sm btn-icon" title="Open report"
+                                               data-bs-toggle="tooltip"><?= icon('eye') ?></a>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Photos -->
+        <?php if ($photos !== []): ?>
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <h2><?= icon('image') ?> Photo gallery</h2>
+                    <span class="text-muted" style="font-size:.75rem"><?= e((string) count($photos)) ?> photo(s)</span>
+                </div>
+                <div class="lrms-card-body">
+                    <div class="lrms-gallery">
+                        <?php foreach ($photos as $photo): ?>
+                            <a class="lrms-thumb" target="_blank" rel="noopener"
+                               href="<?= e(Url::media((string) $photo['file_path'])) ?>">
+                                <img src="<?= e(Url::media((string) $photo['file_path'])) ?>" alt=""
+                                     loading="lazy">
+                                <span class="lrms-thumb-label">
+                                    <?= e(str_replace('_', ' ', (string) $photo['photo_type'])) ?>
+                                    <?php if (!empty($photo['visit_date'])): ?>
+                                        · <?= e(fmt_date((string) $photo['visit_date'], 'd M y')) ?>
+                                    <?php endif; ?>
+                                </span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Signatures -->
+        <?php if ($signatures !== []): ?>
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <h2><?= icon('pen') ?> Signatures</h2>
+                </div>
+                <div class="lrms-card-body">
+                    <div class="row g-2">
+                        <?php foreach ($signatures as $signature): ?>
+                            <div class="col-6 col-md-4">
+                                <div class="lrms-signature">
+                                    <img src="<?= e(Url::media((string) $signature['file_path'])) ?>"
+                                         alt="<?= e($signature['signature_type']) ?> signature" loading="lazy">
+                                    <div class="cap">
+                                        <?= e($signature['signature_type']) ?>
+                                        <?php if (!empty($signature['visit_date'])): ?>
+                                            · <?= e(fmt_date((string) $signature['visit_date'], 'd M y')) ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Documents -->
+        <?php if ($documents !== []): ?>
+            <div class="lrms-card">
+                <div class="lrms-card-head">
+                    <h2><?= icon('file') ?> Documents</h2>
+                </div>
+                <div class="lrms-table-wrap">
+                    <table class="lrms-table">
+                        <thead><tr><th>Document</th><th>Type</th><th>Uploaded</th><th></th></tr></thead>
+                        <tbody>
+                            <?php foreach ($documents as $document): ?>
+                                <tr>
+                                    <td style="font-size:.8125rem"><?= e($document['title'] ?? $document['original_name']) ?></td>
+                                    <td style="font-size:.8125rem"><?= e($document['doc_type']) ?></td>
+                                    <td class="text-muted" style="font-size:.75rem">
+                                        <?= e(fmt_date((string) $document['created_at'])) ?>
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="<?= e(Url::media((string) $document['file_path'])) ?>"
+                                           target="_blank" rel="noopener"
+                                           class="btn btn-ghost btn-sm btn-icon" title="Open"
+                                           data-bs-toggle="tooltip"><?= icon('external') ?></a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- ==================== Assign modal ==================== -->
+<?php if ($agents !== [] && (string) $lead['current_status'] !== 'closed'): ?>
+    <div class="modal fade" id="assignModal" tabindex="-1" aria-hidden="true" aria-labelledby="assignModalLabel">
+        <div class="modal-dialog modal-dialog-centered">
+            <form class="modal-content" method="post" action="<?= e(url('/customers/bulk')) ?>">
+                <?= csrf_field() ?>
+                <input type="hidden" name="lead_ids[]" value="<?= e((string) $lead['id']) ?>">
+                <input type="hidden" name="bulk_action"
+                       value="<?= $lead['assigned_agent_id'] === null ? 'assign' : 'reassign' ?>">
+                <input type="hidden" name="return_query" value="">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignModalLabel">
+                        <?= $lead['assigned_agent_id'] === null ? 'Assign to agent' : 'Reassign lead' ?>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <p class="text-muted" style="font-size:.8438rem">
+                        Account <span class="font-mono"><?= e($lead['loan_account_number']) ?></span>
+                        &mdash; <?= e($lead['customer_name']) ?>
+                    </p>
+                    <label class="form-label" for="assign-agent">BC/DC agent <span class="req">*</span></label>
+                    <select class="form-select" id="assign-agent" name="agent_id_action" required>
+                        <option value="">Select agent…</option>
+                        <?php foreach ($agents as $agent): ?>
+                            <option value="<?= e((string) $agent['id']) ?>"
+                                <?= (int) ($lead['assigned_agent_id'] ?? 0) === (int) $agent['id'] ? 'disabled' : '' ?>>
+                                <?= e($agent['name']) ?> (<?= e($agent['employee_code']) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text">The agent will receive a notification in the app.</div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif; ?>
