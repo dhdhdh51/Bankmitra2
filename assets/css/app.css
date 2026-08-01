@@ -190,13 +190,14 @@ code, kbd, pre, .font-mono {
     flex: 0 0 auto;
 }
 
+/* The D2 monogram, cropped out of the master artwork by
+   tools/prepare-brand-assets.py. 44x32 matches the crop's 1.36:1 ratio, so
+   object-fit: cover trims almost nothing. This used to be the letters "LR" in a
+   gradient tile - an initial left over from the old product name. */
 .lrms-brand-mark {
-    width: 32px; height: 32px;
+    width: 44px; height: 32px;
     border-radius: 8px;
-    background: linear-gradient(135deg, var(--lrms-primary), var(--lrms-primary-dark));
-    color: #fff;
-    display: grid; place-items: center;
-    font-weight: 700; font-size: .8125rem;
+    object-fit: cover;
     flex: 0 0 auto;
 }
 
@@ -623,11 +624,15 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 .lrms-auth-brand > * { position: relative; z-index: 1; }
 .lrms-auth-brand h1 { color: #fff; font-size: 1.9rem; letter-spacing: -.025em; margin: 0 0 12px; }
 .lrms-auth-brand p { color: rgba(255,255,255,.86); font-size: .9375rem; max-width: 420px; margin: 0; }
-.lrms-auth-logo { display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 1.0625rem; }
-.lrms-auth-logo .mark {
-    width: 38px; height: 38px; border-radius: 9px;
-    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28);
-    display: grid; place-items: center; font-size: .8125rem;
+/* Full brand lockup on the sign-in page. The artwork is square and carries its
+   own dark background, so it is given rounded corners and a drop shadow to read
+   as a deliberate plate on the gradient rather than a pasted screenshot. */
+.lrms-auth-lockup {
+    display: block;
+    width: 100%; max-width: 264px;
+    height: auto;
+    border-radius: 16px;
+    box-shadow: 0 14px 34px -14px rgba(0,0,0,.6);
 }
 .lrms-auth-points { list-style: none; padding: 0; margin: 26px 0 0; }
 .lrms-auth-points li {
@@ -657,8 +662,16 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
     }
 }
 
-.lrms-auth-mobile-logo { display: none; }
-@media (max-width: 900px) { .lrms-auth-mobile-logo { display: flex; } }
+.lrms-auth-mobile-lockup { display: none; }
+@media (max-width: 900px) {
+    .lrms-auth-mobile-lockup {
+        display: block;
+        width: 100%; max-width: 208px; height: auto;
+        margin: 0 auto 22px;
+        border-radius: 14px;
+        box-shadow: 0 10px 26px -14px rgba(11,42,91,.5);
+    }
+}
 
 /* ==========================================================================
    Timeline (append-only lead history)
@@ -1106,8 +1119,10 @@ h3 { font-size: .9375rem; letter-spacing: -.012em; }
 
 .lrms-brand { border-bottom: 1px solid var(--lrms-hairline); }
 
+/* The mark is now an image, so it needs lift rather than a fill. The navy behind
+   it only shows while the image is still loading. */
 .lrms-brand-mark {
-    background: linear-gradient(135deg, var(--lrms-primary) 0%, var(--lrms-primary-dark) 100%);
+    background: var(--lrms-primary);
     box-shadow: 0 2px 6px -1px rgba(11, 42, 91, .4);
 }
 

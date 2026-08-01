@@ -65,7 +65,8 @@ $unread = $unreadNotifications ?? 0;
 
     <aside class="lrms-sidebar">
         <div class="lrms-brand">
-            <span class="lrms-brand-mark">LR</span>
+            <img class="lrms-brand-mark" src="<?= e(asset('img/d2-mark.webp')) ?>"
+                 alt="" width="44" height="32">
             <span class="lrms-brand-text">
                 <strong><?= e($appName) ?></strong>
                 <span><?= e($bankName !== '' && $bankName !== null ? $bankName : 'Recovery Management') ?></span>

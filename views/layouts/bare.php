@@ -38,7 +38,8 @@ $appName = Settings::get('app_name', 'D2 Recovery') ?? 'D2 Recovery';
 <body>
     <div class="container" style="max-width:680px;padding:12vh 16px">
         <div class="d-flex align-items-center gap-2 mb-4">
-            <span class="lrms-brand-mark">LR</span>
+            <img class="lrms-brand-mark" src="<?= e(asset('img/d2-mark.webp')) ?>"
+                 alt="" width="44" height="32">
             <strong><?= e($appName) ?></strong>
         </div>
         <?= $content ?>

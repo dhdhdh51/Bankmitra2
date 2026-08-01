@@ -453,6 +453,34 @@ Keep the important part within the middle ~66% or the launcher mask will clip it
 and add a 512x512 copy for a Play Store listing. You lose themed-icon support
 this way, since a raster cannot be tinted meaningfully.
 
+### 6.3.1a Brand artwork
+
+There is one master: `docs/brand/d2-recovery-lockup.jpg`, the logo as supplied.
+Everything shipped is derived from it, so the app and the panel cannot drift apart.
+
+```bash
+python3 tools/prepare-brand-assets.py
+```
+
+| Output | Used by | Where |
+|---|---|---|
+| `android/…/res/drawable-nodpi/brand_lockup.webp` | app | launch screen, login screen |
+| `admin/assets/img/d2-lockup.webp` | panel | sign-in page, both desktop and mobile |
+| `admin/assets/img/d2-mark.webp` | panel | sidebar header, 404 header |
+
+**To change the logo,** replace the master with another 1024×1024 image and re-run
+the script. If the new artwork has a different layout, re-measure `MARK_BOX` in the
+script first — it is the crop that produces the monogram, and the script refuses to
+run on a master that is not 1024×1024 rather than cropping the wrong region
+silently.
+
+Use the lockup **large only**. It carries the wordmark, the tagline and five badge
+captions; below roughly 180dp those stop being legible and it reads as noise. That
+is what the monogram crop is for.
+
+The launcher icon is *not* generated from the master — see 6.3.1. A launcher masks
+its icon into a circle, and a square raster with artwork in the corners loses them.
+
 ### 6.3.2 Launch screen
 
 The splash is the `androidx.core:core-splashscreen` compat screen, so one
@@ -462,9 +490,13 @@ same values to the platform above it.
 | File | Role |
 |---|---|
 | `res/values/themes.xml` → `Theme.LRMS.Splash` | parent `Theme.SplashScreen`; background, icon, `postSplashScreenTheme` |
-| `res/drawable/ic_splash_logo.xml` | the D2 mark, re-centred to fill the icon slot |
-| `res/layout/activity_splash.xml` | same navy behind the splash, with a spinner |
+| `res/drawable/ic_splash_logo.xml` | the D2 monogram, for the system splash's icon slot |
+| `res/layout/activity_splash.xml` | the full brand lockup on the same navy, with a spinner |
 | `ui/splash/SplashActivity.kt` | `installSplashScreen()`, then routes the user |
+
+The system splash slot can only hold a small centred icon, so it shows the
+monogram; the full lockup lives in the activity layout immediately behind it. Both
+sit on the same navy, so the hand-over is invisible.
 
 Three things matter if you change it:
 
@@ -477,9 +509,11 @@ Three things matter if you change it:
   session is confirmed against the server at launch, and on a weak connection that
   outlasts the splash; a different background makes the brand flash to white.
 
-The splash is held for at least 600 ms so it does not flicker on a cached session,
-and released after 2.5 s regardless so an unreachable server cannot freeze the
-launch. `SplashBrandingTest` pins all of the above.
+The system splash is released as soon as the lockup is drawn, and **routing** waits
+out `MIN_BRAND_MS` (1.3 s) instead. Holding the system splash until the session
+check finished was worse: on a warm start with a cached session the check returns
+in under a frame, so the activity carrying the lockup was created and left before
+it was ever seen. `SplashBrandingTest` pins all of the above.
 
 ### 6.4 Signing a release build
 
