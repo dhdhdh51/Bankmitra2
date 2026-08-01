@@ -937,6 +937,33 @@ written for SMS would never arrive.
 Only the `--final` slot copies the branch supervisor. An agent with no SSS target
 for the month is never reminded, and reminders stop the moment they record an entry.
 
+### The daily report reminder (5 PM by default)
+
+Nothing to schedule on the server — the reminder is an alarm on the agent's phone, so
+it works with no connectivity at the time it fires. What you control is the deadline:
+
+**Settings → Notifications → "Daily report due by"**
+
+Pick the time from the dropdown (15:00 to 20:00 in half-hour steps). Every agent's
+alarm moves to the new time the next time they open the app. The panel is responsive,
+so this can be changed from a phone.
+
+Two things to keep in step:
+
+1. **The `sss-reminder.php --final` crontab entry should be on the same hour.** That
+   job is what emails the supervisor; the alarm is what taps the agent on the shoulder.
+   If they disagree, the `--final` run prints a warning to STDERR naming both times, so
+   check your cron mail after changing the deadline.
+2. **"Remind agents to submit"** is the master switch. Turning it off silences the
+   alarm for everybody, and agents can no longer switch their own back on.
+
+An agent can bring their own reminder forward (15 min, 30 min, 1 hour, 2 hours before)
+or switch it off, from **Account → Daily report reminder** in the app. They cannot move
+it later than the deadline.
+
+The alarm never fires on a Sunday, and stays quiet once the agent has filed a visit or
+saved their enrolment figures for the day.
+
 ### CKCC / OD-2 renewal alerts
 
 ```
@@ -982,6 +1009,31 @@ things to know before switching it on:
 Addresses are never written into the visit report itself. The coordinate is the
 record; the address is a derived label, because a free service naming the wrong
 village must stay distinguishable from something the agent asserted.
+
+### Adding the daily report reminder to an existing install
+
+Two settings rows. No table or column changes.
+
+```sql
+INSERT INTO `settings`
+  (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `is_secret`, `is_required`, `hint`, `sort_order`)
+VALUES
+  ('daily_report_due_time','17:00','notifications','Daily report due by','select',0,0,
+   'The app reminds agents at this time. Keep the sss-reminder --final cron entry on the same hour.',3),
+  ('daily_report_reminder_enabled','1','notifications','Remind agents to submit','select',0,0,
+   'Turns the in-app daily alarm off for everyone. Agents can also switch off their own.',4);
+
+UPDATE `settings` SET `options` = '15:00,15:30,16:00,16:30,17:00,17:30,18:00,18:30,19:00,19:30,20:00'
+ WHERE `setting_key` = 'daily_report_due_time';
+UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'daily_report_reminder_enabled';
+```
+
+A missing or malformed value falls back to 17:00 in code rather than to "no deadline",
+so the reminder keeps working even if these rows are never added — but the operator
+then has no way to change the time, which is the point of adding them.
+
+Agents need the **new APK** for the reminder: the alarm lives in the app, not on the
+server.
 
 ### Adding the BC screens, renewal alerts and address lookup
 
