@@ -8,10 +8,15 @@
         <item name="colorPrimaryContainer">@color/lrms_primary_light</item>
         <item name="colorOnPrimaryContainer">@color/lrms_primary_dark</item>
 
-        <item name="colorSecondary">@color/lrms_primary_dark</item>
-        <item name="colorOnSecondary">@color/white</item>
-        <item name="colorSecondaryContainer">@color/lrms_primary_light</item>
-        <item name="colorOnSecondaryContainer">@color/lrms_primary_dark</item>
+        <!-- Gold is the accent: selected chips, highlights, the odd emphasis.
+             onSecondary is ink, not white - white on gold is about 2:1. -->
+        <item name="colorSecondary">@color/lrms_accent</item>
+        <item name="colorOnSecondary">@color/lrms_ink</item>
+        <item name="colorSecondaryContainer">@color/lrms_accent_light</item>
+        <item name="colorOnSecondaryContainer">@color/lrms_accent_dark</item>
+
+        <item name="colorTertiary">@color/lrms_primary_dark</item>
+        <item name="colorOnTertiary">@color/white</item>
 
         <item name="colorSurface">@color/lrms_surface</item>
         <item name="colorOnSurface">@color/lrms_ink</item>

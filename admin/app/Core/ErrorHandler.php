@@ -71,7 +71,7 @@ final class ErrorHandler
     private static function log(\Throwable $e): void
     {
         error_log(sprintf(
-            '[LRMS] %s: %s in %s:%d%s%s',
+            '[D2R] %s: %s in %s:%d%s%s',
             $e::class,
             $e->getMessage(),
             $e->getFile(),
@@ -108,7 +108,7 @@ final class ErrorHandler
             . 'The details have been recorded in the error log.</p>'
             . $detail
             . '<p style="margin:22px 0 0"><a href="' . htmlspecialchars(Url::path('/dashboard'), ENT_QUOTES, 'UTF-8') . '" '
-            . 'style="display:inline-block;background:#1957c2;color:#fff;text-decoration:none;padding:9px 16px;'
+            . 'style="display:inline-block;background:#0b2a5b;color:#fff;text-decoration:none;padding:9px 16px;'
             . 'border-radius:8px;font-weight:600">Back to dashboard</a></p>'
             . '</div></body></html>';
     }

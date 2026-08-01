@@ -1,6 +1,6 @@
 <?php
 /**
- * LRMS configuration template.
+ * D2 Recovery configuration template.
  *
  * SETUP
  *   1. Copy this file to config.php  (config.php is git-ignored)

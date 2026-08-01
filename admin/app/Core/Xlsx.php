@@ -292,7 +292,7 @@ final class Xlsx
             . '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>'
             . '<fonts count="6">'
             . '<font><sz val="11"/><name val="Calibri"/></font>'                                        // 0 default
-            . '<font><b/><sz val="15"/><color rgb="FF123F8F"/><name val="Calibri"/></font>'             // 1 title
+            . '<font><b/><sz val="15"/><color rgb="FF071D40"/><name val="Calibri"/></font>'             // 1 title
             . '<font><sz val="10"/><color rgb="FF4B5563"/><name val="Calibri"/></font>'                 // 2 subtitle
             . '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'             // 3 header
             . '<font><sz val="10.5"/><color rgb="FF1C2128"/><name val="Calibri"/></font>'               // 4 body
@@ -301,7 +301,7 @@ final class Xlsx
             . '<fills count="4">'
             . '<fill><patternFill patternType="none"/></fill>'
             . '<fill><patternFill patternType="gray125"/></fill>'
-            . '<fill><patternFill patternType="solid"><fgColor rgb="FF1957C2"/><bgColor indexed="64"/></patternFill></fill>' // 2 header blue
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FF0B2A5B"/><bgColor indexed="64"/></patternFill></fill>' // 2 header navy
             . '<fill><patternFill patternType="solid"><fgColor rgb="FFE8F0FD"/><bgColor indexed="64"/></patternFill></fill>' // 3 total tint
             . '</fills>'
             . '<borders count="2">'
@@ -336,8 +336,8 @@ final class Xlsx
             . 'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
             . 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
             . '<dc:title>' . self::escape($title) . '</dc:title>'
-            . '<dc:creator>LRMS</dc:creator>'
-            . '<cp:lastModifiedBy>LRMS</cp:lastModifiedBy>'
+            . '<dc:creator>D2 Recovery</dc:creator>'
+            . '<cp:lastModifiedBy>D2 Recovery</cp:lastModifiedBy>'
             . '<dcterms:created xsi:type="dcterms:W3CDTF">' . $now . '</dcterms:created>'
             . '<dcterms:modified xsi:type="dcterms:W3CDTF">' . $now . '</dcterms:modified>'
             . '</cp:coreProperties>';
@@ -347,7 +347,7 @@ final class Xlsx
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
-            . '<Application>LRMS</Application></Properties>';
+            . '<Application>D2 Recovery</Application></Properties>';
     }
 
     /** Excel forbids : \ / ? * [ ] and a 31-character limit. */

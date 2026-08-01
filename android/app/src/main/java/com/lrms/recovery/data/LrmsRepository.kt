@@ -1,6 +1,9 @@
 package com.lrms.recovery.data
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import com.google.gson.Gson
 import com.lrms.recovery.data.local.SessionStore
 import com.lrms.recovery.data.remote.ApiClient
@@ -40,8 +43,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import java.io.File
 import java.io.IOException
+import java.net.ConnectException
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
 /**
  * Single gateway between the UI and the API.
@@ -51,7 +57,8 @@ import java.net.UnknownHostException
  */
 class LrmsRepository(context: Context) {
 
-    val session = SessionStore(context.applicationContext)
+    private val appContext = context.applicationContext
+    val session = SessionStore(appContext)
     private val gson = Gson()
 
     private val api: ApiService get() = ApiClient.service(session)
@@ -380,6 +387,16 @@ class LrmsRepository(context: Context) {
                 val validation = gson.fromJson(errorBody, ValidationEnvelope::class.java)
                 validation?.data?.errors?.let { fieldErrors = it }
             }
+
+            // A server that answers the API with a web page is misconfigured, not
+            // merely failing. That happened for real: a setup screen was served
+            // to the app, which could only report "something went wrong" - so the
+            // phone took the blame for a server problem. Say what it was.
+            if (message == null && looksLikeHtml(errorBody)) {
+                message = "${serverHost()} returned a web page instead of data " +
+                    "(HTTP ${response.code()}). The server is not set up correctly - " +
+                    "please tell your administrator."
+            }
         }
 
         return ApiResult.Failure(
@@ -387,6 +404,12 @@ class LrmsRepository(context: Context) {
             httpCode = response.code(),
             fieldErrors = fieldErrors,
         )
+    }
+
+    private fun looksLikeHtml(body: String): Boolean {
+        val head = body.trimStart().take(200).lowercase()
+        return head.startsWith("<!doctype html") || head.startsWith("<html") ||
+            head.startsWith("<br") || head.contains("<title")
     }
 
     private fun defaultMessageFor(code: Int): String = when (code) {
@@ -400,16 +423,75 @@ class LrmsRepository(context: Context) {
         else -> "Something went wrong. Please try again."
     }
 
+    /**
+     * Turns a transport failure into something an agent can act on.
+     *
+     * "Check your internet connection" was shown for every one of these, which
+     * was actively misleading: the most common cause in the field was a server
+     * that could not be resolved or was misconfigured, on a phone whose network
+     * was perfectly fine. An agent cannot fix a server, but they can stop
+     * hunting for signal and call whoever can - so the message has to say which
+     * of the two it is, and name the host it actually tried.
+     */
     private fun <T> toNetworkError(error: Throwable): ApiResult<T> = when (error) {
-        is UnknownHostException ->
-            ApiResult.NetworkError("Cannot reach the server. Check your internet connection.")
-        is SocketTimeoutException ->
-            ApiResult.NetworkError("The server took too long to respond. Please try again.")
-        is IOException ->
-            ApiResult.NetworkError("Connection lost. Check your network and try again.")
-        else ->
-            ApiResult.Failure(error.message ?: "Something went wrong. Please try again.")
+        is UnknownHostException -> ApiResult.NetworkError(
+            if (hasNetwork()) {
+                "Could not find the server ${serverHost()}. The address may be wrong or the " +
+                    "server may be offline. This is not a problem with your phone - please " +
+                    "tell your administrator."
+            } else {
+                "No internet connection. Check your mobile data or Wi-Fi and try again."
+            },
+        )
+
+        is SSLException -> ApiResult.NetworkError(
+            "The secure connection to ${serverHost()} could not be established. The server's " +
+                "certificate may have expired. Please tell your administrator.",
+        )
+
+        is ConnectException -> ApiResult.NetworkError(
+            "${serverHost()} refused the connection. The server may be down or restarting. " +
+                "Please try again shortly.",
+        )
+
+        is SocketTimeoutException -> ApiResult.NetworkError(
+            if (hasNetwork()) {
+                "${serverHost()} took too long to respond. Please try again."
+            } else {
+                "The connection is too slow to reach the server. Move to a better signal and " +
+                    "try again."
+            },
+        )
+
+        is IOException -> ApiResult.NetworkError(
+            "Connection lost. Check your network and try again.",
+        )
+
+        else -> ApiResult.Failure(error.message ?: "Something went wrong. Please try again.")
     }
+
+    /** Host of the configured server, for messages. Falls back to "the server". */
+    private fun serverHost(): String =
+        runCatching { URI(session.baseUrl).host }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: "the server"
+
+    /**
+     * Whether the device believes it has usable connectivity.
+     *
+     * Only used to choose the wording of a failure, never to skip a request:
+     * captive portals and metered-but-blocked networks report themselves as
+     * connected, so treating this as authoritative would strand the agent.
+     */
+    private fun hasNetwork(): Boolean = runCatching {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
+            capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        } else {
+            @Suppress("DEPRECATION")
+            manager.activeNetworkInfo?.isConnected == true
+        }
+    }.getOrDefault(true)
 
     /** Shape used only to parse the field errors out of a 422 body. */
     private data class ValidationEnvelope(val data: ValidationPayload?)

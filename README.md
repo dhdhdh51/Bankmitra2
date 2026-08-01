@@ -1,4 +1,4 @@
-# LRMS — Loan Recovery Management System
+# D2 Recovery — Loan Recovery Management System
 
 Field verification and recovery follow-up for **BC/DC agents** working on behalf of banks.
 
@@ -346,8 +346,8 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **130** panel + **162** API |
-| Android | `sh tools/verify-android.sh` | **126** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **134** panel + **162** API |
+| Android | `sh tools/verify-android.sh` | **134** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand previews | `python3 tools/render-brand-preview.py` | renders the real vectors to `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
@@ -358,7 +358,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,003 assertions total.** Release APK is 2.8 MB after R8; debug APK is 8.3 MB
+**1,015 assertions total.** Release APK is 2.8 MB after R8; debug APK is 7.8 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -518,6 +518,30 @@ Kept here because they are the reason the tests exist:
     including Bezier control points, and fails the Android build. The overlapping
     shield was dropped rather than shrunk, and `render-brand-preview.py` renders
     the real drawables to PNG so the artwork can actually be reviewed.
+31. **The API answered the mobile app with an HTML page.** Bootstrap's
+    configuration check runs before the router exists and replied with a setup
+    page regardless of who asked, so a misconfigured server sent the Android
+    client a document it cannot parse. The agent saw "something went wrong" and
+    the phone took the blame for a server fault — the exact complaint that led
+    here. Bootstrap now detects an API caller and returns the normal
+    `{success, data, message}` envelope naming the unusable keys and who can fix
+    them, while a browser still gets the full page. The app also recognises an
+    HTML body behind any failure code and says so.
+32. **Every transport failure blamed the phone's internet.** `UnknownHostException`,
+    a refused connection, an expired certificate and a timeout all produced
+    "Check your internet connection". In the field the usual cause was a server
+    that could not be resolved, on a phone whose network was fine, which sent
+    agents hunting for signal instead of calling their administrator. Each case
+    now reports what actually happened and names the host it tried;
+    connectivity is consulted only to choose the wording, never to skip a
+    request, because captive portals report themselves as connected.
+33. **The app looked nothing like its own icon.** The UI carried a brighter blue
+    borrowed from the web panel, so tapping a navy-and-gold launcher icon opened
+    a plainly blue app, and a dozen strings still said LRMS after the product
+    became D2 Recovery. `BrandingTest` now pins the name, requires the primary to
+    be the same navy as the icon background, and computes WCAG contrast for the
+    brand pairs — including an assertion that white on the gold measures about
+    2:1, so nobody "tidies" `colorOnSecondary` back to white.
 
 ---
 

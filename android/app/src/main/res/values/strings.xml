@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LRMS</string>
+    <string name="app_name">D2 Recovery</string>
     <string name="app_full_name">Loan Recovery Management System</string>
 
     <!-- ==================== Launch screen ==================== -->
@@ -215,7 +215,7 @@
     <string name="account_change_password">Change password</string>
     <string name="account_dark_mode">Dark mode</string>
     <string name="account_sign_out">Sign out</string>
-    <string name="account_sign_out_confirm">Sign out of LRMS?</string>
+    <string name="account_sign_out_confirm">Sign out of D2 Recovery?</string>
     <string name="account_about">About</string>
     <string name="account_my_stats">My performance</string>
     <string name="account_assigned">Assigned</string>
@@ -242,7 +242,7 @@
     <string name="npa_badge">NPA</string>
     <string name="required_marker">*</string>
     <string name="update_required_title">Update required</string>
-    <string name="update_required_message">This version of LRMS is no longer supported. Please install the latest version to continue.</string>
+    <string name="update_required_message">This version of D2 Recovery is no longer supported. Please install the latest version to continue.</string>
 
     <string name="account_version_format">Version %1$s (build %2$d)</string>
     <string name="visit_submitted_from">Submitted from %1$s v%2$s on %3$s. This record is append-only and has not been edited.</string>

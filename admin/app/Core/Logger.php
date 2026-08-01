@@ -52,7 +52,7 @@ final class Logger
                 'user_agent'  => self::userAgent(),
             ]);
         } catch (\Throwable $e) {
-            error_log('[LRMS audit] ' . $e->getMessage());
+            error_log('[D2R audit] ' . $e->getMessage());
         }
     }
 
@@ -109,7 +109,7 @@ final class Logger
                 'user_agent'  => self::userAgent(),
             ]);
         } catch (\Throwable $e) {
-            error_log('[LRMS activity] ' . $e->getMessage());
+            error_log('[D2R activity] ' . $e->getMessage());
         }
     }
 

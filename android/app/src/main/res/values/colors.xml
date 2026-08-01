@@ -6,15 +6,23 @@
 <resources>
 
     <!-- Brand -->
-    <!-- The navy and gold of the D2 mark. Used for the launcher icon and the
-         splash, so the first thing on screen matches the icon just tapped. The
-         panel-matching blue below stays the UI colour. -->
+    <!-- The navy and gold of the D2 mark. These ARE the UI colours: the app used
+         a brighter blue (#1957C2) borrowed from the panel, which meant tapping a
+         navy-and-gold icon opened a plainly blue app and the two did not look
+         like the same product. Navy is now the primary and gold the accent, so
+         the launcher icon, the splash and every screen agree. -->
     <color name="lrms_brand_navy">#0B2A5B</color>
     <color name="lrms_brand_gold">#F2B21C</color>
 
-    <color name="lrms_primary">#1957C2</color>
-    <color name="lrms_primary_dark">#123F8F</color>
-    <color name="lrms_primary_light">#E8F0FD</color>
+    <color name="lrms_primary">#0B2A5B</color>
+    <color name="lrms_primary_dark">#071D40</color>
+    <color name="lrms_primary_light">#E7EDF8</color>
+
+    <!-- Gold accent. Dark text on gold, never white: white on #F2B21C is about
+         2:1 and unreadable. -->
+    <color name="lrms_accent">#F2B21C</color>
+    <color name="lrms_accent_dark">#7A5600</color>
+    <color name="lrms_accent_light">#FFF4D6</color>
 
     <!-- Text -->
     <color name="lrms_ink">#1C2128</color>
@@ -39,10 +47,15 @@
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
 
-    <!-- Dark theme -->
-    <color name="lrms_primary_night">#4D8BF0</color>
-    <color name="lrms_primary_dark_night">#7AA9F5</color>
-    <color name="lrms_primary_light_night">#17253C</color>
+    <!-- Dark theme. Navy itself is invisible against a near-black background, so
+         dark mode uses a light tone of the same hue, which is how Material tonal
+         palettes handle a dark brand colour. -->
+    <color name="lrms_primary_night">#8AB0EE</color>
+    <color name="lrms_primary_dark_night">#B3CCF5</color>
+    <color name="lrms_primary_light_night">#16233C</color>
+    <color name="lrms_accent_night">#F2B21C</color>
+    <color name="lrms_accent_light_night">#2B2113</color>
+    <color name="lrms_accent_on_light_night">#E8C25B</color>
     <color name="lrms_ink_night">#E6EDF3</color>
     <color name="lrms_slate_night">#A6B1C0</color>
     <color name="lrms_muted_night">#8B95A3</color>

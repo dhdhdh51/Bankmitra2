@@ -135,6 +135,17 @@ $loginPage = page('GET /login renders', '/login', 200, 'Sign in');
 check('login page has CSRF token', csrfToken($loginPage) !== '');
 check('login page shows the brand panel', str_contains($loginPage, 'Loan Recovery'));
 
+// The product is D2 Recovery. app_name lives in the settings table, so this also
+// proves the seed carries the new name - an install seeded with the old one keeps
+// showing it until the row is updated, which is the one thing a rename cannot
+// reach from the code.
+check('login page shows the product name', str_contains($loginPage, 'D2 Recovery'));
+check(
+    'login page has no trace of the old product name',
+    !str_contains($loginPage, 'LRMS'),
+    'found "LRMS" in the rendered page',
+);
+
 $redirect = request($base . '/dashboard', null, false);
 check('dashboard redirects when signed out', $redirect['status'] === 302, 'HTTP ' . $redirect['status']);
 
@@ -177,6 +188,12 @@ check('password change succeeds', $changed['status'] === 200 && str_contains($ch
 section('Authenticated pages');
 
 $dashboard = page('GET /dashboard', '/dashboard', 200, 'Total leads');
+check('signed-in header shows the product name', str_contains($dashboard, 'D2 Recovery'));
+check(
+    'signed-in page has no trace of the old product name',
+    !str_contains($dashboard, 'LRMS'),
+    'found "LRMS" in the rendered page',
+);
 check('dashboard shows seeded lead count', preg_match('/Total leads/', $dashboard) === 1);
 check('dashboard renders the visit chart', str_contains($dashboard, 'lrms-bars'));
 check('dashboard renders top agents', str_contains($dashboard, 'Top agents'));

@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LRMS"
+rootProject.name = "D2Recovery"
 include(":app")

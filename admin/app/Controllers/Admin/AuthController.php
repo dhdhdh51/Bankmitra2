@@ -70,7 +70,7 @@ final class AuthController extends Controller
             $this->back(
                 '/login',
                 'warning',
-                'BC/DC Agent accounts sign in through the LRMS Android app, not the web panel.'
+                'BC/DC Agent accounts sign in through the D2 Recovery Android app, not the web panel.'
             );
         }
 

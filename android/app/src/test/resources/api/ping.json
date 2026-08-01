@@ -2,7 +2,7 @@
     "success": true,
     "data": {
         "status": "ok",
-        "app_name": "LRMS",
+        "app_name": "D2 Recovery",
         "bank_name": "Gramin Vikas Bank",
         "app_version": "1.0.0",
         "min_version": "1.0.0",

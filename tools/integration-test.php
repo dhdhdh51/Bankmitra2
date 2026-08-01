@@ -118,7 +118,7 @@ check('seeded admin password verifies', password_verify(
     'Admin@123',
     (string) $db->scalar("SELECT password_hash FROM users WHERE employee_code = 'ADMIN001'")
 ));
-check('Settings::get reads DB', Settings::get('app_name') === 'LRMS');
+check('Settings::get reads DB', Settings::get('app_name') === 'D2 Recovery');
 check('missingRequired flags blank required settings', count(Settings::missingRequired()) > 0);
 
 // ---------------------------------------------------------------------------

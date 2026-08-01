@@ -58,7 +58,7 @@ foreach ($files as $file) {
         }
 
         $context = stream_context_create([
-            'http' => ['timeout' => 30, 'user_agent' => 'LRMS-integrity-check'],
+            'http' => ['timeout' => 30, 'user_agent' => 'D2Recovery-integrity-check'],
             'ssl'  => ['verify_peer' => true, 'verify_peer_name' => true],
         ]);
         $body = @file_get_contents($url, false, $context);

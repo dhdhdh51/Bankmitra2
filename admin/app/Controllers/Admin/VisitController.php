@@ -88,7 +88,7 @@ final class VisitController extends Controller
                 fmt_date((string) $report['visit_date'])
             ),
             false,
-            'LRMS confidential - field verification record'
+            'D2 Recovery confidential - field verification record'
         );
 
         $pdf->heading('General');

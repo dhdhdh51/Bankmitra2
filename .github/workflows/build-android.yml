@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# Builds the LRMS agent app on every push to main or a feature branch, on pull
+# Builds the D2 Recovery agent app on every push to main or a feature branch, on pull
 # requests, and on manual dispatch. Produces the test report plus an APK you can
 # actually install:
 #
@@ -245,7 +245,7 @@ jobs:
         if: ${{ steps.plan.outputs.debug == 'yes' }}
         uses: actions/upload-artifact@v4
         with:
-          name: lrms-debug-v${{ steps.version.outputs.name }}-${{ github.run_number }}
+          name: d2recovery-debug-v${{ steps.version.outputs.name }}-${{ github.run_number }}
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
           if-no-files-found: error
@@ -254,7 +254,7 @@ jobs:
         if: ${{ steps.plan.outputs.release == 'yes' }}
         uses: actions/upload-artifact@v4
         with:
-          name: lrms-release-v${{ steps.version.outputs.name }}-${{ github.run_number }}
+          name: d2recovery-release-v${{ steps.version.outputs.name }}-${{ github.run_number }}
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
           if-no-files-found: error
@@ -273,7 +273,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### LRMS Android build"
+            echo "### D2 Recovery Android build"
             echo ""
             echo "| Item | Value |"
             echo "| --- | --- |"

@@ -140,7 +140,7 @@ keytool -genkeypair -v \
     -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
     -alias "$KEY_ALIAS" \
     -keyalg RSA -keysize 2048 -validity 30 \
-    -dname 'CN=LRMS Signing Test, OU=CI, O=LRMS, L=Pune, S=MH, C=IN' \
+    -dname 'CN=D2 Recovery Signing Test, OU=CI, O=D2 Recovery, L=Pune, S=MH, C=IN' \
     > "$WORK/keytool.log" 2>&1 || die 'keytool could not create the test keystore'
 
 # Encode and decode exactly the way KEYSTORE_BASE64 is handled in CI.
@@ -202,7 +202,7 @@ if grep -q 'Verifies' "$WORK/verify-release.log"; then
 else
     fail 'apksigner did not report Verifies for the release APK'
 fi
-if grep -qi 'LRMS Signing Test' "$WORK/verify-release.log"; then
+if grep -qi 'D2 Recovery Signing Test' "$WORK/verify-release.log"; then
     pass 'the release APK carries our test certificate'
 else
     fail 'the release APK is not signed by the expected certificate'

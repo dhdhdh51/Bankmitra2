@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Timeline marker. Tinted per event tone from the adapter. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <solid android:color="#1957C2" />
+    <solid android:color="@color/lrms_primary" />
     <size android:width="12dp" android:height="12dp" />
 </shape>

@@ -26,20 +26,65 @@ spl_autoload_register(static function (string $class): void {
 });
 
 // ---------------------------------------------------------------------------
+// Is this request from the mobile app rather than a browser?
+//
+// It matters here because bootstrap can fail before the router exists, and a
+// setup failure used to answer with an HTML page no matter who asked. The
+// Android client cannot parse HTML, so a misconfigured server reached the agent
+// as "something went wrong" with no cause - the app was blamed for a server
+// problem. API callers get the same envelope the rest of the API uses.
+// ---------------------------------------------------------------------------
+$lrmsWantsJson = (static function (): bool {
+    $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+    if (preg_match('#(^|/)api(/|$)#', $path) === 1) {
+        return true;
+    }
+    if (str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')) {
+        return true;
+    }
+    return ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+})();
+
+/**
+ * Reports a fatal setup problem in whatever format the caller can read, then stops.
+ *
+ * @param string $apiMessage One line, safe to show to an agent on a phone.
+ * @param string $htmlBody   Full explanation for whoever administers the server.
+ */
+$lrmsSetupFailure = static function (string $title, string $apiMessage, string $htmlBody) use ($lrmsWantsJson): never {
+    http_response_code(500);
+
+    if ($lrmsWantsJson) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(
+            ['success' => false, 'data' => null, 'message' => $apiMessage],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
+        exit;
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><title>D2 Recovery setup</title>'
+       . '<div style="font:15px/1.6 system-ui,sans-serif;max-width:680px;margin:12vh auto;padding:0 24px;color:#1c2128">'
+       . '<h1 style="font-size:20px;color:#b3261e;margin:0 0 12px">' . $title . '</h1>'
+       . $htmlBody
+       . '</div>';
+    exit;
+};
+
+// ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 $configFile = ROOT_PATH . '/config/config.php';
 if (!is_file($configFile)) {
-    http_response_code(500);
-    header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><meta charset="utf-8"><title>LRMS setup</title>'
-       . '<div style="font:15px/1.6 system-ui,sans-serif;max-width:640px;margin:14vh auto;padding:0 24px;color:#1c2128">'
-       . '<h1 style="font-size:20px;color:#b3261e;margin:0 0 12px">Configuration missing</h1>'
-       . '<p><code>config/config.php</code> was not found.</p>'
-       . '<p>Copy <code>config/config.sample.php</code> to <code>config/config.php</code>, '
-       . 'fill in the database credentials, and generate the three keys as described in that file.</p>'
-       . '</div>';
-    exit;
+    $lrmsSetupFailure(
+        'Configuration missing',
+        'This server has not been set up yet: config/config.php is missing. '
+            . 'Please contact your administrator.',
+        '<p><code>config/config.php</code> was not found.</p>'
+        . '<p>Copy <code>config/config.sample.php</code> to <code>config/config.php</code>, '
+        . 'fill in the database credentials, and generate the three keys as described in that file.</p>',
+    );
 }
 
 /** @var array<string,mixed> $config */
@@ -90,10 +135,9 @@ foreach (['app_key', 'data_key', 'hash_pepper'] as $keyName) {
 }
 
 if ($configProblems !== []) {
-    http_response_code(500);
-
     if (PHP_SAPI === 'cli') {
-        fwrite(STDERR, "LRMS configuration is incomplete:\n");
+        http_response_code(500);
+        fwrite(STDERR, "D2 Recovery configuration is incomplete:\n");
         foreach ($configProblems as [$key, $why]) {
             fwrite(STDERR, sprintf("  - %s %s\n", $key, $why));
         }
@@ -107,31 +151,36 @@ if ($configProblems !== []) {
             . htmlspecialchars($why, ENT_QUOTES) . '</li>';
     }
 
-    header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><meta charset="utf-8"><title>LRMS setup</title>'
-       . '<div style="font:15px/1.6 system-ui,sans-serif;max-width:680px;margin:12vh auto;padding:0 24px;color:#1c2128">'
-       . '<h1 style="font-size:20px;color:#b3261e;margin:0 0 12px">Configuration incomplete</h1>'
-       . '<p><code>config/config.php</code> was found, but these entries are not usable:</p>'
-       . '<ul style="line-height:1.9">' . $rows . '</ul>'
-       . (is_file(dirname(__DIR__) . '/setup-keys.php')
+    // The app shows this verbatim to whoever is holding the phone, so it names
+    // the fault and who can fix it instead of blaming the network.
+    $apiMessage = 'This server is not set up correctly yet: '
+        . implode(', ', array_column($configProblems, 0))
+        . ' not usable in config/config.php. Your administrator needs to fix it '
+        . '(open setup-keys.php on the server). This is not a problem with your phone.';
+
+    $lrmsSetupFailure(
+        'Configuration incomplete',
+        $apiMessage,
+        '<p><code>config/config.php</code> was found, but these entries are not usable:</p>'
+        . '<ul style="line-height:1.9">' . $rows . '</ul>'
+        . (is_file(dirname(__DIR__) . '/setup-keys.php')
             ? '<p><strong>Easiest fix:</strong> open <a href="setup-keys.php">setup-keys.php</a> - it '
               . 'generates the missing keys and writes them for you. Keys that are already set are left '
               . 'alone. Delete that file afterwards.</p>'
               . '<p style="color:#6b7280;font-size:13px">Prefer to do it by hand? Generate each key with:</p>'
             : '<p>Generate each key with:</p>')
-       . '<pre style="background:#f5f7fa;border:1px solid #e2e5ea;border-radius:8px;padding:12px;overflow:auto">'
-       . 'php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"</pre>'
-       . '<p style="color:#b3261e"><strong>Once real borrower data exists, <code>data_key</code> and '
-       . '<code>hash_pepper</code> can never be changed.</strong> data_key decrypts stored mobile and '
-       . 'Aadhaar numbers and hash_pepper derives their search hashes, so altering either makes existing '
-       . 'records unreadable. Set them once, then back them up somewhere separate from your database '
-       . 'backups.</p>'
-       . '<p style="color:#6b7280;font-size:13px">Until these are set the panel will appear to work: pages '
-       . 'load and sign-in succeeds, but anything touching encryption - creating a user with a mobile '
-       . 'number, importing leads, an app login that falls through to the mobile lookup - fails with a '
-       . 'server error.</p>'
-       . '</div>';
-    exit;
+        . '<pre style="background:#f5f7fa;border:1px solid #e2e5ea;border-radius:8px;padding:12px;overflow:auto">'
+        . 'php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"</pre>'
+        . '<p style="color:#b3261e"><strong>Once real borrower data exists, <code>data_key</code> and '
+        . '<code>hash_pepper</code> can never be changed.</strong> data_key decrypts stored mobile and '
+        . 'Aadhaar numbers and hash_pepper derives their search hashes, so altering either makes existing '
+        . 'records unreadable. Set them once, then back them up somewhere separate from your database '
+        . 'backups.</p>'
+        . '<p style="color:#6b7280;font-size:13px">Until these are set the panel will appear to work: pages '
+        . 'load and sign-in succeeds, but anything touching encryption - creating a user with a mobile '
+        . 'number, importing leads, an app login that falls through to the mobile lookup - fails with a '
+        . 'server error.</p>',
+    );
 }
 
 // ---------------------------------------------------------------------------

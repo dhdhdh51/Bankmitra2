@@ -8,10 +8,14 @@
         <item name="colorPrimaryContainer">@color/lrms_primary_light_night</item>
         <item name="colorOnPrimaryContainer">@color/lrms_primary_dark_night</item>
 
-        <item name="colorSecondary">@color/lrms_primary_dark_night</item>
-        <item name="colorOnSecondary">@color/lrms_background_night</item>
-        <item name="colorSecondaryContainer">@color/lrms_primary_light_night</item>
-        <item name="colorOnSecondaryContainer">@color/lrms_primary_dark_night</item>
+        <!-- Gold reads the same on dark, with ink on top of it. -->
+        <item name="colorSecondary">@color/lrms_accent_night</item>
+        <item name="colorOnSecondary">@color/lrms_ink</item>
+        <item name="colorSecondaryContainer">@color/lrms_accent_light_night</item>
+        <item name="colorOnSecondaryContainer">@color/lrms_accent_on_light_night</item>
+
+        <item name="colorTertiary">@color/lrms_primary_dark_night</item>
+        <item name="colorOnTertiary">@color/lrms_background_night</item>
 
         <item name="colorSurface">@color/lrms_surface_night</item>
         <item name="colorOnSurface">@color/lrms_ink_night</item>

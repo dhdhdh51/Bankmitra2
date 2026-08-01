@@ -1132,7 +1132,7 @@ final class ReportService
         $columns = $report['columns'];
 
         $bank = (string) Settings::get('bank_name', '');
-        $footer = ($bank !== '' ? $bank . ' · ' : '') . 'LRMS confidential - for internal recovery use only';
+        $footer = ($bank !== '' ? $bank . ' · ' : '') . 'D2 Recovery confidential - for internal recovery use only';
 
         $pdf = new \App\Core\Pdf(
             (string) $report['title'],
