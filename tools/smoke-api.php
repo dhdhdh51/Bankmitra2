@@ -74,6 +74,44 @@ function api(string $method, string $path, ?array $payload = null, ?string $toke
     return ['status' => $status, 'json' => is_array($json) ? $json : null, 'raw' => $raw];
 }
 
+/**
+ * Fetches a binary download, keeping the response headers.
+ *
+ * The JSON helper above throws the headers away, but for a file download the
+ * Content-Disposition is part of the contract: without it a browser or the app
+ * renders the bytes instead of saving them.
+ *
+ * @return array{status:int, headers:string, body:string}
+ */
+function apiDownload(string $path, ?string $token = null): array
+{
+    global $base;
+
+    $ch = curl_init($base . $path);
+    $headers = ['Accept: application/pdf'];
+    if ($token !== null) {
+        $headers[] = 'Authorization: Bearer ' . $token;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => true,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+
+    $raw = (string) curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    curl_close($ch);
+
+    return [
+        'status'  => $status,
+        'headers' => substr($raw, 0, $headerSize),
+        'body'    => substr($raw, $headerSize),
+    ];
+}
+
 /** Every JSON response must carry the documented envelope. */
 function hasEnvelope(?array $json): bool
 {
@@ -278,6 +316,40 @@ check('history includes visits', is_array($history['json']['data']['visits'] ?? 
 
 $missingLead = api('GET', '/customers/99999999', null, $agentToken);
 check('unknown customer returns 404', $missingLead['status'] === 404, 'HTTP ' . $missingLead['status']);
+
+// ---- Customer data sheet --------------------------------------------------
+// The sheet leaves the device as a file, so it is scoped to leads assigned to
+// this agent - not merely leads in their branch, which is all the rest of the
+// lead API requires.
+$sheet = apiDownload('/customers/' . $leadId . '/sheet', $agentToken);
+check('GET /customers/{id}/sheet returns 200', $sheet['status'] === 200, 'HTTP ' . $sheet['status']);
+check('sheet is delivered as a PDF', str_starts_with($sheet['body'], '%PDF-'), substr($sheet['body'], 0, 8));
+check('sheet is sent as an attachment', stripos($sheet['headers'], 'attachment') !== false);
+check('sheet is served as application/pdf', stripos($sheet['headers'], 'application/pdf') !== false);
+check('sheet is not cached', stripos($sheet['headers'], 'no-store') !== false);
+check('sheet requires a token', apiDownload('/customers/' . $leadId . '/sheet')['status'] === 401);
+
+// A second agent's lead must be refused. The rest of the lead API allows an agent
+// to read anything in their branch; the sheet deliberately does not, because it
+// leaves the device as a file.
+$agent2Login = api('POST', '/auth/login', ['employee_code' => 'AGT002', 'password' => 'Agent@123']);
+$agent2Token = (string) ($agent2Login['json']['data']['access_token'] ?? '');
+if ($agent2Token !== '') {
+    $agent2Leads = api('GET', '/leads?per_page=1', null, $agent2Token);
+    $agent2LeadId = (int) ($agent2Leads['json']['data'][0]['id'] ?? 0);
+    if ($agent2LeadId > 0 && $agent2LeadId !== $leadId) {
+        $foreign = apiDownload('/customers/' . $agent2LeadId . '/sheet', $agentToken);
+        check(
+            'an agent cannot take the sheet for another agent\'s lead',
+            $foreign['status'] === 403,
+            'HTTP ' . $foreign['status']
+        );
+        check(
+            'but that lead\'s own agent can',
+            apiDownload('/customers/' . $agent2LeadId . '/sheet', $agent2Token)['status'] === 200
+        );
+    }
+}
 
 // ---------------------------------------------------------------------------
 section('Visit submission (append-only, idempotent)');

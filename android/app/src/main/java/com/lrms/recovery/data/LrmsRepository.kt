@@ -304,6 +304,51 @@ class LrmsRepository(context: Context) {
      * Runs a call and unwraps the envelope, translating transport and HTTP
      * failures into [ApiResult] variants.
      */
+    /**
+     * Downloads the customer data sheet and returns the file it was written to.
+     *
+     * Written into the cache directory, not into Downloads: the sheet carries a
+     * borrower's contact details and the branch's settlement figures, so it should
+     * not outlive the agent's use of it. The cache is what FileProvider is allowed
+     * to share, and the OS reclaims it.
+     */
+    suspend fun downloadCustomerSheet(loanAccountId: Long, accountNumber: String): ApiResult<File> =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = api.customerSheet(loanAccountId)
+
+                if (!response.isSuccessful) {
+                    return@withContext toFailure(response, null)
+                }
+
+                val body = response.body()
+                    ?: return@withContext ApiResult.Failure("The server returned an empty file.")
+
+                val directory = File(appContext.cacheDir, "sheets").apply { mkdirs() }
+                // One file per account, overwritten each time, so repeated taps do
+                // not fill the cache with near-identical PDFs.
+                val safeAccount = accountNumber.replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-')
+                val target = File(directory, "customer-sheet-${safeAccount.ifBlank { loanAccountId.toString() }}.pdf")
+
+                body.byteStream().use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+
+                // A truncated download is worse than a failed one: it opens, looks
+                // broken, and the agent cannot tell why.
+                if (target.length() < 100L || !target.readBytes().take(5).toByteArray()
+                        .contentEquals("%PDF-".toByteArray())
+                ) {
+                    target.delete()
+                    return@withContext ApiResult.Failure("The downloaded file was not a valid PDF.")
+                }
+
+                ApiResult.Success(target)
+            } catch (error: Throwable) {
+                toNetworkError(error)
+            }
+        }
+
     private suspend fun <T> call(block: suspend () -> Response<ApiEnvelope<T>>): ApiResult<T> =
         withContext(Dispatchers.IO) {
             try {

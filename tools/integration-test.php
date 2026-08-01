@@ -515,6 +515,61 @@ $badRowsResult = ImportService::run(
 check('bad row reported at its real spreadsheet line', ($badRowsResult['errors'][0]['row'] ?? 0) === 5, json_encode($badRowsResult['errors']));
 
 // ---------------------------------------------------------------------------
+section('Customer data sheet PDF');
+// ---------------------------------------------------------------------------
+// The sheet an agent carries to the door. It has to be a real, parseable PDF and
+// it has to contain the settlement position, because that is the thing the agent
+// cannot afford to get wrong in front of a borrower.
+$sheetLead = $db->first("SELECT id FROM loan_accounts WHERE loan_account_number = 'LNOTS001' LIMIT 1");
+$sheet = App\Services\CustomerSheetService::render((int) $sheetLead['id']);
+
+check('sheet is a PDF', str_starts_with($sheet['bytes'], '%PDF-'), substr($sheet['bytes'], 0, 8));
+check('sheet ends with the EOF marker', str_contains(substr($sheet['bytes'], -1024), '%%EOF'));
+check('sheet is a plausible size', strlen($sheet['bytes']) > 1500, (string) strlen($sheet['bytes']));
+check('filename identifies the account', str_contains($sheet['filename'], 'LNOTS001'), $sheet['filename']);
+check('filename ends in .pdf', str_ends_with($sheet['filename'], '.pdf'));
+
+// Pull the text back out of the PDF's content streams so the assertions are about
+// what a person would actually read, not about the code that produced it.
+$sheetText = '';
+if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $sheet['bytes'], $streams) === 1 || isset($streams[1])) {
+    foreach ($streams[1] as $stream) {
+        $inflated = @gzuncompress($stream);
+        $sheetText .= $inflated === false ? $stream : $inflated;
+    }
+}
+$sheetPlain = '';
+if (preg_match_all('/\(((?:[^()\\\\]|\\\\.)*)\)\s*Tj/', $sheetText, $shown) !== false) {
+    $sheetPlain = implode(' ', $shown[1] ?? []);
+}
+
+check('sheet names the borrower', str_contains($sheetPlain, 'Shivam Verma'), substr($sheetPlain, 0, 120));
+check('sheet shows the account number', str_contains($sheetPlain, 'LNOTS001'));
+check('sheet has a settlement section', str_contains($sheetPlain, 'Settlement Position'));
+check('sheet states OTS eligibility', str_contains($sheetPlain, 'OTS Eligible'));
+check('sheet carries the OTS figure', str_contains(str_replace(',', '', $sheetPlain), '56250.00'), 'not found');
+check('sheet warns against uncommitted settlements', str_contains($sheetPlain, 'confirmed in writing'));
+check('sheet marks the history append-only', str_contains($sheetPlain, 'append-only'));
+check('Aadhaar is masked on the sheet', !str_contains($sheetPlain, '234567890123'));
+
+// A lead with no stated position must not print an empty settlement block that
+// an agent could read as a refusal.
+$plainLead = $db->first("SELECT id FROM loan_accounts WHERE loan_account_number = 'LNOTS003' LIMIT 1");
+$plainSheet = App\Services\CustomerSheetService::render((int) $plainLead['id']);
+$plainText = '';
+if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $plainSheet['bytes'], $s2) !== false) {
+    foreach ($s2[1] ?? [] as $stream) {
+        $inflated = @gzuncompress($stream);
+        $plainText .= $inflated === false ? $stream : $inflated;
+    }
+}
+$plainShown = '';
+if (preg_match_all('/\(((?:[^()\\\\]|\\\\.)*)\)\s*Tj/', $plainText, $sh2) !== false) {
+    $plainShown = implode(' ', $sh2[1] ?? []);
+}
+check('no settlement section when the branch said nothing', !str_contains($plainShown, 'Settlement Position'));
+
+// ---------------------------------------------------------------------------
 section('Search (including encrypted columns)');
 
 $byAccount = LoanAccount::paginate(['search' => 'LN1001'], 'created_at', 'DESC', 1, 25);

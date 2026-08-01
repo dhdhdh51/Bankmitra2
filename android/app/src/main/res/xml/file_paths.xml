@@ -3,5 +3,7 @@
 <paths>
     <cache-path name="captures" path="captures/" />
     <cache-path name="signatures" path="signatures/" />
+    <!-- Downloaded customer data sheets, shared out to a PDF viewer. -->
+    <cache-path name="sheets" path="sheets/" />
     <files-path name="app_files" path="." />
 </paths>

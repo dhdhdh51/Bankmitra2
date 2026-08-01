@@ -58,6 +58,8 @@ return static function (Router $router): void {
     // ---- Customers -------------------------------------------------------
     $router->get($prefix . '/customers/{id}', [LeadController::class, 'show']);
     $router->get($prefix . '/customers/{id}/history', [LeadController::class, 'history']);
+    // The printable data sheet an agent carries into the field.
+    $router->get($prefix . '/customers/{id}/sheet', [LeadController::class, 'sheet']);
 
     // ---- Visits ----------------------------------------------------------
     $router->get($prefix . '/visits', [VisitController::class, 'index']);

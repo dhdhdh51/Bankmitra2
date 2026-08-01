@@ -341,12 +341,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 113 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 114 files |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **383** |
+| Integration | `sh tools/integration-test.sh` | **397** — includes re-parsing the generated customer sheet PDF |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **162** API |
+| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **170** API |
 | Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -359,7 +359,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,154 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
+**1,176 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -590,6 +590,12 @@ Kept here because they are the reason the tests exist:
     rows vanished into the skipped count. Branches are now taken from the sheet and
     created when new, reported by name so a typo is visible — and only for an
     uploader who is not scoped to a single branch.
+42. **`findWithPii()` did not select the columns it was asked for.** The four new
+    settlement columns were written by the importer and read back as `null`
+    everywhere, because the lead projection is spelled out by hand rather than
+    `SELECT *` — so a new column is invisible until it is added in two places. The
+    customer sheet is what exposed it: the settlement section rendered empty for a
+    lead that plainly had figures.
 
 ---
 

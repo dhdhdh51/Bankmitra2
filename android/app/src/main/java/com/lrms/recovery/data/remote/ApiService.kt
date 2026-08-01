@@ -128,4 +128,15 @@ interface ApiService {
     @Streaming
     @GET("media")
     suspend fun media(@Query("f") path: String): Response<ResponseBody>
+
+    /**
+     * The printable customer data sheet, as a PDF.
+     *
+     * The server only issues this for a lead assigned to the calling agent, which
+     * is stricter than the rest of the lead API: the sheet leaves the device as a
+     * file and can be forwarded on from there.
+     */
+    @Streaming
+    @GET("customers/{id}/sheet")
+    suspend fun customerSheet(@Path("id") id: Long): Response<ResponseBody>
 }

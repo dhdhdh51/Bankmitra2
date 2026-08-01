@@ -1,9 +1,13 @@
 package com.lrms.recovery.ui.customer
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.lrms.recovery.R
@@ -15,6 +19,7 @@ import com.lrms.recovery.ui.history.VisitHistoryActivity
 import com.lrms.recovery.ui.visit.VisitDetailActivity
 import com.lrms.recovery.ui.visit.VisitReportActivity
 import com.lrms.recovery.util.Formatters
+import java.io.File
 import kotlinx.coroutines.launch
 
 /**
@@ -31,6 +36,9 @@ class CustomerProfileActivity : BaseActivity() {
     private val leadId: Int by lazy { intent.getIntExtra(EXTRA_LEAD_ID, 0) }
 
     private var payload: CustomerProfilePayload? = null
+
+    /** Stops a second tap starting a second download of the same sheet. */
+    private var sheetInFlight = false
 
     private lateinit var timelineAdapter: TimelineAdapter
     private lateinit var promiseAdapter: PromiseAdapter
@@ -221,6 +229,83 @@ class CustomerProfileActivity : BaseActivity() {
     private fun startVisitReport() {
         val lead = payload?.lead ?: return
         startActivity(VisitReportActivity.intent(this, lead.id, lead.customerName, lead.village))
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_customer_profile, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.action_download_sheet) {
+            downloadSheet()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    /**
+     * Fetches the printable data sheet and hands it to a PDF app.
+     *
+     * Deliberately does nothing until the profile has loaded: the account number
+     * names the file, and a sheet called "customer-sheet-0.pdf" is no use to
+     * anyone looking through a folder of them later.
+     */
+    private fun downloadSheet() {
+        val account = payload?.lead?.loanAccountNumber
+        if (account.isNullOrBlank()) {
+            showMessage(R.string.loading, binding.root)
+            return
+        }
+
+        if (sheetInFlight) {
+            return
+        }
+        sheetInFlight = true
+        showMessage(R.string.customer_sheet_preparing, binding.root)
+
+        lifecycleScope.launch {
+            val result = repository.downloadCustomerSheet(leadId.toLong(), account)
+            sheetInFlight = false
+
+            when (result) {
+                is ApiResult.Success -> openSheet(result.data)
+                // handleFailure carries the server's own message, which for this
+                // endpoint may be "you can only download the data sheet for a lead
+                // assigned to you" - worth showing verbatim.
+                else -> handleFailure(result, binding.root)
+            }
+        }
+    }
+
+    private fun openSheet(file: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/pdf")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        // A chooser rather than a bare ACTION_VIEW: agents routinely need to send
+        // the sheet on to the branch, and the share targets sit in the same sheet.
+        val chooser = Intent.createChooser(view, getString(R.string.customer_sheet_open_with)).apply {
+            putExtra(
+                Intent.EXTRA_ALTERNATE_INTENTS,
+                arrayOf(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    },
+                ),
+            )
+        }
+
+        try {
+            startActivity(chooser)
+        } catch (_: ActivityNotFoundException) {
+            showMessage(R.string.customer_sheet_no_viewer, binding.root)
+        }
     }
 
     companion object {

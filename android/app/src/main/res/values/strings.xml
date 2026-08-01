@@ -3,6 +3,13 @@
     <string name="app_name">D2 Recovery</string>
     <string name="app_full_name">Loan Recovery Management System</string>
 
+    <!-- ==================== Customer data sheet ==================== -->
+    <string name="customer_download_sheet">Download data sheet</string>
+    <string name="customer_sheet_preparing">Preparing the data sheet…</string>
+    <string name="customer_sheet_ready">Data sheet ready</string>
+    <string name="customer_sheet_open_with">Open the data sheet</string>
+    <string name="customer_sheet_no_viewer">No PDF app is installed to open the sheet. Install one and try again.</string>
+
     <!-- ==================== Launch screen ==================== -->
     <string name="splash_still_checking">Checking your session…</string>
 
