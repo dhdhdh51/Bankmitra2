@@ -24,7 +24,7 @@ final class MetaController extends Controller
     {
         Response::success([
             'status'      => 'ok',
-            'app_name'    => Settings::get('app_name', 'LRMS'),
+            'app_name'    => Settings::get('app_name', 'D2 Recovery'),
             'bank_name'   => Settings::get('bank_name', ''),
             'app_version' => Settings::get('app_version', '1.0.0'),
             'min_version' => Settings::get('app_min_version', '1.0.0'),

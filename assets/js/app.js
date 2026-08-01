@@ -1,5 +1,5 @@
 /* ==========================================================================
-   LRMS admin panel behaviour.
+   D2 Recovery admin panel behaviour.
    Vanilla JS - Bootstrap's bundle (CDN) provides dropdowns/modals/tooltips.
    ========================================================================== */
 (function () {

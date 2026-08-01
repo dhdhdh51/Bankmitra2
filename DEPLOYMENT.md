@@ -1,4 +1,4 @@
-# LRMS Deployment Guide
+# D2 Recovery Deployment Guide
 
 Loan Recovery Management System — admin panel, REST API and Android app.
 
@@ -268,7 +268,7 @@ a reset has to be done by an administrator.
 | `smtp_password` | an **app password**, not the account password |
 | `smtp_encryption` | `tls` (or `ssl` on port 465) |
 | `smtp_from_email` | `no-reply@yourbank.example` |
-| `smtp_from_name` | `LRMS` |
+| `smtp_from_name` | `D2 Recovery` |
 
 Most shared hosts block outbound port 25 but allow 587. If cPanel provides a mail
 account on your own domain, use that — mail from your own domain is far less likely
@@ -765,6 +765,30 @@ php ~/public_html/cron/backup.php
 > **Do not re-import `schema.sql` as part of an upgrade.** It begins each table
 > with `DROP TABLE IF EXISTS` and would delete every record you have. Only ever
 > run it on a fresh, empty database.
+
+### Renaming to D2 Recovery on an existing install
+
+The product name is stored in the `settings` table, not in the code — that is the
+point of the setting, so an operator can change it without a deploy. Copying new
+files therefore does **not** rename an install that was seeded earlier: the panel
+header, PDF and Excel exports and the OTP text all keep showing the old name.
+
+Easiest fix, in the panel: **Settings → General → Application name**. Or run this
+once in phpMyAdmin; it is idempotent and touches nothing an operator has already
+customised:
+
+```sql
+UPDATE `settings` SET `setting_value` = 'D2 Recovery'
+ WHERE `setting_key` IN ('app_name', 'smtp_from_name')
+   AND `setting_value` = 'LRMS';
+
+UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery')
+ WHERE `setting_key` = 'sms_otp_template'
+   AND `setting_value` LIKE '%LRMS%';
+```
+
+The Android app needs no equivalent step: its name is a string resource, so
+installing the new APK is enough.
 
 ### AGP 9.x
 

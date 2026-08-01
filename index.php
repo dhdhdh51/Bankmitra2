@@ -1,6 +1,6 @@
 <?php
 /**
- * LRMS single front controller.
+ * D2 Recovery single front controller.
  *
  * Everything - admin panel pages and the /api/v1 REST API - enters here.
  * Deploy the contents of this `admin/` directory into public_html.

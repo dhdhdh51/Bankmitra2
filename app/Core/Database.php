@@ -62,7 +62,7 @@ final class Database
             $this->pdo->exec("SET time_zone = '{$offset}'");
         } catch (\Throwable $e) {
             // Non-fatal: log and continue with the server default.
-            error_log('[LRMS] could not align MySQL session timezone: ' . $e->getMessage());
+            error_log('[D2R] could not align MySQL session timezone: ' . $e->getMessage());
         }
     }
 

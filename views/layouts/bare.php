@@ -9,7 +9,7 @@
 
 use App\Core\Settings;
 
-$appName = Settings::get('app_name', 'LRMS') ?? 'LRMS';
+$appName = Settings::get('app_name', 'D2 Recovery') ?? 'D2 Recovery';
 ?>
 <!doctype html>
 <html lang="en" data-theme="light">

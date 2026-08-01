@@ -193,7 +193,7 @@ final class BackupService
 
         $reject = static function (string $why) use ($path, $stderr): bool {
             @unlink($path);
-            error_log('[LRMS backup] mysqldump unusable (' . $why . '), falling back to the PHP dump.'
+            error_log('[D2R backup] mysqldump unusable (' . $why . '), falling back to the PHP dump.'
                 . ($stderr === '' ? '' : ' stderr: ' . substr($stderr, 0, 500)));
             return false;
         };
@@ -238,7 +238,7 @@ final class BackupService
 
         $database = (string) Config::require('db.name');
 
-        fwrite($handle, "-- LRMS database backup\n");
+        fwrite($handle, "-- D2 Recovery database backup\n");
         fwrite($handle, '-- Database: ' . $database . "\n");
         fwrite($handle, '-- Generated: ' . date('Y-m-d H:i:s') . "\n");
         fwrite($handle, "-- Method: pure PHP (mysqldump unavailable)\n\n");

@@ -160,7 +160,7 @@ final class ImportController extends Controller
                     'Lead Template',
                     $headings,
                     $sample,
-                    'LRMS Lead Import Template',
+                    'D2 Recovery Lead Import Template',
                     'Replace the sample row with your data. Branch and Loan Account Number are required.'
                 ),
                 'lrms_lead_import_template.xlsx',

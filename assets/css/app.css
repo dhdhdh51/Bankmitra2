@@ -1,14 +1,21 @@
 /* ==========================================================================
-   LRMS design system
-   Professional banking: white / blue / dark grey. Data-dense, not decorative.
+   D2 Recovery design system
+   Professional banking: white / navy / gold. Data-dense, not decorative.
    Layered on top of Bootstrap 5.3 (CDN) - we override tokens, not components.
    ========================================================================== */
 
 :root {
-    /* Brand */
-    --lrms-primary: #1957c2;
-    --lrms-primary-dark: #123f8f;
-    --lrms-primary-light: #e8f0fd;
+    /* Brand: the navy and gold of the D2 mark, so the panel, the app and the
+       launcher icon are recognisably one product. This used to be a brighter
+       blue that matched nothing. */
+    --lrms-primary: #0b2a5b;
+    --lrms-primary-dark: #071d40;
+    --lrms-primary-light: #e7edf8;
+
+    /* Gold accent. Always dark text on it - white on gold is about 2:1. */
+    --lrms-accent: #f2b21c;
+    --lrms-accent-dark: #7a5600;
+    --lrms-accent-light: #fff4d6;
 
     /* Text */
     --lrms-ink: #1c2128;
@@ -45,14 +52,14 @@
     --lrms-topbar-h: 60px;
 
     /* Bootstrap token overrides */
-    --bs-primary: #1957c2;
-    --bs-primary-rgb: 25, 87, 194;
+    --bs-primary: #0b2a5b;
+    --bs-primary-rgb: 11, 42, 91;
     --bs-body-color: #1c2128;
     --bs-body-bg: #f5f7fa;
     --bs-border-color: #e2e5ea;
     --bs-border-radius: 10px;
-    --bs-link-color: #1957c2;
-    --bs-link-hover-color: #123f8f;
+    --bs-link-color: #0b2a5b;
+    --bs-link-hover-color: #071d40;
     --bs-font-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
         'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
 }
@@ -62,9 +69,15 @@
    by the inline script in the layout so there is no flash of light theme.
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
-    --lrms-primary: #4d8bf0;
-    --lrms-primary-dark: #7aa9f5;
-    --lrms-primary-light: #17253c;
+    /* Navy is invisible on a near-black background, so dark mode uses a light
+       tone of the same hue. */
+    --lrms-primary: #8ab0ee;
+    --lrms-primary-dark: #b3ccf5;
+    --lrms-primary-light: #16233c;
+
+    --lrms-accent: #f2b21c;
+    --lrms-accent-dark: #e8c25b;
+    --lrms-accent-light: #2b2113;
 
     --lrms-ink: #e6edf3;
     --lrms-slate: #a6b1c0;
@@ -92,9 +105,9 @@
     --bs-body-color: #e6edf3;
     --bs-body-bg: #0f1319;
     --bs-border-color: #262d38;
-    --bs-primary: #4d8bf0;
-    --bs-primary-rgb: 77, 139, 240;
-    --bs-link-color: #7aa9f5;
+    --bs-primary: #8ab0ee;
+    --bs-primary-rgb: 138, 176, 238;
+    --bs-link-color: #b3ccf5;
     --bs-link-hover-color: #a3c3f8;
     --bs-emphasis-color: #e6edf3;
     --bs-secondary-color: #a6b1c0;
@@ -143,7 +156,7 @@ code, kbd, pre, .font-mono {
     outline-offset: 2px;
 }
 .btn:focus, .form-control:focus, .form-select:focus {
-    box-shadow: 0 0 0 3px rgba(25, 87, 194, .18);
+    box-shadow: 0 0 0 3px rgba(11, 42, 91, .18);
     border-color: var(--lrms-primary);
 }
 
@@ -412,7 +425,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 
 .badge-pending  { background: var(--lrms-warning-light); color: var(--lrms-warning); border-color: rgba(183,121,31,.22); }
 .badge-visited  { background: var(--lrms-success-light); color: var(--lrms-success); border-color: rgba(26,127,78,.22); }
-.badge-promise  { background: var(--lrms-info-light);    color: var(--lrms-primary-dark); border-color: rgba(25,87,194,.22); }
+.badge-promise  { background: var(--lrms-info-light);    color: var(--lrms-primary-dark); border-color: rgba(11,42,91,.22); }
 .badge-followup { background: #eef2f6; color: var(--lrms-slate); border-color: var(--lrms-border); }
 .badge-legal    { background: var(--lrms-danger-light);  color: var(--lrms-danger); border-color: rgba(179,38,30,.22); }
 .badge-closed   { background: #eef0f3; color: var(--lrms-muted); border-color: var(--lrms-border); }
@@ -576,7 +589,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 .alert-success { background: var(--lrms-success-light); border-color: rgba(26,127,78,.25); color: var(--lrms-success); }
 .alert-danger  { background: var(--lrms-danger-light);  border-color: rgba(179,38,30,.25); color: var(--lrms-danger); }
 .alert-warning { background: var(--lrms-warning-light); border-color: rgba(183,121,31,.25); color: var(--lrms-warning); }
-.alert-info    { background: var(--lrms-info-light);    border-color: rgba(25,87,194,.25); color: var(--lrms-primary-dark); }
+.alert-info    { background: var(--lrms-info-light);    border-color: rgba(11,42,91,.25); color: var(--lrms-primary-dark); }
 
 /* ==========================================================================
    Login / auth screens
@@ -881,7 +894,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
     body { background: #fff !important; font-size: 11pt; }
     .lrms-card { border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; }
     .lrms-table { font-size: 9pt; }
-    .lrms-table thead th { background: #eef2f8 !important; color: #123f8f !important; }
+    .lrms-table thead th { background: #eef2f8 !important; color: #071d40 !important; }
     a[href]::after { content: none !important; }
     @page { margin: 12mm; size: A4; }
     .print-only { display: block !important; }
@@ -949,7 +962,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 
 .lrms-figure {
     background: var(--lrms-primary-light);
-    border: 1px solid rgba(25, 87, 194, .18);
+    border: 1px solid rgba(11, 42, 91, .18);
     border-radius: 10px;
     padding: .7rem .85rem;
 }
@@ -987,7 +1000,7 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 
 .lrms-callout-info {
     background: var(--lrms-info-light);
-    border-color: rgba(25, 87, 194, .22);
+    border-color: rgba(11, 42, 91, .22);
     border-left-color: var(--lrms-primary);
 }
 
@@ -1095,7 +1108,7 @@ h3 { font-size: .9375rem; letter-spacing: -.012em; }
 
 .lrms-brand-mark {
     background: linear-gradient(135deg, var(--lrms-primary) 0%, var(--lrms-primary-dark) 100%);
-    box-shadow: 0 2px 6px -1px rgba(25, 87, 194, .4);
+    box-shadow: 0 2px 6px -1px rgba(11, 42, 91, .4);
 }
 
 .lrms-nav-label {
@@ -1265,7 +1278,7 @@ a.lrms-stat:active { transform: translateY(0); }
     background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(0, 0, 0, .04));
     box-shadow: 0 1px 2px rgba(16, 32, 66, .16);
 }
-.btn-primary:hover { box-shadow: 0 2px 6px -1px rgba(25, 87, 194, .34); }
+.btn-primary:hover { box-shadow: 0 2px 6px -1px rgba(11, 42, 91, .34); }
 
 /* Presses translate. Without it a click on a touchscreen has no acknowledgement
    until the next page paints, which on a slow link feels like nothing happened. */
@@ -1285,7 +1298,7 @@ a.lrms-stat:active { transform: translateY(0); }
 /* Two rings: a tight opaque one for the edge and a soft halo outside it. Reads
    as focus at a glance without the heavy glow of a single fat ring. */
 .form-control:focus, .form-select:focus, .btn:focus-visible {
-    box-shadow: 0 0 0 3px rgba(25, 87, 194, .18);
+    box-shadow: 0 0 0 3px rgba(11, 42, 91, .18);
     box-shadow: 0 0 0 1px var(--lrms-primary),
                 0 0 0 4px color-mix(in srgb, var(--lrms-primary) 16%, transparent);
     border-color: var(--lrms-primary);

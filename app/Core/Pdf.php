@@ -110,7 +110,7 @@ final class Pdf
         $top = $this->y - $height;
 
         // Header band in the primary blue.
-        $this->rect($this->marginX, $top, $this->contentWidth(), $height, '#1957c2', true);
+        $this->rect($this->marginX, $top, $this->contentWidth(), $height, '#0b2a5b', true);
 
         $x = $this->marginX;
         foreach ($this->columns as $column) {
@@ -187,7 +187,7 @@ final class Pdf
     {
         $this->ensureSpace(28.0);
         $this->y -= 18.0;
-        $this->textAt(self::text($text), $this->marginX, $this->y, $size, true, '#123f8f');
+        $this->textAt(self::text($text), $this->marginX, $this->y, $size, true, '#071d40');
         $this->y -= 4.0;
     }
 
@@ -290,12 +290,12 @@ final class Pdf
     private function drawHeaderBand(): void
     {
         $bank = self::text((string) Settings::get('bank_name', ''));
-        $appName = self::text((string) Settings::get('app_name', 'LRMS'));
+        $appName = self::text((string) Settings::get('app_name', 'D2 Recovery'));
 
         // Thin brand rule across the top.
-        $this->rect($this->marginX, $this->pageHeight - 26.0, $this->contentWidth(), 2.5, '#1957c2', true);
+        $this->rect($this->marginX, $this->pageHeight - 26.0, $this->contentWidth(), 2.5, '#0b2a5b', true);
 
-        $this->textAt($this->title, $this->marginX, $this->pageHeight - 46.0, 13.0, true, '#123f8f');
+        $this->textAt($this->title, $this->marginX, $this->pageHeight - 46.0, 13.0, true, '#071d40');
 
         $rightLabel = $bank !== '' ? $bank : $appName;
         $this->textAt(
@@ -337,7 +337,7 @@ final class Pdf
 
         $left = $this->footerNote !== ''
             ? $this->footerNote
-            : 'LRMS - Loan Recovery Management System';
+            : 'D2 Recovery - Loan Recovery Management System';
 
         $this->textAt($left, $this->marginX, $footerY, 7.6, false, '#6b7280');
         $this->textAt(

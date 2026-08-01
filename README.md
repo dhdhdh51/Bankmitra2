@@ -1,4 +1,4 @@
-# LRMS — hosting package
+# D2 Recovery — hosting package
 
 **Upload-ready build.** Everything in this branch goes directly into your web
 root. There is no build step, no Composer, and nothing to compile.
@@ -110,6 +110,19 @@ the database and see all the tables — then prints the specific fix for anythin
 that is wrong. It never prints your credentials or keys.
 
 **Delete `diag.php` and `setup-keys.php` once the site works.**
+
+### Upgrading an install that still says "LRMS"
+
+The application name lives in the `settings` database table, so new files do not
+change it. Set it in **Settings → General → Application name**, or run once in
+phpMyAdmin:
+
+```sql
+UPDATE `settings` SET `setting_value` = 'D2 Recovery'
+ WHERE `setting_key` IN ('app_name', 'smtp_from_name') AND `setting_value` = 'LRMS';
+UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery')
+ WHERE `setting_key` = 'sms_otp_template' AND `setting_value` LIKE '%LRMS%';
+```
 
 ### If you get 403 Forbidden
 

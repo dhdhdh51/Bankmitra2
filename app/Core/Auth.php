@@ -366,7 +366,7 @@ final class Auth
             // be an authentication bug, not an inconvenience.
             if (count($matches) > 1) {
                 error_log(sprintf(
-                    '[LRMS] refusing email login: %d accounts share the address %s',
+                    '[D2R] refusing email login: %d accounts share the address %s',
                     count($matches),
                     $identifier
                 ));
@@ -528,11 +528,11 @@ final class Auth
             . '<meta name="viewport" content="width=device-width,initial-scale=1">'
             . '<title>Mobile app only</title></head><body style="margin:0;font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f7fa;color:#1c2128">'
             . '<div style="max-width:520px;margin:14vh auto;padding:32px;background:#fff;border:1px solid #e2e5ea;border-radius:10px;box-shadow:0 1px 3px rgba(28,33,40,.06)">'
-            . '<h1 style="margin:0 0 10px;font-size:19px;color:#123f8f">Use the LRMS mobile app</h1>'
+            . '<h1 style="margin:0 0 10px;font-size:19px;color:#071d40">Use the D2 Recovery mobile app</h1>'
             . '<p style="margin:0 0 16px;color:#4b5563">BC/DC Agent accounts work in the Android app only. '
             . 'The web admin panel is reserved for administrators and branch managers.</p>'
             . '<a href="' . htmlspecialchars(Url::path('/logout'), ENT_QUOTES, 'UTF-8') . '" '
-            . 'style="display:inline-block;background:#1957c2;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:600">Sign out</a>'
+            . 'style="display:inline-block;background:#0b2a5b;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:600">Sign out</a>'
             . '</div></body></html>';
     }
 }

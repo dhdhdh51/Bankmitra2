@@ -57,7 +57,7 @@ final class Notifier
 
     public static function sendOtpSms(string $mobile, string $otp): bool
     {
-        $template = (string) Settings::get('sms_otp_template', 'Your LRMS OTP is {otp}. Valid for 10 minutes.');
+        $template = (string) Settings::get('sms_otp_template', 'Your D2 Recovery OTP is {otp}. Valid for 10 minutes.');
         return self::sendSms($mobile, strtr($template, ['{otp}' => $otp]));
     }
 
@@ -78,7 +78,7 @@ final class Notifier
      */
     public static function sendOtpEmail(string $email, string $otp, int $expiryMinutes): bool
     {
-        $appName = (string) Settings::get('app_name', 'LRMS');
+        $appName = (string) Settings::get('app_name', 'D2 Recovery');
         $subject = sprintf('%s password reset code: %s', $appName, $otp);
 
         $body = '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;color:#1c2128">'
@@ -112,7 +112,7 @@ final class Notifier
         $password = (string) Settings::get('smtp_password', '');
         $encryption = strtolower((string) Settings::get('smtp_encryption', 'tls'));
         $fromEmail = (string) Settings::get('smtp_from_email', '');
-        $fromName = (string) Settings::get('smtp_from_name', 'LRMS');
+        $fromName = (string) Settings::get('smtp_from_name', 'D2 Recovery');
 
         $transport = $encryption === 'ssl' ? 'ssl://' : '';
         $context = stream_context_create([
@@ -129,7 +129,7 @@ final class Notifier
         );
 
         if ($socket === false) {
-            error_log(sprintf('[LRMS smtp] connect failed: %s (%d)', $errstr, $errno));
+            error_log(sprintf('[D2R smtp] connect failed: %s (%d)', $errstr, $errno));
             return false;
         }
 
@@ -223,7 +223,7 @@ final class Notifier
             $write('QUIT');
             return true;
         } catch (\Throwable $e) {
-            error_log('[LRMS smtp] ' . $e->getMessage());
+            error_log('[D2R smtp] ' . $e->getMessage());
             return false;
         } finally {
             @fclose($socket);
@@ -303,7 +303,7 @@ final class Notifier
             curl_close($ch);
 
             if ($body === false || $status >= 400) {
-                error_log('[LRMS http] GET failed: ' . ($error !== '' ? $error : 'HTTP ' . $status));
+                error_log('[D2R http] GET failed: ' . ($error !== '' ? $error : 'HTTP ' . $status));
                 return null;
             }
             return (string) $body;
@@ -342,7 +342,7 @@ final class Notifier
             curl_close($ch);
 
             if ($body === false || $status >= 400) {
-                error_log('[LRMS http] POST failed: ' . ($error !== '' ? $error : 'HTTP ' . $status));
+                error_log('[D2R http] POST failed: ' . ($error !== '' ? $error : 'HTTP ' . $status));
                 return null;
             }
             return (string) $body;
