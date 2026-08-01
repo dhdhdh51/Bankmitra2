@@ -22,6 +22,7 @@ use App\Controllers\Api\MetaController;
 use App\Controllers\Api\NotificationController;
 use App\Controllers\Api\ReportController;
 use App\Controllers\Api\VisitController;
+use App\Controllers\Api\TrackingController;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Router;
@@ -70,6 +71,16 @@ return static function (Router $router): void {
     // ---- Promises --------------------------------------------------------
     $router->get($prefix . '/promises', [MetaController::class, 'promises']);
     $router->post($prefix . '/promises/{id}/settle', [MetaController::class, 'settlePromise']);
+
+    // ---- Location notice, consent and trail -----------------------------
+    // The notice and consent endpoints come first deliberately: /tracking/location
+    // returns 412 until an acknowledgement exists, so there is no path that starts
+    // collecting and asks afterwards.
+    $router->get ($prefix . '/tracking/notice',           [TrackingController::class, 'notice']);
+    $router->post($prefix . '/tracking/consent',          [TrackingController::class, 'consent']);
+    $router->post($prefix . '/tracking/consent/withdraw', [TrackingController::class, 'withdraw']);
+    $router->post($prefix . '/tracking/location',         [TrackingController::class, 'location']);
+    $router->get ($prefix . '/tracking/{id}/trail',       [TrackingController::class, 'trail']);
 
     // ---- Notifications ---------------------------------------------------
     $router->get($prefix . '/notifications', [NotificationController::class, 'index']);
