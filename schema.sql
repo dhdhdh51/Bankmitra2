@@ -137,6 +137,17 @@ CREATE TABLE `users` (
   `dashboard_status`     ENUM('normal','warning_1','warning_2','final_warning') NOT NULL DEFAULT 'normal',
   `escalation_flag`      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'final warning unimproved past its window',
   `status_changed_at`    DATETIME     DEFAULT NULL,
+  -- Identity for printed reports. A field visit report is a document a borrower
+  -- signs and a court may later read, so it has to say who stood at the door: the
+  -- agent's photograph next to their signature. Stored as uploads-relative paths
+  -- like every other file here, never as blobs in the row.
+  --
+  -- The signature is an uploaded image rather than a drawn one. Agents sign a
+  -- printed sheet once and it is photographed; asking them to redraw it on a phone
+  -- for every report produced a different squiggle each time, which is worse than
+  -- useless on a document meant to be comparable.
+  `photo_path`           VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed on visit reports',
+  `signature_path`       VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed beside the photo',
   `created_by`           INT UNSIGNED DEFAULT NULL,
   `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -260,7 +271,23 @@ CREATE TABLE `loan_accounts` (
   `loan_account_number`  VARCHAR(60)  NOT NULL COMMENT 'duplicate-detection key on import',
   `customer_id`          BIGINT UNSIGNED NOT NULL,
   `branch_id`            INT UNSIGNED NOT NULL,
+  -- Kept because the Excel import maps rows by it and the visit report snapshots
+  -- it. It is no longer shown in the loan details panel, where the figure people
+  -- actually need is what it costs to close the account.
   `bc_code`              VARCHAR(40)  DEFAULT NULL,
+  -- What the borrower must pay to close this account outright. Distinct from
+  -- ots_amount, which is a settlement the branch is willing to accept: a closure
+  -- figure is the full number, and conflating the two would have an agent quoting a
+  -- discount nobody approved.
+  `closure_amount`       DECIMAL(15,2) DEFAULT NULL COMMENT 'full amount to close the account',
+  -- Which columns a human has edited by hand.
+  --
+  -- Loan figures arrive from the core banking export, and the next import would
+  -- silently overwrite a correction somebody made in the panel - which is why they
+  -- were read-only. Recording the override lets the importer leave those columns
+  -- alone and report that it did, so an edit survives without the import quietly
+  -- becoming untrustworthy. Shape: {"column": {"by": userId, "at": "Y-m-d H:i:s"}}.
+  `manual_overrides`     JSON         DEFAULT NULL COMMENT 'hand-edited columns the import must not clobber',
   `loan_type`            VARCHAR(80)  DEFAULT NULL,
   `outstanding_amount`   DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `overdue_amount`       DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -441,6 +468,31 @@ CREATE TABLE `visit_reports` (
   `source`       ENUM('android','web') NOT NULL DEFAULT 'android',
   `app_version`  VARCHAR(30)  DEFAULT NULL,
   `device_info`  VARCHAR(255) DEFAULT NULL,
+  -- ---- Approval -----------------------------------------------------------
+  -- An agent files the report; somebody senior signs it off. The approver's own
+  -- position and signature are recorded, not just their user id, because "I approved
+  -- it from the branch" and "I approved forty of them from home at midnight" are
+  -- different claims and only one of them is verification.
+  --
+  -- This does NOT make the report editable in place. The submitted values stay in the
+  -- row and every subsequent change is written to visit_report_revisions with its
+  -- before and after, so the original is always reconstructible. A field visit report
+  -- is evidence; making it silently overwritable would destroy the only thing that
+  -- makes it worth having.
+  `approval_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `approved_by`            INT UNSIGNED DEFAULT NULL,
+  `approver_name`          VARCHAR(150) DEFAULT NULL COMMENT 'snapshot, survives a renamed or deleted user',
+  `approved_at`            DATETIME     DEFAULT NULL,
+  `approval_remarks`       VARCHAR(1000) DEFAULT NULL,
+  `approval_photo_path`    VARCHAR(500) DEFAULT NULL COMMENT 'the approver, at the moment of approval',
+  `approval_signature_path` VARCHAR(500) DEFAULT NULL,
+  `approval_gps_latitude`  DECIMAL(10,7) DEFAULT NULL,
+  `approval_gps_longitude` DECIMAL(10,7) DEFAULT NULL,
+  `approval_gps_accuracy_m` SMALLINT UNSIGNED DEFAULT NULL,
+  `approval_gps_source`    ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable',
+  `revision_count`         SMALLINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'entries in visit_report_revisions',
+  `updated_at`             DATETIME     DEFAULT NULL COMMENT 'set only by an approval or a revision',
+
   `client_uuid`  CHAR(36)     DEFAULT NULL COMMENT 'idempotency key from the app to stop double submits',
   `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -454,6 +506,8 @@ CREATE TABLE `visit_reports` (
   KEY `idx_visit_loan_type` (`loan_type`),
   KEY `idx_visit_customer` (`customer_id`),
   KEY `idx_visit_loan_number` (`loan_account_number`),
+  KEY `idx_visit_approval` (`approval_status`, `visit_date`),
+  CONSTRAINT `fk_visit_approver` FOREIGN KEY (`approved_by`)     REFERENCES `users` (`id`)         ON DELETE SET NULL,
   CONSTRAINT `fk_visit_loan`     FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_visit_customer` FOREIGN KEY (`customer_id`)     REFERENCES `customers` (`id`)     ON DELETE CASCADE,
   CONSTRAINT `fk_visit_agent`    FOREIGN KEY (`agent_id`)        REFERENCES `users` (`id`),
@@ -671,7 +725,11 @@ CREATE TABLE `visit_history` (
   `event_type`      ENUM(
                       'lead_imported','lead_updated','assigned','reassigned','transferred',
                       'visit','promise_created','promise_kept','promise_broken',
-                      'status_changed','closed','reopened','note'
+                      'status_changed','closed','reopened','note',
+                      -- Extend rather than reuse. A value missing from this list throws
+                      -- on insert, and Timeline::record() is called inside the same
+                      -- transaction as the action it records.
+                      'visit_approved','visit_rejected','visit_revised'
                     ) NOT NULL,
   `event_at`        DATETIME     NOT NULL,
   `actor_id`        INT UNSIGNED DEFAULT NULL COMMENT 'NULL = system',
@@ -769,6 +827,110 @@ CREATE TABLE `signatures` (
   CONSTRAINT `fk_sign_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_sign_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_sign_user`  FOREIGN KEY (`uploaded_by`)     REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 10a. VISIT REPORT REVISIONS  (how "editable" and "append-only" coexist)
+--
+-- A field visit report is evidence. It is what an agent asserts about standing at a
+-- borrower's door, it gets signed, and it may be read years later by somebody
+-- deciding whether a recovery action was justified. So the report is not overwritten.
+--
+-- But corrections are real: a misheard name, a transposed digit, a figure the
+-- approver can see is wrong. Refusing them just moves the correction off-system into
+-- a phone call, which is worse. So an edit updates the row AND writes what it
+-- changed here, with the value before and after, who did it and why. The submitted
+-- original is always reconstructible by replaying these backwards.
+--
+-- Append-only in the strict sense: nothing updates or deletes a row in this table.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `visit_report_revisions`;
+CREATE TABLE `visit_report_revisions` (
+  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `visit_report_id` BIGINT UNSIGNED NOT NULL,
+  `revision_no`     SMALLINT UNSIGNED NOT NULL COMMENT '1 for the first correction',
+  `changed_by`      INT UNSIGNED DEFAULT NULL,
+  `changed_by_name` VARCHAR(150) DEFAULT NULL COMMENT 'snapshot',
+  `changed_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- {"column": {"from": <old>, "to": <new>}} - only the columns that actually moved.
+  `changes`         JSON         NOT NULL,
+  `reason`          VARCHAR(500) DEFAULT NULL COMMENT 'why, in the editor''s words',
+  `ip`              VARCHAR(45)  DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_revision_report_no` (`visit_report_id`, `revision_no`),
+  KEY `idx_revision_report` (`visit_report_id`, `changed_at`),
+  KEY `idx_revision_actor` (`changed_by`),
+  CONSTRAINT `fk_revision_report` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_revision_actor`  FOREIGN KEY (`changed_by`)      REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 10b. CUSTOM FIELDS  (fields the operator adds without a code change)
+--
+-- Two tables rather than a JSON bag on each row. A JSON column is quicker to build
+-- and then you cannot answer "which borrowers have no PAN recorded" without scanning
+-- every row, cannot put a unique key on anything, and cannot tell a field that was
+-- deleted from one that was never filled. Definitions and values kept apart also
+-- mean renaming a label does not touch a single stored answer.
+--
+-- Deliberately NOT a way to add loan figures. Anything the core banking export owns
+-- belongs in a real column that the importer knows about; a custom field holding an
+-- outstanding balance would be a second answer to the question the whole system is
+-- built to answer once.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `custom_field_definitions`;
+CREATE TABLE `custom_field_definitions` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `entity`         ENUM('customer','loan_account','visit_report') NOT NULL,
+  -- Machine name. Immutable once created: it is what stored values point at through
+  -- definition_id, and renaming the label is the supported way to change wording.
+  `field_key`      VARCHAR(60)  NOT NULL,
+  `label`          VARCHAR(120) NOT NULL,
+  `field_type`     ENUM('text','textarea','number','money','date','select','toggle') NOT NULL DEFAULT 'text',
+  `options`        VARCHAR(500) DEFAULT NULL COMMENT 'comma separated, for select',
+  `hint`           VARCHAR(255) DEFAULT NULL,
+  `is_required`    TINYINT(1)   NOT NULL DEFAULT 0,
+  -- Whether it appears on the printed visit report. Off by default: a field somebody
+  -- added to track an internal note should not silently start appearing on a document
+  -- handed to a borrower.
+  `show_in_report` TINYINT(1)   NOT NULL DEFAULT 0,
+  `sort_order`     SMALLINT     NOT NULL DEFAULT 0,
+  -- Retired rather than deleted, so existing answers keep their meaning. Deleting a
+  -- definition cascades its values away, which is correct only when the field was a
+  -- mistake - and that is a different decision from "we stopped collecting this".
+  `status`         ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  `created_by`     INT UNSIGNED DEFAULT NULL,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_custom_field_key` (`entity`, `field_key`),
+  KEY `idx_custom_field_entity` (`entity`, `status`, `sort_order`),
+  CONSTRAINT `fk_custom_field_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS `custom_field_values`;
+CREATE TABLE `custom_field_values` (
+  `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `definition_id` INT UNSIGNED NOT NULL,
+  -- Denormalised from the definition so a value can be filtered by entity without a
+  -- join, and so a mismatch is detectable rather than invisible.
+  `entity`        ENUM('customer','loan_account','visit_report') NOT NULL,
+  `entity_id`     BIGINT UNSIGNED NOT NULL,
+  -- One text column for every type. The definition says how to read it; storing a
+  -- typed column per type would mean seven mostly-null columns and a CASE in every
+  -- query. Dates are ISO, money is a decimal string, toggles are '1' or '0'.
+  `value`         TEXT         DEFAULT NULL,
+  `updated_by`    INT UNSIGNED DEFAULT NULL,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  -- One answer per field per record. Without this a double-submitted form gives a
+  -- field two values and every read has to pick one.
+  UNIQUE KEY `uq_custom_value` (`definition_id`, `entity_id`),
+  KEY `idx_custom_value_entity` (`entity`, `entity_id`),
+  CONSTRAINT `fk_custom_value_definition` FOREIGN KEY (`definition_id`) REFERENCES `custom_field_definitions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -1222,6 +1384,10 @@ INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
   ('settings.view',         'Settings',    'View settings'),
   ('settings.update',       'Settings',    'Update settings'),
 
+  ('visits.approve',        'Visits',      'Approve or reject a field visit report'),
+  ('visits.revise',         'Visits',      'Correct a submitted visit report (recorded as a revision)'),
+  ('custom_fields.manage',  'Settings',    'Add and edit custom fields'),
+
   ('bc_targets.view',       'BC performance','View monthly BC targets'),
   ('bc_targets.manage',     'BC performance','Set and update monthly BC targets'),
   ('sss.view',              'BC performance','View SSS enrolment entries'),
@@ -1241,6 +1407,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
     'leads.assign','leads.reassign','leads.close',
     'visits.view','promises.view','promises.update',
     'reports.view','reports.export','notifications.view','import.view',
+    'visits.approve','visits.revise',
     -- A branch manager sets their own agents' targets and sees their scorecard.
     -- Both are scoped to the manager's branch in code, not by this grant.
     'bc_targets.view','bc_targets.manage','sss.view','sss.manage','scorecard.view'

@@ -12,6 +12,7 @@ use App\Core\Validator;
 use App\Core\Xlsx;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomField;
 use App\Models\LoanAccount;
 use App\Models\Promise;
 use App\Models\Timeline;
@@ -79,6 +80,8 @@ final class CustomerController extends Controller
         $scoped = Auth::scopedBranchId();
 
         $this->view($request, 'customers/show', [
+            'customerFields' => CustomField::withValues('customer', (int) $lead['customer_id']),
+            'loanFields'     => CustomField::withValues('loan_account', $id),
             'title'        => (string) $lead['customer_name'],
             'lead'         => $lead,
             'showPii'      => $showPii,
@@ -98,6 +101,12 @@ final class CustomerController extends Controller
      * Edits the borrower's contact details. Loan figures are not editable here:
      * they come from the core banking Excel import, so hand-editing them would
      * be silently overwritten by the next upload.
+     *
+     * THAT IS NO LONGER THE CASE. Loan figures are editable here, and every column a
+     * human changes is recorded in loan_accounts.manual_overrides so the importer skips
+     * it and reports that it did. Read-only was the safe-looking choice and the wrong
+     * one: it did not stop corrections happening, it just moved them into a spreadsheet
+     * nobody else could see.
      */
     public function edit(Request $request): void
     {
@@ -113,8 +122,12 @@ final class CustomerController extends Controller
 
         if (!$request->isPost()) {
             $this->view($request, 'customers/edit', [
-                'title' => 'Edit borrower',
-                'lead'  => $lead,
+                'title'            => 'Edit borrower',
+                'lead'             => $lead,
+                'customerFields'   => CustomField::withValues('customer', (int) $lead['customer_id']),
+                'loanFields'       => CustomField::withValues('loan_account', $id),
+                'loanEditable'     => LoanAccount::MANUALLY_EDITABLE,
+                'overridden'       => LoanAccount::overriddenColumns($lead['manual_overrides'] ?? null),
             ]);
         }
 
@@ -125,7 +138,21 @@ final class CustomerController extends Controller
             'aadhaar'             => 'nullable|aadhaar',
             'village'             => 'nullable|max:150',
             'address'             => 'nullable|max:500',
-        ], ['father_husband_name' => 'Father / husband name']);
+            // Loan figures. Editable now, with the override recorded so the next
+            // import leaves them alone - see LoanAccount::applyManualEdit().
+            'loan_type'           => 'nullable|max:80',
+            'outstanding_amount'  => 'nullable|numeric|min_value:0',
+            'overdue_amount'      => 'nullable|numeric|min_value:0',
+            'closure_amount'      => 'nullable|numeric|min_value:0',
+            'ots_amount'          => 'nullable|numeric|min_value:0',
+            'deposit_amount'      => 'nullable|numeric|min_value:0',
+            'npa_date'            => 'nullable|date',
+            'ckcc_renewal_due_date' => 'nullable|date',
+            'cif_number'          => 'nullable|max:40',
+        ], [
+            'father_husband_name' => 'Father / husband name',
+            'ckcc_renewal_due_date' => 'CKCC renewal due date',
+        ]);
 
         if ($validator->fails()) {
             $this->backWithErrors('/customers/' . $id . '/edit', $validator->errors(), $request->all());
@@ -158,7 +185,73 @@ final class CustomerController extends Controller
             sprintf('Updated borrower for %s', (string) $lead['loan_account_number'])
         );
 
-        $this->back('/customers/' . $id, 'success', 'Borrower details updated.');
+        // ---- Loan figures ---------------------------------------------------
+        // These come from the core banking export, which is why they used to be
+        // read-only: the next upload would silently undo a correction. They are
+        // editable now, and every hand-edited column is recorded in
+        // loan_accounts.manual_overrides so the importer can leave it alone and say
+        // that it did. Editable-and-tracked beats read-only, which just moved the
+        // correction into a spreadsheet nobody else can see.
+        $loanEdits = [];
+        foreach ([
+            'loan_type'             => 'str',
+            'cif_number'            => 'str',
+            'outstanding_amount'    => 'money',
+            'overdue_amount'        => 'money',
+            'closure_amount'        => 'money',
+            'ots_amount'            => 'money',
+            'deposit_amount'        => 'money',
+            'npa_date'              => 'date',
+            'ckcc_renewal_due_date' => 'date',
+        ] as $column => $kind) {
+            if (!$request->has($column)) {
+                continue;
+            }
+
+            $loanEdits[$column] = match ($kind) {
+                'money' => $request->nullableStr($column) === null
+                    ? null
+                    : round((float) $request->float($column), 2),
+                'date'  => $request->nullableStr($column),
+                default => $request->nullableStr($column),
+            };
+        }
+
+        $loanChanged = LoanAccount::applyManualEdit($id, $loanEdits, Auth::id());
+
+        if ($loanChanged !== []) {
+            Logger::audit(
+                'update',
+                'loan_account',
+                $id,
+                null,
+                $loanChanged,
+                sprintf(
+                    'Hand-edited %s on %s; the import will not overwrite these again',
+                    implode(', ', array_keys($loanChanged)),
+                    (string) $lead['loan_account_number']
+                )
+            );
+        }
+
+        // ---- Custom fields --------------------------------------------------
+        $customChanged = array_merge(
+            CustomField::saveValues('customer', (int) $lead['customer_id'], $request->all(), Auth::id()),
+            CustomField::saveValues('loan_account', $id, $request->all(), Auth::id())
+        );
+
+        if ($customChanged !== []) {
+            Logger::audit(
+                'update',
+                'loan_account',
+                $id,
+                null,
+                ['custom_fields' => $customChanged],
+                sprintf('Updated custom field(s): %s', implode(', ', $customChanged))
+            );
+        }
+
+        $this->back('/customers/' . $id, 'success', 'Borrower and loan details updated.');
     }
 
     /**

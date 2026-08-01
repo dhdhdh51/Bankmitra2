@@ -33,6 +33,10 @@ final class LoanAccount
                    la.cif_number, la.sanction_date, la.sanction_limit, la.drawing_power,
                    la.interest_overdue, la.ckcc_renewal_due_date,
                     la.ots_eligible, la.krm_eligible, la.ots_amount, la.deposit_amount,
+                    -- Both projections are spelled out by hand, so a new column is
+                    -- invisible until it is added in BOTH places. That is bug 42 in the
+                    -- README, and closure_amount walked straight into it.
+                    la.closure_amount, la.manual_overrides,
                    c.name AS customer_name, c.father_husband_name, c.village, c.address,
                    c.mobile_masked, c.aadhaar_masked,
                    b.name AS branch_name, b.branch_code,
@@ -74,6 +78,10 @@ final class LoanAccount
                     la.cif_number, la.sanction_date, la.sanction_limit, la.drawing_power,
                     la.interest_overdue, la.ckcc_renewal_due_date,
                     la.ots_eligible, la.krm_eligible, la.ots_amount, la.deposit_amount,
+                    -- Both projections are spelled out by hand, so a new column is
+                    -- invisible until it is added in BOTH places. That is bug 42 in the
+                    -- README, and closure_amount walked straight into it.
+                    la.closure_amount, la.manual_overrides,
                     c.name AS customer_name, c.father_husband_name, c.village, c.address,
                     c.mobile_masked, c.aadhaar_masked, c.mobile_enc, c.aadhaar_enc,
                     b.name AS branch_name, b.branch_code,
@@ -383,6 +391,126 @@ final class LoanAccount
             static fn (array $r): string => (string) $r['loan_type'],
             Database::instance()->all($sql, $params)
         );
+    }
+
+    /**
+     * Applies hand edits to loan figures and remembers which columns were touched.
+     *
+     * The columns here are fed by the core banking Excel export. Left alone, the next
+     * import overwrites whatever somebody corrected in the panel - silently, which is
+     * why they used to be read-only. Recording the override lets the importer skip
+     * them and say so, which is the only way "editable" and "the import is the source
+     * of truth" can both be true.
+     *
+     * Returns the columns that actually moved, so the audit summary names them.
+     *
+     * @param  array<string,mixed>  $edits
+     * @return array<string,array{from:mixed,to:mixed}>
+     */
+    public static function applyManualEdit(int $id, array $edits, ?int $userId): array
+    {
+        if ($edits === []) {
+            return [];
+        }
+
+        $db = Database::instance();
+
+        $current = $db->first(
+            'SELECT * FROM loan_accounts WHERE id = ? LIMIT 1',
+            [$id]
+        );
+
+        if ($current === null) {
+            return [];
+        }
+
+        $overrides = [];
+        if (is_string($current['manual_overrides'] ?? null) && $current['manual_overrides'] !== '') {
+            $decoded = json_decode((string) $current['manual_overrides'], true);
+            $overrides = is_array($decoded) ? $decoded : [];
+        }
+
+        $changed = [];
+        $update = [];
+        $now = date('Y-m-d H:i:s');
+
+        foreach ($edits as $column => $value) {
+            if (!array_key_exists($column, self::MANUALLY_EDITABLE)) {
+                continue;
+            }
+
+            $before = $current[$column] ?? null;
+
+            // Compared as strings so 1000 and "1000.00" do not register as an edit -
+            // otherwise every save would mark every figure as hand-edited and the
+            // importer would stop updating anything at all.
+            if (self::sameValue($before, $value)) {
+                continue;
+            }
+
+            $changed[$column] = ['from' => $before, 'to' => $value];
+            $update[$column] = $value;
+            $overrides[$column] = ['by' => $userId, 'at' => $now];
+        }
+
+        if ($changed === []) {
+            return [];
+        }
+
+        $update['manual_overrides'] = json_encode($overrides, JSON_UNESCAPED_UNICODE);
+
+        // Derived flag has to follow the date it is derived from, or a cleared NPA date
+        // leaves the row still flagged as NPA.
+        if (array_key_exists('npa_date', $update)) {
+            $update['is_npa'] = ($update['npa_date'] ?? null) === null ? 0 : 1;
+        }
+
+        $db->update('loan_accounts', $update, ['id' => $id]);
+
+        return $changed;
+    }
+
+    /**
+     * Columns a human may correct by hand, and their labels.
+     *
+     * @return array<string,string>
+     */
+    public const MANUALLY_EDITABLE = [
+        'loan_type'             => 'Loan type',
+        'cif_number'            => 'CIF number',
+        'outstanding_amount'    => 'Outstanding amount',
+        'overdue_amount'        => 'Overdue amount',
+        'closure_amount'        => 'Closure amount',
+        'ots_amount'            => 'OTS amount',
+        'deposit_amount'        => 'Deposit amount',
+        'npa_date'              => 'NPA date',
+        'ckcc_renewal_due_date' => 'CKCC renewal due date',
+    ];
+
+    /** Which columns on this row a human has overridden. @return list<string> */
+    public static function overriddenColumns(?string $manualOverrides): array
+    {
+        if (!is_string($manualOverrides) || $manualOverrides === '') {
+            return [];
+        }
+
+        $decoded = json_decode($manualOverrides, true);
+
+        return is_array($decoded) ? array_keys($decoded) : [];
+    }
+
+    /** Loose equality that treats 1000 and "1000.00" as the same figure. */
+    private static function sameValue(mixed $a, mixed $b): bool
+    {
+        if ($a === null || $b === null) {
+            return ($a === null) === ($b === null);
+        }
+
+        if (is_numeric($a) && is_numeric($b)) {
+            return abs((float) $a - (float) $b) < 0.005;
+        }
+
+        return (string) $a === (string) $b;
     }
 
     /**

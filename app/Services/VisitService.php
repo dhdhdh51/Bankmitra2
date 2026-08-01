@@ -371,11 +371,12 @@ final class VisitService
                 // Only a camera capture carries a point. A gallery pick deliberately
                 // gets null rather than the visit's coordinates.
                 $point = self::photoPoint($input, $photoType, $userId);
+                $source = self::photoSource($input, $photoType);
 
                 if (Uploader::hasUpload($field)) {
                     foreach (Uploader::normalizeMultiple($field) as $file) {
                         $stored = Uploader::store($file, 'photos', $imageMime, $maxPhoto);
-                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point);
+                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source);
                         $counts['photos']++;
                     }
                     continue;
@@ -384,7 +385,7 @@ final class VisitService
                 $base64 = trim((string) ($input[$field . '_base64'] ?? ''));
                 if ($base64 !== '') {
                     $stored = Uploader::storeBase64($base64, 'photos', $maxPhoto);
-                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point);
+                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source);
                     $counts['photos']++;
                 }
             } catch (\Throwable $e) {
@@ -463,7 +464,8 @@ final class VisitService
         string $photoType,
         array $stored,
         int $userId,
-        ?array $point = null
+        ?array $point = null,
+        string $source = 'unknown'
     ): void {
         Database::instance()->insert('photos', [
             'visit_report_id' => $visitId,
@@ -478,6 +480,12 @@ final class VisitService
             'gps_latitude'    => $point['latitude'] ?? null,
             'gps_longitude'   => $point['longitude'] ?? null,
             'gps_accuracy_m'  => $point['accuracy'] ?? null,
+            // Recorded, finally. This column existed with a comment explaining that
+            // capture_source = 'camera' is what makes a coordinate mean anything -
+            // and nothing ever wrote it, so every photograph in the database claimed
+            // 'unknown' and the printed report could not tell a doorstep photograph
+            // from something picked out of the gallery.
+            'capture_source'  => $source,
             'uploaded_by'     => $userId,
         ]);
     }
@@ -557,6 +565,35 @@ final class VisitService
             'gps_address' => null,
             'gps_source' => 'device',
         ];
+    }
+
+    /**
+     * Whether this photograph came from the camera or the gallery.
+     *
+     * Never inferred from the presence of coordinates. A camera photograph taken
+     * indoors has no fix, and treating "no coordinates" as "gallery" would label an
+     * honest doorstep photograph as something picked off the phone - which on a
+     * recovery file is an accusation.
+     *
+     * `unknown` is the answer for an older app that says nothing, and it is a
+     * different thing from either: it means nobody recorded it, not that it was
+     * suspect.
+     *
+     * @param array<string,mixed> $input
+     */
+    private static function photoSource(array $input, string $slot): string
+    {
+        $explicit = strtolower(trim((string) ($input[$slot . '_photo_source'] ?? '')));
+        if (in_array($explicit, ['camera', 'gallery'], true)) {
+            return $explicit;
+        }
+
+        // Older apps only ever sent this, and only for camera captures.
+        if ((string) ($input[$slot . '_photo_gps_source'] ?? '') === 'camera') {
+            return 'camera';
+        }
+
+        return 'unknown';
     }
 
     /**

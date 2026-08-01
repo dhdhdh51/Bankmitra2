@@ -318,6 +318,145 @@ final class VisitReport
         return [implode(' AND ', $where), $params];
     }
 
+    /**
+     * The columns a reviewer is allowed to correct, and how to label them.
+     *
+     * Deliberately a short list. Everything here is something a reviewer can be
+     * confident about from the report itself - a misheard name, a transposed digit, a
+     * village spelled wrong. The tick boxes, the recommendation and the remarks are
+     * NOT correctable: those are the agent's assertions about what they saw, and a
+     * reviewer overwriting them turns the agent's report into the reviewer's.
+     *
+     * @return array<string,string>
+     */
+    public const CORRECTABLE = [
+        'customer_name'              => 'Borrower name',
+        'father_husband_name'        => 'Father / husband name',
+        'address'                    => 'Address',
+        'village'                    => 'Village',
+        'family_member_name'         => 'Family member met',
+        'family_member_relationship' => 'Relationship',
+        'sp_cbc_name'                => 'SP / CBC name',
+        'supervisor_name'            => 'Supervisor name',
+    ];
+
+    /**
+     * Records an approval or rejection.
+     *
+     * Purely additive: it writes the approval columns and touches nothing the agent
+     * submitted. The approver's own photograph, signature and position are stored
+     * alongside their user id, because "I approved it at the branch" and "I approved
+     * forty of them from home at midnight" are different claims and only one of them
+     * is verification.
+     *
+     * @param array<string,mixed> $approval
+     */
+    public static function recordApproval(int $id, array $approval): void
+    {
+        $approval['updated_at'] = date('Y-m-d H:i:s');
+
+        Database::instance()->update('visit_reports', $approval, ['id' => $id]);
+    }
+
+    /**
+     * Applies a correction and records what it changed.
+     *
+     * This is how "editable" and "append-only" coexist. The row is updated so the
+     * report reads correctly from now on, and the same transaction writes the before
+     * and after of every field that moved into visit_report_revisions - which nothing
+     * ever updates or deletes. The submitted original is reconstructible by replaying
+     * those backwards, and the printed report states how many times it was corrected
+     * so a clean-looking document cannot hide that it differs from what was filed.
+     *
+     * Returns the revision number, or null when nothing actually changed - a save
+     * with no edits must not manufacture an empty revision, or the count on the
+     * printed report stops meaning anything.
+     *
+     * @param  array<string,mixed>  $proposed  column => new value
+     * @return int|null
+     */
+    public static function applyRevision(
+        int $id,
+        array $proposed,
+        ?int $actorId,
+        ?string $actorName,
+        ?string $reason,
+        ?string $ip
+    ): ?int {
+        $db = Database::instance();
+
+        $current = $db->first('SELECT * FROM visit_reports WHERE id = ? LIMIT 1', [$id]);
+        if ($current === null) {
+            return null;
+        }
+
+        $changes = [];
+        $update = [];
+
+        foreach ($proposed as $column => $value) {
+            if (!array_key_exists($column, self::CORRECTABLE)) {
+                continue;
+            }
+
+            $before = $current[$column];
+
+            // Compared as strings so "" and null, or 5 and "5", do not register as a
+            // change - otherwise every save would file a revision full of noise and
+            // the real corrections would be impossible to find.
+            if ((string) ($before ?? '') === (string) ($value ?? '')) {
+                continue;
+            }
+
+            $changes[$column] = ['from' => $before, 'to' => $value];
+            $update[$column] = $value;
+        }
+
+        if ($changes === []) {
+            return null;
+        }
+
+        $revisionNo = ((int) ($current['revision_count'] ?? 0)) + 1;
+
+        $db->transaction(static function () use ($db, $id, $update, $changes, $revisionNo, $actorId, $actorName, $reason, $ip): void {
+            $db->insert('visit_report_revisions', [
+                'visit_report_id' => $id,
+                'revision_no'     => $revisionNo,
+                'changed_by'      => $actorId,
+                'changed_by_name' => $actorName,
+                'changes'         => json_encode($changes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'reason'          => $reason,
+                'ip'              => $ip,
+            ]);
+
+            $db->update('visit_reports', $update + [
+                'revision_count' => $revisionNo,
+                'updated_at'     => date('Y-m-d H:i:s'),
+            ], ['id' => $id]);
+        });
+
+        return $revisionNo;
+    }
+
+    /**
+     * Every correction ever made to a report, newest first.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function revisions(int $visitReportId): array
+    {
+        $rows = Database::instance()->all(
+            'SELECT * FROM visit_report_revisions WHERE visit_report_id = ? ORDER BY revision_no DESC',
+            [$visitReportId]
+        );
+
+        foreach ($rows as $index => $row) {
+            $decoded = json_decode((string) $row['changes'], true);
+            $rows[$index]['changes_decoded'] = is_array($decoded) ? $decoded : [];
+        }
+
+        return $rows;
+    }
+
     /** @return list<array<string,mixed>> */
     public static function photos(int $visitReportId): array
     {

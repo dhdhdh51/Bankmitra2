@@ -118,6 +118,11 @@ final class ImportService
         $createdBranches = [];
         $assignedLeadIds = [];
 
+        // Columns the import declined to overwrite because a human had corrected them.
+        // Reported rather than silently skipped: a stale override quietly freezing a
+        // figure forever is exactly as bad as the import quietly clobbering it.
+        $skippedOverrides = [];
+
         try {
             $db->transaction(static function () use (
                 $db,
@@ -138,7 +143,11 @@ final class ImportService
                 &$errors,
                 &$unmatchedBranches,
                 &$createdBranches,
-                &$assignedLeadIds
+                &$assignedLeadIds,
+                // By reference, or the appends below land in a local array that dies
+                // with the closure and every import reports "nothing skipped" while
+                // silently declining to update overridden columns - the worst of both.
+                &$skippedOverrides
             ): void {
                 foreach ($rows as $index => $row) {
                     $lineNumber = $firstDataLine + $index;
@@ -232,7 +241,7 @@ final class ImportService
 
                         $existing = $db->first(
                             'SELECT id, customer_id, branch_id, assigned_agent_id, current_status,
-                                    outstanding_amount, overdue_amount
+                                    outstanding_amount, overdue_amount, manual_overrides
                                FROM loan_accounts WHERE loan_account_number = ? LIMIT 1',
                             [$account]
                         );
@@ -281,6 +290,25 @@ final class ImportService
                                 $loanData['assigned_at'] = date('Y-m-d H:i:s');
                                 $loanData['assigned_by'] = $actorId;
                                 $assignedLeadIds[] = ['id' => (int) $existing['id'], 'agent_id' => $agentForRow, 'account' => $account];
+                            }
+
+                            // Columns a human corrected in the panel are left alone.
+                            //
+                            // Without this the whole point of making loan figures
+                            // editable collapses: somebody fixes an outstanding balance,
+                            // the next nightly import silently puts the wrong number
+                            // back, and nobody finds out until an agent quotes it at a
+                            // doorstep. Skipped columns are reported rather than dropped
+                            // quietly, so a stale override is visible and can be cleared.
+                            $overridden = \App\Models\LoanAccount::overriddenColumns(
+                                $existing['manual_overrides'] ?? null
+                            );
+
+                            foreach ($overridden as $protectedColumn) {
+                                if (array_key_exists($protectedColumn, $loanData)) {
+                                    unset($loanData[$protectedColumn]);
+                                    $skippedOverrides[$account][] = $protectedColumn;
+                                }
                             }
 
                             $db->update('loan_accounts', $loanData, ['id' => (int) $existing['id']]);
@@ -427,6 +455,7 @@ final class ImportService
             'error_log'          => $errorLogPath,
             'unmatched_branches' => $unmatchedBranches,
             'created_branches'   => $createdBranches,
+            'skipped_overrides'  => $skippedOverrides,
             'sheet'              => (string) ($parsed['sheet'] ?? ''),
             'mapping'            => self::describeMapping($headings, $detection),
         ];

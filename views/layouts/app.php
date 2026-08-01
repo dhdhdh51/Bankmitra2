@@ -154,7 +154,7 @@ $unread = $unreadNotifications ?? 0;
                 <?php endif; ?>
             <?php endif; ?>
 
-            <?php if (can('logs.audit') || can('logs.activity') || can('backup.run') || can('settings.view')): ?>
+            <?php if (can('logs.audit') || can('logs.activity') || can('backup.run') || can('settings.view') || can('custom_fields.manage')): ?>
                 <div class="lrms-nav-label">System</div>
 
                 <?php if (can('logs.audit')): ?>
@@ -172,6 +172,12 @@ $unread = $unreadNotifications ?? 0;
                 <?php if (can('backup.run')): ?>
                     <a class="lrms-nav-item<?= active_nav('/backup', $currentPath) ?>" href="<?= e(url('/backup')) ?>">
                         <?= icon('database') ?> Database Backup
+                    </a>
+                <?php endif; ?>
+
+                <?php if (can('custom_fields.manage')): ?>
+                    <a class="lrms-nav-item<?= active_nav('/custom-fields', $currentPath) ?>" href="<?= e(url('/custom-fields')) ?>">
+                        <?= icon('clipboard') ?> Custom Fields
                     </a>
                 <?php endif; ?>
 

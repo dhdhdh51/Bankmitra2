@@ -130,4 +130,62 @@ abstract class Controller
     {
         return $request->perPage((int) Settings::get('records_per_page', '25'));
     }
+
+    /**
+     * Handles one optional image field on a panel form.
+     *
+     * Returns the relative path to store, which may be the one that was already
+     * there. Three outcomes, and the distinction between them is the whole reason
+     * this is not two lines inline:
+     *
+     *   nothing submitted  -> $existing is returned unchanged. A form saved without
+     *                         touching the file input must not wipe the image, which
+     *                         is what happens if absence is read as "clear it".
+     *   remove requested   -> null, and the old file is deleted from disk.
+     *   file submitted     -> stored, and the old file is deleted afterwards.
+     *
+     * The old file is removed only once the new one is safely on disk, so a failed
+     * upload leaves the record with the image it had rather than with none.
+     *
+     * @throws \RuntimeException with a message fit to show the user
+     */
+    protected function optionalImage(
+        string $field,
+        string $kind,
+        ?string $existing = null,
+        bool $remove = false
+    ): ?string {
+        if ($remove) {
+            if ($existing !== null && $existing !== '') {
+                \App\Core\Uploader::delete($existing);
+            }
+
+            return null;
+        }
+
+        if (!\App\Core\Uploader::hasUpload($field)) {
+            return $existing;
+        }
+
+        $files = \App\Core\Uploader::normalizeMultiple($field);
+        if ($files === []) {
+            return $existing;
+        }
+
+        $allowed = (array) \App\Core\Config::get(
+            'uploads.allowed_image_mime',
+            ['image/jpeg', 'image/png', 'image/webp']
+        );
+        $max = (int) \App\Core\Config::get('uploads.max_photo_bytes', 8 * 1024 * 1024);
+
+        // Uploader sniffs the real MIME rather than trusting the browser, and throws
+        // on anything that is not a decodable image.
+        $stored = \App\Core\Uploader::store($files[0], $kind, $allowed, $max);
+
+        if ($existing !== null && $existing !== '' && $existing !== $stored['path']) {
+            \App\Core\Uploader::delete($existing);
+        }
+
+        return $stored['path'];
+    }
 }

@@ -76,6 +76,10 @@ final class MediaController extends Controller
             return true;
         }
 
+        // Five places a servable file can be owned from. The last two were added with
+        // staff photographs and report approval: a file whose owner is not in one of
+        // these tables is an orphan, and an orphan is never served - so forgetting to
+        // add a new media kind here fails closed, which is the right direction.
         $branchId = Database::instance()->scalar(
             'SELECT la.branch_id
                FROM photos p JOIN loan_accounts la ON la.id = p.loan_account_id
@@ -88,8 +92,16 @@ final class MediaController extends Controller
              SELECT la.branch_id
                FROM signatures s JOIN loan_accounts la ON la.id = s.loan_account_id
               WHERE s.file_path = ?
+              UNION
+             SELECT u.branch_id
+               FROM users u
+              WHERE u.photo_path = ? OR u.signature_path = ?
+              UNION
+             SELECT vr.branch_id
+               FROM visit_reports vr
+              WHERE vr.approval_photo_path = ? OR vr.approval_signature_path = ?
               LIMIT 1',
-            [$relative, $relative, $relative]
+            [$relative, $relative, $relative, $relative, $relative, $relative, $relative]
         );
 
         // An orphaned file with no owning record is never served.

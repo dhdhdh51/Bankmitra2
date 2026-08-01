@@ -13,6 +13,7 @@ use App\Controllers\Admin\AuthController;
 use App\Controllers\Admin\BackupController;
 use App\Controllers\Admin\BcTargetController;
 use App\Controllers\Admin\BranchController;
+use App\Controllers\Admin\CustomFieldController;
 use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
 use App\Controllers\Admin\ImportController;
@@ -58,6 +59,10 @@ return static function (Router $router): void {
     $router->get('/visits', [VisitController::class, 'index']);
     $router->get('/visits/{id}', [VisitController::class, 'show']);
     $router->get('/visits/{id}/pdf', [VisitController::class, 'pdf']);
+    // Approval and correction. Registered after /pdf so a literal segment is never
+    // read as an id.
+    $router->form('/visits/{id}/approve', [VisitController::class, 'approve']);
+    $router->form('/visits/{id}/revise', [VisitController::class, 'revise']);
 
     // ---- Promises --------------------------------------------------------
     $router->get('/promises', [PromiseController::class, 'index']);
@@ -92,6 +97,12 @@ return static function (Router $router): void {
     $router->get('/reports', [ReportController::class, 'index']);
     $router->get('/reports/{type}', [ReportController::class, 'show']);
     $router->get('/reports/{type}/export', [ReportController::class, 'export']);
+
+    // ---- Custom fields ---------------------------------------------------
+    $router->get ('/custom-fields', [CustomFieldController::class, 'index']);
+    $router->form('/custom-fields/create', [CustomFieldController::class, 'create']);
+    $router->form('/custom-fields/{id}/edit', [CustomFieldController::class, 'edit']);
+    $router->post('/custom-fields/{id}/delete', [CustomFieldController::class, 'delete']);
 
     // ---- BC performance --------------------------------------------------
     // Targets are what the nightly warning check measures against, SSS is the

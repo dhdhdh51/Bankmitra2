@@ -682,13 +682,14 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 97 checks — crypto, JWT, XLSX, PDF, validator, paginator, key validation |
-| `sh tools/verify-schema.sh` | 24 checks — 21 tables, 39 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
-| `sh tools/integration-test.sh` | 264 checks — import, visits, promises, reports, backup |
-| `sh tools/verify-cron.sh` | 20 checks — the nightly backup restores, reminders are idempotent |
+| `php tools/selftest-core.php` | 191 checks — crypto, JWT, XLSX, PDF (including image embedding), validator, paginator, key validation |
+| `sh tools/verify-schema.sh` | 24 checks — 35 tables, 57 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
+| `sh tools/integration-test.sh` | 656 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields |
+| `sh tools/verify-upgrade-sql.sh` | 14 checks — **runs the migration in section 10 of this document** on a populated pre-release database and compares the result against `schema.sql` |
+| `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 130 panel + 162 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 118 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 252 panel + 221 API checks over real HTTP |
+| `sh tools/verify-android.sh` | 217 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
@@ -1149,6 +1150,155 @@ They are nullable on purpose: `NULL` means the file did not say, which is a
 different answer from an explicit No, and only one of those should stop an agent
 offering a settlement. A later import that omits the columns leaves whatever was
 already recorded untouched.
+
+### Adding staff photographs, report approval and custom fields to an existing install
+
+This release adds two `users` columns, two `loan_accounts` columns, the approval and
+revision block on `visit_reports`, three `visit_history` event types, three new tables
+and three new permissions. Back up first (`php ~/public_html/cron/backup.php`), then run
+the whole block once. Every statement is safe to run on a populated database — nothing
+here drops or rewrites existing rows.
+
+```sql
+-- 1. The agent's photograph and signature. Both print on every report they file.
+ALTER TABLE `users`
+  ADD COLUMN `photo_path`     VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed on visit reports' AFTER `status_changed_at`,
+  ADD COLUMN `signature_path` VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed beside the photo'  AFTER `photo_path`;
+
+-- 2. The closure figure, and the record of which columns a human corrected.
+--    closure_amount is the full amount to close the account. It is NOT ots_amount:
+--    an OTS is a settlement the branch agrees to accept for less than the closure figure.
+ALTER TABLE `loan_accounts`
+  ADD COLUMN `closure_amount`   DECIMAL(15,2) DEFAULT NULL COMMENT 'full amount to close the account' AFTER `overdue_amount`,
+  ADD COLUMN `manual_overrides` JSON          DEFAULT NULL COMMENT 'hand-edited columns the import must not clobber';
+
+-- 3. Approval, and the correction counter.
+ALTER TABLE `visit_reports`
+  ADD COLUMN `approval_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  ADD COLUMN `approved_by`            INT UNSIGNED DEFAULT NULL,
+  ADD COLUMN `approver_name`          VARCHAR(150) DEFAULT NULL COMMENT 'snapshot, survives a renamed or deleted user',
+  ADD COLUMN `approved_at`            DATETIME     DEFAULT NULL,
+  ADD COLUMN `approval_remarks`       VARCHAR(1000) DEFAULT NULL,
+  ADD COLUMN `approval_photo_path`    VARCHAR(500) DEFAULT NULL COMMENT 'the approver, at the moment of approval',
+  ADD COLUMN `approval_signature_path` VARCHAR(500) DEFAULT NULL,
+  ADD COLUMN `approval_gps_latitude`  DECIMAL(10,7) DEFAULT NULL,
+  ADD COLUMN `approval_gps_longitude` DECIMAL(10,7) DEFAULT NULL,
+  ADD COLUMN `approval_gps_accuracy_m` SMALLINT UNSIGNED DEFAULT NULL,
+  ADD COLUMN `approval_gps_source`    ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable',
+  ADD COLUMN `revision_count`         SMALLINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'entries in visit_report_revisions',
+  ADD COLUMN `updated_at`             DATETIME     DEFAULT NULL COMMENT 'set only by an approval or a revision',
+  ADD KEY `idx_visit_approval` (`approval_status`, `visit_date`),
+  ADD CONSTRAINT `fk_visit_approver` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+-- 4. Three new timeline event types. MODIFY, not ADD: a value missing from this list
+--    throws on insert, and the approval writes its timeline row in the same
+--    transaction as the approval itself - so a stale ENUM fails the whole approval.
+ALTER TABLE `visit_history`
+  MODIFY COLUMN `event_type` ENUM('lead_imported','lead_updated','assigned','reassigned','transferred',
+                                  'visit','promise_created','promise_kept','promise_broken',
+                                  'status_changed','closed','reopened','note',
+                                  'visit_approved','visit_rejected','visit_revised') NOT NULL;
+
+-- 5. Corrections to a filed report. Nothing ever updates or deletes a row in here;
+--    replaying the `changes` backwards reconstructs the report as it was submitted.
+CREATE TABLE `visit_report_revisions` (
+  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `visit_report_id` BIGINT UNSIGNED NOT NULL,
+  `revision_no`     SMALLINT UNSIGNED NOT NULL COMMENT '1 for the first correction',
+  `changed_by`      INT UNSIGNED DEFAULT NULL,
+  `changed_by_name` VARCHAR(150) DEFAULT NULL COMMENT 'snapshot',
+  `changed_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- {"column": {"from": <old>, "to": <new>}} - only the columns that actually moved.
+  `changes`         JSON         NOT NULL,
+  `reason`          VARCHAR(500) DEFAULT NULL COMMENT 'why, in the editor''s words',
+  `ip`              VARCHAR(45)  DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_revision_report_no` (`visit_report_id`, `revision_no`),
+  KEY `idx_revision_report` (`visit_report_id`, `changed_at`),
+  KEY `idx_revision_actor` (`changed_by`),
+  CONSTRAINT `fk_revision_report` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_revision_actor`  FOREIGN KEY (`changed_by`)      REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. Fields an operator adds without a code change.
+CREATE TABLE `custom_field_definitions` (
+  `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `entity`         ENUM('customer','loan_account','visit_report') NOT NULL,
+  -- Immutable once created: it is what stored values point at through definition_id.
+  `field_key`      VARCHAR(60)  NOT NULL,
+  `label`          VARCHAR(120) NOT NULL,
+  `field_type`     ENUM('text','textarea','number','money','date','select','toggle') NOT NULL DEFAULT 'text',
+  `options`        VARCHAR(500) DEFAULT NULL COMMENT 'comma separated, for select',
+  `hint`           VARCHAR(255) DEFAULT NULL,
+  `is_required`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `show_in_report` TINYINT(1)   NOT NULL DEFAULT 0,
+  `sort_order`     SMALLINT     NOT NULL DEFAULT 0,
+  `status`         ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  `created_by`     INT UNSIGNED DEFAULT NULL,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_custom_field_key` (`entity`, `field_key`),
+  KEY `idx_custom_field_entity` (`entity`, `status`, `sort_order`),
+  CONSTRAINT `fk_custom_field_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `custom_field_values` (
+  `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `definition_id` INT UNSIGNED NOT NULL,
+  `entity`        ENUM('customer','loan_account','visit_report') NOT NULL,
+  `entity_id`     BIGINT UNSIGNED NOT NULL,
+  -- One text column for every type; the definition says how to read it.
+  -- Dates are ISO, money is a decimal string, toggles are '1' or '0'.
+  `value`         TEXT         DEFAULT NULL,
+  `updated_by`    INT UNSIGNED DEFAULT NULL,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_custom_value` (`definition_id`, `entity_id`),
+  KEY `idx_custom_value_entity` (`entity`, `entity_id`),
+  CONSTRAINT `fk_custom_value_definition` FOREIGN KEY (`definition_id`) REFERENCES `custom_field_definitions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 7. Permissions. Approving and correcting go to branch managers and above, never to
+--    agents: an agent approving their own report, or fixing the name on it after
+--    filing, makes both the approval and the revision log worthless.
+INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
+  ('visits.approve',       'Visits',   'Approve or reject a field visit report'),
+  ('visits.revise',        'Visits',   'Correct a submitted visit report (recorded as a revision)'),
+  ('custom_fields.manage', 'Settings', 'Add and edit custom fields');
+
+-- Super Admin gets all three; Branch Manager gets approve + revise only.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 1, `id` FROM `permissions`
+   WHERE `code` IN ('visits.approve','visits.revise','custom_fields.manage');
+
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 2, `id` FROM `permissions`
+   WHERE `code` IN ('visits.approve','visits.revise');
+```
+
+After running it, confirm the counts:
+
+```sql
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();  -- 35
+SELECT COUNT(*) FROM `permissions`;                                             -- 44
+```
+
+Two things to know about the files:
+
+- **Two new upload kinds appear**, `uploads/staff/` and `uploads/approvals/`, created
+  automatically on the first upload under the same date-sharded layout as the rest. They
+  inherit the `uploads/.htaccess` deny rule, so images are served only through the
+  authorised media route — nothing under `uploads/` is ever fetched directly.
+- **A new APK is required.** The app now sends each photograph's capture source
+  explicitly (camera or gallery). An older APK against the new server still submits
+  visits, but every photo it sends records the source as unknown, so the geo-tag caption
+  on the printed report cannot say where the picture came from.
+
+Nothing needs re-importing or re-seeding. Existing reports read `approval_status =
+'pending'` and `revision_count = 0`, which is exactly true of them: nobody has approved
+or corrected them.
 
 ### Renaming to D2 Recovery on an existing install
 

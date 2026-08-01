@@ -182,10 +182,6 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                         <dt>Village</dt>
                         <dd><?= nullable($lead['village']) ?></dd>
                     </div>
-                    <div>
-                        <dt>BC / DC code</dt>
-                        <dd><?= nullable($lead['bc_code']) ?></dd>
-                    </div>
                     <div style="grid-column:1/-1">
                         <dt>Address</dt>
                         <dd><?= nullable($lead['address']) ?></dd>
@@ -193,6 +189,41 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                 </dl>
             </div>
         </div>
+
+        <?php
+        /*
+         * Operator-defined fields. Rendered from the definitions rather than hardcoded,
+         * so a field added in Settings shows up here with no release. A field with no
+         * answer is still listed - "not recorded" is information, and hiding the row
+         * would make it look as though the field does not exist.
+         */
+        $extraBlocks = array_filter([
+            'Additional borrower details' => $customerFields ?? [],
+            'Additional loan details'     => $loanFields ?? [],
+        ]);
+        ?>
+        <?php foreach ($extraBlocks as $blockTitle => $blockFields): ?>
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head"><h2><?= icon('clipboard') ?> <?= e($blockTitle) ?></h2></div>
+                <div class="lrms-card-body">
+                    <dl class="lrms-dl">
+                        <?php foreach ($blockFields as $definition): ?>
+                            <?php $display = \App\Models\CustomField::display($definition); ?>
+                            <div<?= (string) $definition['field_type'] === 'textarea' ? ' style="grid-column:1/-1"' : '' ?>>
+                                <dt><?= e((string) $definition['label']) ?></dt>
+                                <dd>
+                                    <?php if ($display === ''): ?>
+                                        <span class="text-muted">Not recorded</span>
+                                    <?php else: ?>
+                                        <?= e($display) ?>
+                                    <?php endif; ?>
+                                </dd>
+                            </div>
+                        <?php endforeach; ?>
+                    </dl>
+                </div>
+            </div>
+        <?php endforeach; ?>
 
         <!-- Loan -->
         <div class="lrms-card mb-3">
@@ -216,6 +247,25 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                     <div>
                         <dt>Overdue</dt>
                         <dd class="lg" style="color:var(--lrms-danger)"><?= e(rupees($lead['overdue_amount'])) ?></dd>
+                    </div>
+                    <div>
+                        <?php
+                        /*
+                         * What it costs to close the account outright. Deliberately
+                         * distinct from the OTS figure below: a settlement is what the
+                         * branch is willing to accept, a closure amount is the whole
+                         * number, and an agent quoting one for the other is quoting a
+                         * discount nobody approved.
+                         */
+                        ?>
+                        <dt>Closure amount</dt>
+                        <dd class="lg">
+                            <?php if ($lead['closure_amount'] !== null): ?>
+                                <?= e(rupees($lead['closure_amount'])) ?>
+                            <?php else: ?>
+                                <span class="text-muted">Not set</span>
+                            <?php endif; ?>
+                        </dd>
                     </div>
                     <div>
                         <dt>NPA date</dt>
