@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use App\Core\Auth;
+use App\Core\ColumnDetector;
 use App\Core\Database;
 use App\Core\Request;
 use App\Core\Response;
@@ -53,15 +54,21 @@ final class ImportController extends Controller
         $branchId = $this->resolveDefaultBranch($request);
 
         try {
-            $result = ImportService::preview($_FILES['lead_file'], $branchId);
+            $result = ImportService::preview(
+                $_FILES['lead_file'],
+                $branchId,
+                $this->columnOverrides($request),
+            );
         } catch (\Throwable $e) {
             $this->back('/import', 'danger', 'Validation failed: ' . e($e->getMessage()));
         }
 
-        // Held in the session so the result survives the redirect.
+        // Held in the session so the result survives the redirect. stored_path
+        // stays server-side: the confirm step posts only a flag, never a path.
         Session::set('_import_preview', [
-            'filename' => (string) ($_FILES['lead_file']['name'] ?? 'upload'),
-            'result'   => $result,
+            'filename'    => (string) ($_FILES['lead_file']['name'] ?? 'upload'),
+            'stored_path' => (string) ($result['stored_path'] ?? ''),
+            'result'      => $result,
         ]);
 
         $this->back(
@@ -146,13 +153,16 @@ final class ImportController extends Controller
     {
         $this->guard($request, 'import.view');
 
-        $headings = array_keys($this->expectedColumns());
-
-        $sample = [[
-            'BR001', 'BC-001', 'LN0000000001', 'Ramesh Kumar', 'Shyam Lal',
-            '9876543210', '123456789012', 'Kotri', 'House 12, Kotri', 'Crop Loan',
-            125000.00, 24500.00, '2024-03-31', 'First default',
-        ]];
+        // Headings and the sample row both come from the field definition, so a
+        // new column can never leave the template with a sample row of the wrong
+        // width - which is exactly what happened when the sample was a literal.
+        $headings = [];
+        $sampleRow = [];
+        foreach (ColumnDetector::fields() as $meta) {
+            $headings[] = $meta['label'];
+            $sampleRow[] = $meta['example'];
+        }
+        $sample = [$sampleRow];
 
         if (Xlsx::available()) {
             Response::download(
@@ -161,7 +171,9 @@ final class ImportController extends Controller
                     $headings,
                     $sample,
                     'D2 Recovery Lead Import Template',
-                    'Replace the sample row with your data. Branch and Loan Account Number are required.'
+                    'Only Loan Account Number and Customer Name are required. '
+                    . 'You do not have to use this layout: upload your bank\'s own export and '
+                    . 'the columns are detected. Branch is read from the file.'
                 ),
                 'lrms_lead_import_template.xlsx',
                 Xlsx::MIME
@@ -179,7 +191,20 @@ final class ImportController extends Controller
 
     private function handleUpload(Request $request): never
     {
-        if (!isset($_FILES['lead_file'])) {
+        // Importing the file that was just validated: no new upload is needed, and
+        // the confirmed column mapping applies to that exact file.
+        $previewed = Session::get('_import_preview');
+        $reuseStoredPath = null;
+        $reuseName = null;
+        if ($request->input('use_previewed_file') === '1' && is_array($previewed)) {
+            $candidate = (string) ($previewed['stored_path'] ?? '');
+            if ($candidate !== '' && is_file($candidate)) {
+                $reuseStoredPath = $candidate;
+                $reuseName = (string) ($previewed['filename'] ?? 'upload');
+            }
+        }
+
+        if ($reuseStoredPath === null && !isset($_FILES['lead_file'])) {
             $this->back('/import', 'danger', 'Choose a file to upload.');
         }
 
@@ -200,11 +225,19 @@ final class ImportController extends Controller
 
         try {
             $result = ImportService::run(
-                $_FILES['lead_file'],
+                $reuseStoredPath !== null
+                    ? ['name' => $reuseName]
+                    : $_FILES['lead_file'],
                 $branchId,
                 $agentId,
                 (int) $user['id'],
-                (string) $user['name']
+                (string) $user['name'],
+                $this->columnOverrides($request),
+                // Branches are created from the sheet only for an uploader who is
+                // not tied to one branch. A branch manager must not be able to
+                // conjure branches outside their own scope through a spreadsheet.
+                Auth::scopedBranchId() === null,
+                $reuseStoredPath,
             );
         } catch (\Throwable $e) {
             $this->back('/import', 'danger', 'Import failed: ' . e($e->getMessage()));
@@ -219,6 +252,24 @@ final class ImportController extends Controller
             $result['skipped'],
             $result['total']
         )];
+
+        // Branches created from the sheet are named explicitly. Auto-creating them
+        // silently would let one misspelling become a permanent branch nobody
+        // notices, so the operator is told and can rename or merge.
+        if (($result['created_branches'] ?? []) !== []) {
+            $labels = array_map(
+                static fn (array $branch): string => $branch['name'] . ' (' . $branch['code'] . ')',
+                array_slice($result['created_branches'], 0, 8)
+            );
+            $parts[] = sprintf(
+                '<strong>%d branch(es) created from the file:</strong> <code>%s</code>%s '
+                . '<a href="%s">Review them</a> if any look like a typo.',
+                count($result['created_branches']),
+                e(implode(', ', $labels)),
+                count($result['created_branches']) > 8 ? ' and more.' : '',
+                e(url('/branches'))
+            );
+        }
 
         if ($result['unmatched_branches'] !== []) {
             $parts[] = 'Unknown branch codes: <code>'
@@ -275,21 +326,47 @@ final class ImportController extends Controller
      */
     private function expectedColumns(): array
     {
-        return [
-            'Branch'              => false,
-            'BC Code'             => false,
-            'Loan Account Number' => true,
-            'Customer Name'       => true,
-            'Father/Husband Name' => false,
-            'Mobile'              => false,
-            'Aadhaar'             => false,
-            'Village'             => false,
-            'Address'             => false,
-            'Loan Type'           => false,
-            'Outstanding Amount'  => false,
-            'Overdue Amount'      => false,
-            'NPA Date'            => false,
-            'Remarks'             => false,
-        ];
+        // Derived, not duplicated. This list used to be typed out here as well as
+        // in the service, so adding a column meant editing two places and the
+        // generated template could disagree with what the importer accepted.
+        $columns = [];
+        foreach (ColumnDetector::fields() as $meta) {
+            $columns[$meta['label']] = $meta['required'];
+        }
+        return $columns;
+    }
+
+    /**
+     * The mapping the operator confirmed on the dry-run screen.
+     *
+     * Posted as column_map[field] = column index, with -1 meaning "ignore this
+     * field". Anything not posted is left to detection.
+     *
+     * @return array<string,int>
+     */
+    private function columnOverrides(Request $request): array
+    {
+        $raw = $_POST['column_map'] ?? null;
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $fields = ColumnDetector::fields();
+        $overrides = [];
+        foreach ($raw as $field => $index) {
+            if (!is_string($field) || !isset($fields[$field]) || !is_scalar($index)) {
+                continue;
+            }
+            $value = (string) $index;
+            if ($value === '') {
+                continue;   // "detect automatically"
+            }
+            if (!is_numeric($value)) {
+                continue;
+            }
+            $overrides[$field] = (int) $value;
+        }
+
+        return $overrides;
     }
 }

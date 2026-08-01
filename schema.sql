@@ -279,6 +279,20 @@ CREATE TABLE `loan_accounts` (
   `visit_count`          INT UNSIGNED NOT NULL DEFAULT 0,
   `last_promise_id`      BIGINT UNSIGNED DEFAULT NULL,
   `next_followup_date`   DATE         DEFAULT NULL,
+  -- ---- Settlement position as the BRANCH stated it -------------------------
+  -- Filled from the imported file, not by an agent. The branch decides which
+  -- accounts it will settle and at what figure; the agent needs to know that
+  -- before knocking on the door, and the OTS section of a visit report is
+  -- pre-filled from it.
+  --
+  -- Nullable on purpose: NULL means "the file did not say", which is a different
+  -- thing from an explicit No, and only one of those should stop an agent
+  -- offering a settlement.
+  `ots_eligible`         TINYINT(1)    DEFAULT NULL COMMENT 'bank flag from the import; NULL = not stated',
+  `krm_eligible`         TINYINT(1)    DEFAULT NULL COMMENT 'eligible under the KRM scheme specifically',
+  `ots_amount`           DECIMAL(15,2) DEFAULT NULL COMMENT 'settlement figure proposed by the branch',
+  `deposit_amount`       DECIMAL(15,2) DEFAULT NULL COMMENT 'initial deposit expected alongside the OTS',
+
   `remarks`              VARCHAR(1000) DEFAULT NULL COMMENT 'remarks from the source Excel file',
   `import_id`            BIGINT UNSIGNED DEFAULT NULL,
   `closed_at`            DATETIME     DEFAULT NULL,
@@ -294,6 +308,8 @@ CREATE TABLE `loan_accounts` (
   KEY `idx_loan_npa` (`is_npa`, `npa_date`),
   KEY `idx_loan_followup` (`next_followup_date`),
   KEY `idx_loan_ckcc_renewal` (`ckcc_renewal_due_date`),
+  -- Drives the "which accounts can we settle" worklist.
+  KEY `idx_loan_ots_eligible` (`ots_eligible`),
   KEY `idx_loan_cif` (`cif_number`),
   KEY `idx_loan_import` (`import_id`),
   KEY `idx_loan_last_visit` (`last_visit_at`),

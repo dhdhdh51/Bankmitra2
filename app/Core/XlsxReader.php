@@ -25,7 +25,13 @@ final class XlsxReader
     private const MAX_ROWS = 60000;
 
     /**
-     * @return array{headings:list<string>, rows:list<list<string>>}
+     * How far down to look for the header row. Bank exports put a title, a
+     * "branch / as on" line, a blank spacer and occasionally a legend above it.
+     */
+    private const HEADER_SEARCH_ROWS = 15;
+
+    /**
+     * @return array{headings:list<string>, rows:list<list<string>>, header_row:int, sheet:string}
      */
     public static function read(string $path): array
     {
@@ -62,7 +68,7 @@ final class XlsxReader
     // -----------------------------------------------------------------------
 
     /**
-     * @return array{headings:list<string>, rows:list<list<string>>}
+     * @return array{headings:list<string>, rows:list<list<string>>, header_row:int, sheet:string}
      */
     private static function readCsv(string $path): array
     {
@@ -106,7 +112,7 @@ final class XlsxReader
         fclose($handle);
 
         if ($grid === []) {
-            return ['headings' => [], 'rows' => []];
+            return ['headings' => [], 'rows' => [], 'header_row' => 0, 'sheet' => ''];
         }
 
         // Normalise to a dense rectangle so ragged rows cannot shift columns.
@@ -118,28 +124,7 @@ final class XlsxReader
             $grid[$index] = array_pad($row, $width, '');
         }
 
-        $headerRowIndex = self::detectHeaderRow($grid);
-        if ($headerRowIndex === null) {
-            return ['headings' => [], 'rows' => []];
-        }
-
-        $headings = $grid[$headerRowIndex];
-
-        $rows = [];
-        foreach ($grid as $index => $row) {
-            if ($index <= $headerRowIndex) {
-                continue;
-            }
-            if (implode('', $row) === '') {
-                continue;
-            }
-            $rows[] = $row;
-            if (count($rows) >= self::MAX_ROWS) {
-                break;
-            }
-        }
-
-        return ['headings' => $headings, 'rows' => $rows];
+        return self::sliceGrid($grid);
     }
 
     private static function detectDelimiter(string $path): string
@@ -166,7 +151,7 @@ final class XlsxReader
     // -----------------------------------------------------------------------
 
     /**
-     * @return array{headings:list<string>, rows:list<list<string>>}
+     * @return array{headings:list<string>, rows:list<list<string>>, header_row:int, sheet:string}
      */
     private static function readXlsx(string $path): array
     {
@@ -183,27 +168,100 @@ final class XlsxReader
 
         try {
             $sharedStrings = self::readSharedStrings($zip);
-            $sheetPath = self::resolveFirstSheetPath($zip);
+            $dateStyles = self::readDateStyles($zip);
+            $sheets = self::resolveSheetPaths($zip);
 
-            $xml = $zip->getFromName($sheetPath);
-            if ($xml === false) {
-                throw new \RuntimeException('The workbook has no readable worksheet.');
+            if ($sheets === []) {
+                throw new \RuntimeException('The workbook has no worksheet part.');
             }
 
-            $grid = self::parseSheet($xml, $sharedStrings);
+            // Pick the sheet that actually holds the lead list.
+            //
+            // Always reading sheet 1 is wrong often enough to matter: bank
+            // workbooks lead with a cover sheet, a "Summary" pivot or a legend,
+            // and the accounts sit on sheet 2 or 3. That produced an import that
+            // failed with "missing required column(s)" against a file that plainly
+            // contained them, which is impossible to explain to the person holding
+            // the file. Every sheet is scored on how much its best candidate row
+            // looks like column headings, and the winner is used.
+            $grid = [];
+            $sheetName = '';
+            $bestScore = -1;
+
+            foreach ($sheets as $name => $partPath) {
+                $xml = $zip->getFromName($partPath);
+                if ($xml === false) {
+                    continue;
+                }
+
+                $candidate = self::parseSheet($xml, $sharedStrings, $dateStyles);
+                if ($candidate === []) {
+                    continue;
+                }
+
+                $score = 0;
+                $window = min(count($candidate), self::HEADER_SEARCH_ROWS);
+                for ($i = 0; $i < $window; $i++) {
+                    $score = max($score, ColumnDetector::headerScore($candidate[$i]));
+                }
+                // A sheet of headings with no rows under them is a legend, not data.
+                if (count($candidate) < 2) {
+                    $score = 0;
+                }
+
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $grid = $candidate;
+                    $sheetName = (string) $name;
+                }
+            }
+
+            // No sheet looked like a lead list; fall back to the first one that
+            // has any content, so an unrecognised file still reaches the mapping
+            // screen instead of being rejected here.
+            if ($grid === []) {
+                foreach ($sheets as $name => $partPath) {
+                    $xml = $zip->getFromName($partPath);
+                    if ($xml === false) {
+                        continue;
+                    }
+                    $candidate = self::parseSheet($xml, $sharedStrings, $dateStyles);
+                    if ($candidate !== []) {
+                        $grid = $candidate;
+                        $sheetName = (string) $name;
+                        break;
+                    }
+                }
+            }
         } finally {
             $zip->close();
         }
 
+        return self::sliceGrid($grid, $sheetName);
+    }
+
+    /**
+     * Splits a parsed grid into headings and data rows.
+     *
+     * Shared by the CSV and XLSX paths, which used to carry identical copies of
+     * this and so could drift apart.
+     *
+     * @param list<list<string>> $grid
+     *
+     * @return array{headings:list<string>, rows:list<list<string>>, header_row:int, sheet:string}
+     */
+    private static function sliceGrid(array $grid, string $sheet = ''): array
+    {
+        $empty = ['headings' => [], 'rows' => [], 'header_row' => 0, 'sheet' => $sheet];
+
         if ($grid === []) {
-            return ['headings' => [], 'rows' => []];
+            return $empty;
         }
 
         $headerRowIndex = self::detectHeaderRow($grid);
         if ($headerRowIndex === null) {
-            return ['headings' => [], 'rows' => []];
+            return $empty;
         }
-        $headings = $grid[$headerRowIndex];
 
         $rows = [];
         foreach ($grid as $index => $row) {
@@ -219,25 +277,55 @@ final class XlsxReader
             }
         }
 
-        return ['headings' => $headings, 'rows' => $rows];
+        return [
+            'headings'   => $grid[$headerRowIndex],
+            'rows'       => $rows,
+            // Reported so callers can quote real spreadsheet line numbers. The
+            // importer used to say "row 2" for the first data row of every file,
+            // which is wrong by however many title rows were skipped - and those
+            // numbers are what someone uses to find the bad row in Excel.
+            'header_row' => $headerRowIndex,
+            'sheet'      => $sheet,
+        ];
     }
 
     /**
      * Locates the real header row.
      *
-     * Core banking exports and hand-maintained branch files routinely carry a
-     * merged title row ("NPA STATEMENT AS ON 31.03.2024") and sometimes a blank
-     * spacer above the actual column names. Taking the first non-empty row as
-     * the header silently shifts every column in those files, so instead we pick
-     * the first row in the leading window that has at least two populated cells
-     * - a title row has exactly one.
+     * Core banking exports and hand-maintained branch files carry a merged title
+     * row ("NPA STATEMENT AS ON 31.03.2024"), often a "Branch: BR001 | As on:
+     * 31.03.2024" subtitle row, and sometimes a blank spacer above the actual
+     * column names.
+     *
+     * The old rule - first row with two or more populated cells - handled the
+     * title row and nothing else: a two-cell subtitle row satisfies it perfectly
+     * and every column then maps to the wrong field. So instead each candidate row
+     * is scored on how many of its cells are recognisable column headings, and the
+     * best-scoring row wins. The structural rule remains as a fallback for files
+     * whose headings we do not recognise at all.
      *
      * @param list<list<string>> $grid
      */
     private static function detectHeaderRow(array $grid): ?int
     {
-        $window = min(count($grid), 15);
+        $window = min(count($grid), self::HEADER_SEARCH_ROWS);
 
+        $bestRow = null;
+        $bestScore = 0;
+        for ($i = 0; $i < $window; $i++) {
+            $score = ColumnDetector::headerScore($grid[$i]);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestRow = $i;
+            }
+        }
+
+        if ($bestRow !== null) {
+            return $bestRow;
+        }
+
+        // Nothing recognisable: fall back to the first row with two or more
+        // populated cells, which at least skips a merged title row.
         for ($i = 0; $i < $window; $i++) {
             $filled = 0;
             foreach ($grid[$i] as $cell) {
@@ -250,7 +338,7 @@ final class XlsxReader
             }
         }
 
-        // Single-column file: fall back to the first non-empty row.
+        // Single-column file: the first non-empty row.
         foreach ($grid as $index => $row) {
             if (implode('', $row) !== '') {
                 return $index;
@@ -261,12 +349,18 @@ final class XlsxReader
     }
 
     /**
-     * Resolves the first sheet's part name via workbook rels.
+     * Every worksheet in the workbook, as sheet name => part path, in tab order.
+     *
+     * Hidden sheets are skipped: they are archives and scratch pads, never the
+     * list someone means to import.
+     *
+     * @return array<string,string>
      */
-    private static function resolveFirstSheetPath(\ZipArchive $zip): string
+    private static function resolveSheetPaths(\ZipArchive $zip): array
     {
         $workbook = $zip->getFromName('xl/workbook.xml');
         $rels = $zip->getFromName('xl/_rels/workbook.xml.rels');
+        $sheetPaths = [];
 
         if ($workbook !== false && $rels !== false) {
             $wbXml = @simplexml_load_string($workbook);
@@ -285,34 +379,46 @@ final class XlsxReader
                 $wbXml->registerXPathNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
                 $sheets = $wbXml->xpath('//m:sheets/m:sheet');
 
-                if (is_array($sheets) && $sheets !== []) {
-                    $first = $sheets[0];
+                foreach (is_array($sheets) ? $sheets : [] as $position => $sheet) {
+                    if (((string) ($sheet['state'] ?? '')) !== '') {
+                        continue; // hidden or veryHidden
+                    }
+
                     $rid = '';
-                    foreach ($first->attributes('r', true) ?? [] as $name => $value) {
+                    foreach ($sheet->attributes('r', true) ?? [] as $name => $value) {
                         if ($name === 'id') {
                             $rid = (string) $value;
                         }
                     }
-                    if ($rid !== '' && isset($relMap[$rid])) {
-                        $target = ltrim($relMap[$rid], '/');
-                        $candidate = str_starts_with($target, 'xl/') ? $target : 'xl/' . $target;
-                        if ($zip->locateName($candidate) !== false) {
-                            return $candidate;
-                        }
+                    if ($rid === '' || !isset($relMap[$rid])) {
+                        continue;
                     }
+
+                    $target = ltrim($relMap[$rid], '/');
+                    $candidate = str_starts_with($target, 'xl/') ? $target : 'xl/' . $target;
+                    if ($zip->locateName($candidate) === false) {
+                        continue;
+                    }
+
+                    $label = trim((string) ($sheet['name'] ?? ''));
+                    $sheetPaths[$label !== '' ? $label : 'Sheet' . ($position + 1)] = $candidate;
                 }
             }
         }
 
-        // Fall back to scanning for any worksheet part.
+        if ($sheetPaths !== []) {
+            return $sheetPaths;
+        }
+
+        // Fall back to scanning for worksheet parts.
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = (string) $zip->getNameIndex($i);
             if (preg_match('#^xl/worksheets/sheet[^/]+\.xml$#', $name) === 1) {
-                return $name;
+                $sheetPaths[basename($name, '.xml')] = $name;
             }
         }
 
-        throw new \RuntimeException('The workbook has no worksheet part.');
+        return $sheetPaths;
     }
 
     /** @return list<string> */
@@ -349,7 +455,7 @@ final class XlsxReader
      * @param list<string> $sharedStrings
      * @return list<list<string>> Dense grid, blanks preserved.
      */
-    private static function parseSheet(string $xml, array $sharedStrings): array
+    private static function parseSheet(string $xml, array $sharedStrings, array $dateStyles = []): array
     {
         $parsed = @simplexml_load_string($xml);
         if ($parsed === false) {
@@ -375,7 +481,7 @@ final class XlsxReader
                     : ++$fallbackColumn;
                 $fallbackColumn = $columnIndex;
 
-                $cells[$columnIndex] = self::cellValue($cell, $sharedStrings);
+                $cells[$columnIndex] = self::cellValue($cell, $sharedStrings, $dateStyles);
                 $maxColumn = max($maxColumn, $columnIndex);
             }
 
@@ -400,8 +506,11 @@ final class XlsxReader
         return $grid;
     }
 
-    private static function cellValue(\SimpleXMLElement $cell, array $sharedStrings): string
-    {
+    private static function cellValue(
+        \SimpleXMLElement $cell,
+        array $sharedStrings,
+        array $dateStyles = [],
+    ): string {
         $type = (string) ($cell['t'] ?? '');
 
         if ($type === 'inlineStr') {
@@ -438,10 +547,14 @@ final class XlsxReader
             return '';
         }
 
-        // Date-formatted numerics: styles with a date numFmt get s="..." but we
-        // do not parse styles.xml, so use a heuristic on plausible serial ranges
-        // only when the value is an integer in the Excel epoch window.
-        if (self::looksLikeExcelDateSerial($raw)) {
+        // A date in a spreadsheet is a plain number wearing a date number format.
+        // The ONLY way to tell 45,000 rupees from 19 March 2023 is to look at the
+        // format the cell was given, which is why styles.xml is parsed. Guessing
+        // from the value instead - "integers in the Excel epoch window are dates"
+        // - silently turned every whole-rupee outstanding balance between 32,874
+        // and 65,380 into a date, and parseAmount() then read that date's year as
+        // the amount: a Rs 45,000 balance was imported as Rs 2,023.
+        if (isset($cell['s']) && ($dateStyles[(int) $cell['s']] ?? false) && is_numeric($raw)) {
             $converted = self::excelSerialToDate((float) $raw);
             if ($converted !== null) {
                 return $converted;
@@ -449,6 +562,74 @@ final class XlsxReader
         }
 
         return $raw;
+    }
+
+    /**
+     * Which cell-format indexes mean "this number is a date".
+     *
+     * Returns a map of cellXfs index => true. A cell carries s="N" pointing at
+     * the Nth <xf> in <cellXfs>; that xf's numFmtId is either one of Excel's
+     * built-in formats or a custom one declared in <numFmts>.
+     *
+     * @return array<int,bool>
+     */
+    private static function readDateStyles(\ZipArchive $zip): array
+    {
+        $xmlSource = $zip->getFromName('xl/styles.xml');
+        if ($xmlSource === false) {
+            return [];
+        }
+
+        $xml = @simplexml_load_string($xmlSource);
+        if ($xml === false) {
+            return [];
+        }
+
+        // Excel's built-in date and time formats. 27-36, 50-58 and 71-81 are the
+        // locale-specific date formats East Asian and Indian builds emit.
+        $dateFormatIds = [
+            14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47,
+            ...range(27, 36), ...range(50, 58), ...range(71, 81),
+        ];
+        $isDateFormat = array_fill_keys($dateFormatIds, true);
+
+        foreach ($xml->numFmts->numFmt ?? [] as $numFmt) {
+            $id = (int) ($numFmt['numFmtId'] ?? 0);
+            $code = (string) ($numFmt['formatCode'] ?? '');
+            if ($id > 0 && self::formatCodeIsDate($code)) {
+                $isDateFormat[$id] = true;
+            }
+        }
+
+        $styles = [];
+        $index = 0;
+        foreach ($xml->cellXfs->xf ?? [] as $xf) {
+            $numFmtId = (int) ($xf['numFmtId'] ?? 0);
+            if ($isDateFormat[$numFmtId] ?? false) {
+                $styles[$index] = true;
+            }
+            $index++;
+        }
+
+        return $styles;
+    }
+
+    /**
+     * Whether a custom number-format code renders a date or a time.
+     *
+     * Literal text, escaped characters and bracketed sections are removed first,
+     * so a currency format like "Rs."#,##0.00 or [$-4009]#,##0 cannot be mistaken
+     * for a date through the letters inside them.
+     */
+    private static function formatCodeIsDate(string $code): bool
+    {
+        $stripped = preg_replace('/"[^"]*"/', '', $code) ?? $code;   // "literal text"
+        $stripped = preg_replace('/\\\\./', '', $stripped) ?? $stripped; // \escaped char
+        $stripped = preg_replace('/\[[^\]]*\]/', '', $stripped) ?? $stripped; // [Red] [$-409] [h]
+
+        // y=year, d=day, s=second are unambiguous. A bare "m" is minutes or
+        // months, but it only ever appears in a date or time format.
+        return preg_match('/[ymdhs]/i', $stripped) === 1;
     }
 
     private static function columnIndexFromReference(string $reference): int
@@ -463,23 +644,6 @@ final class XlsxReader
             $index = $index * 26 + (ord($letters[$i]) - 64);
         }
         return max(1, $index);
-    }
-
-    /**
-     * Excel serial dates for 1990-01-01 .. 2079-12-31 fall in 32874..65380.
-     * Restricting to that band avoids mangling ordinary amounts and account
-     * numbers, which are the columns that matter most in this importer.
-     */
-    private static function looksLikeExcelDateSerial(string $raw): bool
-    {
-        if (!is_numeric($raw)) {
-            return false;
-        }
-        if (str_contains($raw, '.')) {
-            return false; // amounts have decimals; dates here do not
-        }
-        $value = (int) $raw;
-        return $value >= 32874 && $value <= 65380;
     }
 
     public static function excelSerialToDate(float $serial): ?string

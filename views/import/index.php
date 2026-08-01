@@ -125,12 +125,129 @@
                                     $result['missing_required']
                                 ))) ?>.
                                 <div class="mt-1" style="font-size:.8125rem">
-                                    Headers detected:
-                                    <code><?= e($result['headings'] === [] ? '(none)' : implode(' | ', $result['headings'])) ?></code>
+                                    Pick the right column below and import again &mdash; the file does not
+                                    need to be reformatted.
                                 </div>
                             </div>
                         </div>
-                    <?php else: ?>
+                    <?php endif; ?>
+
+                    <?php
+                    // ==================== Column mapping ====================
+                    // Detection proposes; the operator confirms. Money columns are
+                    // never guessed from their contents, so this is the only place
+                    // a wrong outstanding-amount column can be caught - before a
+                    // single row is written.
+                    $fields = \App\Core\ColumnDetector::fields();
+                    $detected = $result['detection'] ?? [];
+                    $columnSamples = $result['samples_by_column'] ?? [];
+                    ?>
+                    <form method="post" action="<?= e(url('/import')) ?>" data-no-double-submit>
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="use_previewed_file" value="1">
+                        <?php if (($preview['result']['sheet'] ?? '') !== ''): ?>
+                            <input type="hidden" name="__sheet" value="<?= e((string) $result['sheet']) ?>">
+                        <?php endif; ?>
+
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <h3 style="font-size:.9375rem;margin:0">Column mapping</h3>
+                            <span class="text-muted" style="font-size:.75rem">
+                                <?php if (($result['sheet'] ?? '') !== ''): ?>
+                                    Sheet <code><?= e((string) $result['sheet']) ?></code> &middot;
+                                <?php endif; ?>
+                                header on row <?= e((string) (((int) ($result['header_row'] ?? 0)) + 1)) ?>
+                            </span>
+                        </div>
+
+                        <div class="lrms-table-wrap mb-3">
+                            <table class="lrms-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:34%">Field</th>
+                                        <th style="width:32%">Column in your file</th>
+                                        <th>Example values</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($fields as $field => $meta): ?>
+                                    <?php
+                                    $hit = $detected[$field] ?? null;
+                                    $chosenIndex = $hit === null ? null : (int) $hit['index'];
+                                    $confidence = $hit === null ? 0 : (int) $hit['confidence'];
+                                    $source = $hit === null ? '' : (string) $hit['source'];
+                                    $isMissing = in_array($field, $result['missing_required'], true);
+                                    ?>
+                                    <tr<?= $isMissing ? ' class="table-danger"' : '' ?>>
+                                        <td>
+                                            <strong><?= e($meta['label']) ?></strong>
+                                            <?php if ($meta['required']): ?>
+                                                <span class="badge bg-danger-subtle text-danger-emphasis">Required</span>
+                                            <?php endif; ?>
+                                            <?php if ($source === 'values'): ?>
+                                                <div class="text-muted" style="font-size:.6875rem">
+                                                    matched on the shape of the data, not the heading
+                                                    &mdash; please confirm
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <select class="form-select form-select-sm"
+                                                    name="column_map[<?= e($field) ?>]">
+                                                <option value="-1"<?= $chosenIndex === null ? ' selected' : '' ?>>
+                                                    &mdash; not in this file &mdash;
+                                                </option>
+                                                <?php foreach ($result['headings'] as $index => $heading): ?>
+                                                    <option value="<?= e((string) $index) ?>"
+                                                        <?= $chosenIndex === $index ? ' selected' : '' ?>>
+                                                        <?= e(trim($heading) === ''
+                                                            ? 'Column ' . ($index + 1)
+                                                            : $heading) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <?php if ($chosenIndex !== null && $confidence < 80): ?>
+                                                <div class="text-warning-emphasis" style="font-size:.6875rem">
+                                                    <?= e((string) $confidence) ?>% confident
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-muted" style="font-size:.75rem">
+                                            <?php if ($chosenIndex !== null && ($columnSamples[$chosenIndex] ?? []) !== []): ?>
+                                                <?= e(implode(', ', array_map(
+                                                    static fn (string $v): string => mb_substr($v, 0, 24),
+                                                    $columnSamples[$chosenIndex]
+                                                ))) ?>
+                                            <?php else: ?>
+                                                &mdash;
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <?php if (($result['branches_to_create'] ?? []) !== []): ?>
+                            <div class="alert alert-info">
+                                <?= icon('alert') ?>
+                                <div>
+                                    <strong>These branches will be created from the file:</strong>
+                                    <code><?= e(implode(', ', array_slice($result['branches_to_create'], 0, 12))) ?></code>
+                                    <div class="mt-1" style="font-size:.8125rem">
+                                        Check the spelling &mdash; each distinct spelling becomes its own branch.
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($canUpload): ?>
+                            <button type="submit" class="btn btn-primary">
+                                <?= icon('check') ?> Import with this mapping
+                            </button>
+                        <?php endif; ?>
+                    </form>
+
+                    <?php if ($result['missing_required'] === []): ?>
                         <div class="lrms-stats" style="margin-bottom:12px">
                             <div class="lrms-stat lrms-stat-accent">
                                 <div class="lrms-stat-label">Rows</div>
