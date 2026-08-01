@@ -85,12 +85,33 @@ never processes a payment** — repayment always happens through the bank's own 
 These are hard product constraints, not missing features:
 
 - ❌ **No payment collection** of any kind — no cash logging, no gateway, no UPI.
-- ❌ **No GPS / location capture, no geofencing, no live tracking.**
 - ❌ **No attendance, check-in/check-out or working-hours monitoring.**
 - ❌ **No editing or deletion of submitted visit history.**
 
-The Android app requests neither `ACCESS_FINE_LOCATION` nor `ACCESS_COARSE_LOCATION`,
-and no table in [`schema.sql`](schema.sql) has a latitude, longitude or attendance column.
+### Location recording — this changed
+
+Earlier releases captured **no** location at all, and this section said so. The
+operator has since decided to record it, so the honest statement is now:
+
+- ✅ **Location IS recorded** — an agent's position while they are on duty in the
+  app, and the position at the moment a visit photo is taken.
+- ✅ **Consent is enforced in code, not in a handbook.** An agent must be shown a
+  written notice and acknowledge it before a single point can be stored;
+  `TrackingService::record()` throws otherwise. The notice is versioned, so
+  changing what is collected forces a fresh acknowledgement rather than stretching
+  the old one over new collection.
+- ✅ **An agent can withdraw.** Collection stops immediately.
+- ✅ **It expires.** Points are deleted after the retention window (90 days by
+  default) by `cron/purge-location-logs.php`. A permanent record of somebody's
+  movements is a liability that grows.
+- ✅ **Reading somebody else's trail is audited**, like any other access to
+  sensitive personal data. An agent reading their own is not.
+- ✅ **Off duty is off.** Points carry an `on_duty` flag and the app stops sending
+  when a duty session ends.
+
+If you are deploying this, that last set of bullets is not decoration — a system
+that tracks staff without notice, without a way out and without an expiry date is
+a different and much harder thing to defend.
 
 ---
 
@@ -341,11 +362,11 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 116 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 119 files |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
-| Schema | `sh tools/verify-schema.sh` | **24** — 29 tables, 50 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **444** — includes re-parsing the customer sheet PDF and the warning-escalation arithmetic |
-| Cron jobs | `sh tools/verify-cron.sh` | **35** — backup restores, reminders and BC warnings are idempotent |
+| Schema | `sh tools/verify-schema.sh` | **24** — 31 tables, 52 FKs, seeds, bcrypt login hash |
+| Integration | `sh tools/integration-test.sh` | **484** — includes the customer sheet PDF, warning escalation and the tracking consent gate |
+| Cron jobs | `sh tools/verify-cron.sh` | **50** — backup restores; reminders, warnings, SSS and the location purge are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **170** API |
 | Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
@@ -359,7 +380,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,238 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
+**1,318 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 

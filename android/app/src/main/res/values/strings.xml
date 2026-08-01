@@ -256,7 +256,20 @@
     <string name="account_promises_pending">Promises pending</string>
     <string name="account_outstanding">Outstanding</string>
     <string name="account_overdue">Overdue</string>
-    <string name="no_gps_note">This app records field verification only. It does not track your location.</string>
+    <!--
+        This used to read "It does not track your location." That stopped being
+        true when location recording was added, so it was replaced rather than
+        left to quietly mislead the person reading it.
+    -->
+    <string name="location_notice_short">This app records your location while you are on duty, and when you take a visit photo. Tap to read the full notice.</string>
+    <string name="location_notice_title">Location recording notice</string>
+    <string name="location_notice_accept">I have read and understood this</string>
+    <string name="location_notice_required">You must acknowledge the location notice before you can start a duty session.</string>
+    <string name="location_withdraw">Withdraw consent for location recording</string>
+    <string name="location_withdraw_confirm">Recording will stop immediately. Visit reports that require a location may be affected — please speak to your supervisor. Withdraw consent?</string>
+    <string name="location_withdrawn">Location recording has been stopped.</string>
+    <string name="location_on_duty">On duty — location is being recorded</string>
+    <string name="location_off_duty">Off duty — location is not being recorded</string>
 
     <!-- Content descriptions -->
     <string name="cd_call">Call customer</string>

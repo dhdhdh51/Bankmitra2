@@ -315,9 +315,107 @@ fi
 
 # ===========================================================================
 echo
+echo '== cron/purge-location-logs.php'
+# ===========================================================================
+# The location notice every agent acknowledges promises their position is deleted
+# after the retention window. If this cron does not work, that promise is false,
+# so it gets tested rather than trusted.
+
+BCAG2=$(sqlv "SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id
+               WHERE r.slug='agent' AND u.status='active' ORDER BY u.id LIMIT 1;")
+sqlv "DELETE FROM bc_location_logs;" > /dev/null
+sqlv "INSERT INTO bc_location_logs (agent_id, latitude, longitude, logged_at) VALUES
+        ($BCAG2, 26.9124, 75.7873, DATE_SUB(NOW(), INTERVAL 200 DAY)),
+        ($BCAG2, 26.9124, 75.7873, DATE_SUB(NOW(), INTERVAL 120 DAY)),
+        ($BCAG2, 26.9124, 75.7873, DATE_SUB(NOW(), INTERVAL 10 DAY)),
+        ($BCAG2, 26.9124, 75.7873, NOW());" > /dev/null
+pass 'fixture: 4 location points at -200d / -120d / -10d / now'
+
+# A dry run must delete nothing.
+php "$APP/cron/purge-location-logs.php" --days=90 --dry-run > "$WORK/purge1.log" 2>&1 \
+    || fail 'purge dry run exits 0' "$(tail -5 "$WORK/purge1.log")"
+DRY=$(sqlv "SELECT COUNT(*) FROM bc_location_logs;")
+[ "${DRY:-0}" = '4' ] && pass 'a dry run deletes nothing' || fail 'dry run deleted rows' "count=$DRY"
+grep -q 'past retention   : 2' "$WORK/purge1.log" \
+    && pass 'the dry run reports what would go' \
+    || fail 'dry run count' "$(grep 'past retention' "$WORK/purge1.log")"
+
+php "$APP/cron/purge-location-logs.php" --days=90 > "$WORK/purge2.log" 2>&1 \
+    || fail 'purge exits 0' "$(tail -5 "$WORK/purge2.log")"
+LEFT=$(sqlv "SELECT COUNT(*) FROM bc_location_logs;")
+[ "${LEFT:-0}" = '2' ] && pass 'points past the window are deleted' || fail 'purge count' "left=$LEFT"
+
+PAUD=$(sqlv "SELECT COUNT(*) FROM audit_logs WHERE action='purge' AND entity_type='bc_location_logs';")
+[ "${PAUD:-0}" -ge 1 ] && pass 'the purge is audited' || fail 'purge not audited' "count=$PAUD"
+
+# A retention of zero must be refused, not treated as "keep forever".
+if php "$APP/cron/purge-location-logs.php" --days=0 > "$WORK/purge3.log" 2>&1; then
+    fail 'a retention of 0 should exit non-zero'
+else
+    pass 'a retention of zero is refused'
+fi
+
+# Re-running when there is nothing stale must be a no-op, not an error.
+php "$APP/cron/purge-location-logs.php" --days=90 > "$WORK/purge4.log" 2>&1 \
+    || fail 'second purge exits 0'
+grep -q 'Nothing to purge' "$WORK/purge4.log" \
+    && pass 'a second run is a clean no-op' \
+    || fail 'second purge should find nothing' "$(tail -3 "$WORK/purge4.log")"
+
+# ===========================================================================
+echo
+echo '== cron/sss-reminder.php'
+# ===========================================================================
+# No SMS gateway in this deployment, so the reminder goes by email and in-app.
+sqlv "DELETE FROM notifications;" > /dev/null
+sqlv "DELETE FROM sss_enrollment;" > /dev/null
+sqlv "DELETE FROM bc_targets;" > /dev/null
+
+# Sunday must be refused.
+php "$APP/cron/sss-reminder.php" --date=2026-08-02 > "$WORK/sss0.log" 2>&1 \
+    || fail 'sss Sunday run exits 0'
+grep -qi 'Sunday' "$WORK/sss0.log" && pass 'no SSS reminder on a Sunday' \
+    || fail 'Sunday should be skipped' "$(tail -3 "$WORK/sss0.log")"
+
+# An agent with no SSS target is not reminded about one.
+php "$APP/cron/sss-reminder.php" --date=2026-08-03 > "$WORK/sss1.log" 2>&1 || fail 'sss run exits 0'
+N0=$(sqlv "SELECT COUNT(*) FROM notifications WHERE type='sss_pending';")
+[ "${N0:-0}" = '0' ] && pass 'an agent without an SSS target is not reminded' \
+    || fail 'reminded without a target' "count=$N0"
+
+sqlv "INSERT INTO bc_targets (agent_id, target_month, apy_target, pmjjby_target, pmsby_target)
+      VALUES ($BCAG2, '2026-08-01', 10, 10, 10);" > /dev/null
+
+php "$APP/cron/sss-reminder.php" --date=2026-08-03 > "$WORK/sss2.log" 2>&1 || fail 'targeted sss run exits 0'
+N1=$(sqlv "SELECT COUNT(*) FROM notifications WHERE user_id=$BCAG2 AND type='sss_pending';")
+[ "${N1:-0}" -ge 1 ] && pass "an agent with a target and no entry is reminded ($N1)" \
+    || fail 'no SSS reminder raised' "count=$N1"
+
+# Same slot twice must not double up.
+php "$APP/cron/sss-reminder.php" --date=2026-08-03 > "$WORK/sss3.log" 2>&1 || fail 'repeat sss run exits 0'
+N2=$(sqlv "SELECT COUNT(*) FROM notifications WHERE user_id=$BCAG2 AND type='sss_pending';")
+[ "$N1" = "$N2" ] && pass "the same slot does not remind twice (still $N2)" \
+    || fail 'sss reminder is not idempotent per slot' "$N1 -> $N2"
+
+# The final slot is a separate reminder, not a duplicate.
+php "$APP/cron/sss-reminder.php" --date=2026-08-03 --final > "$WORK/sss4.log" 2>&1 || fail 'final slot exits 0'
+N3=$(sqlv "SELECT COUNT(*) FROM notifications WHERE user_id=$BCAG2 AND type='sss_pending';")
+[ "${N3:-0}" -gt "${N2:-0}" ] && pass 'the final slot sends its own reminder' \
+    || fail 'final slot sent nothing' "$N2 -> $N3"
+
+# Once the agent records an entry, the reminders stop.
+sqlv "INSERT INTO sss_enrollment (agent_id, branch_id, enrollment_date, apy_count)
+      SELECT $BCAG2, branch_id, '2026-08-03', 3 FROM users WHERE id=$BCAG2;" > /dev/null
+php "$APP/cron/sss-reminder.php" --date=2026-08-03 --final > "$WORK/sss5.log" 2>&1 || fail 'post-entry run exits 0'
+grep -q '0 agent(s) with no SSS entry' "$WORK/sss5.log" \
+    && pass 'an agent who has recorded an entry is not reminded' \
+    || fail 'still reminded after recording' "$(grep 'agent(s) with no' "$WORK/sss5.log")"
+
+# ===========================================================================
+echo
 echo '== every cron script refuses to run over HTTP'
 # ===========================================================================
-for f in backup reminders bc-warning-check; do
+for f in backup reminders bc-warning-check purge-location-logs sss-reminder; do
     if grep -q "PHP_SAPI !== 'cli'" "$APP/cron/$f.php"; then
         pass "cron/$f.php has a CLI-only guard"
     else

@@ -735,8 +735,18 @@ By design, and worth confirming against your compliance requirements:
 
 - No payment collection and no payment gateway. Agents record verification and
   follow-up only.
-- No GPS, no live location, no attendance, no map tracking. The Android app
-  requests **no location permission at all**.
+- **Location IS recorded** (this reversed in the release that added
+  `bc_location_logs`). Before you deploy, satisfy yourself about all of the
+  following, because each one is a control this system relies on:
+  - the location notice text in `TrackingService::notice()` matches what you
+    actually tell your agents, in writing, outside the app as well as inside it;
+  - agents have acknowledged it — until they do, nothing is recorded for them;
+  - `location_retention_days` is set to a period you can justify (default 90);
+  - `cron/purge-location-logs.php` is actually scheduled, otherwise the retention
+    promise in the notice is false;
+  - your supervisors understand that opening an agent's trail is audited.
+- No attendance or working-hours monitoring is derived from location. Points carry
+  an `on_duty` flag; they are not turned into a timesheet.
 - Visit history is append-only. There is no code path that edits or deletes a
   submitted visit report.
 

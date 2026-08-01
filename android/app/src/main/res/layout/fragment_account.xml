@@ -495,7 +495,7 @@
                     android:layout_marginTop="4dp"
                     android:layout_marginBottom="16dp"
                     android:gravity="center"
-                    android:text="@string/no_gps_note"
+                    android:text="@string/location_notice_short"
                     android:textColor="@color/lrms_muted"
                     android:textSize="11sp" />
             </LinearLayout>

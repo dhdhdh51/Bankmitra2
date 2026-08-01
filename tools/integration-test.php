@@ -748,6 +748,161 @@ for ($i = 1, $n = count($scorecard); $i < $n; $i++) {
 check('agents on the same score share a rank', $dense);
 
 // ---------------------------------------------------------------------------
+section('Location tracking: consent, bounds and retention');
+// ---------------------------------------------------------------------------
+// This system tracks staff. That was an explicit decision, and these assertions
+// are the obligations that come with it - enforced in code, not in a handbook.
+
+use App\Services\TrackingService;
+
+$trackAgent = $agent1Id;
+$db->query('DELETE FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]);
+$db->query('DELETE FROM tracking_consents WHERE user_id = ?', [$trackAgent]);
+
+// ---- Nothing is recorded before the notice is acknowledged --------------
+check('an agent starts without consent', !TrackingService::hasConsented($trackAgent));
+
+$refused = false;
+try {
+    TrackingService::record($trackAgent, ['latitude' => 26.9124, 'longitude' => 75.7873]);
+} catch (\Throwable $e) {
+    $refused = str_contains($e->getMessage(), 'acknowledged');
+}
+check('recording is refused without consent', $refused);
+check('and nothing was written', (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]) === 0);
+
+// ---- The notice itself must say the things that make it a notice --------
+$notice = TrackingService::notice();
+check('the notice is versioned', $notice['version'] === TrackingService::NOTICE_VERSION);
+foreach (['english' => 'records your location', 'hindi' => 'लोकेशन रिकॉर्ड करता है'] as $lang => $needle) {
+    check("the $lang notice states that location is recorded", str_contains($notice[$lang], $needle));
+}
+check('the notice says how long it is kept', str_contains($notice['english'], 'then it is deleted automatically'));
+check('the notice says who can see it', str_contains($notice['english'], 'Who can see it'));
+check('the notice explains withdrawal', str_contains($notice['english'], 'withdraw this consent'));
+check('the notice says viewing is logged', str_contains($notice['english'], 'it is logged'));
+check('the Hindi notice explains withdrawal', str_contains($notice['hindi'], 'सहमति वापस'));
+
+// ---- After acknowledgement, points are stored --------------------------
+TrackingService::recordConsent($trackAgent, 'Integration test device', '127.0.0.1');
+check('consent is recorded', TrackingService::hasConsented($trackAgent));
+check('the acknowledgement is audited', (int) $db->scalar(
+    "SELECT COUNT(*) FROM audit_logs WHERE action = 'consent' AND entity_id = ?",
+    [(string) $trackAgent]) >= 1);
+
+check('a point is accepted after consent',
+    TrackingService::record($trackAgent, ['latitude' => 26.9124, 'longitude' => 75.7873, 'accuracy_m' => 12]));
+$point = $db->first('SELECT * FROM bc_location_logs WHERE agent_id = ? ORDER BY id DESC LIMIT 1', [$trackAgent]);
+check('the coordinate is stored', $point !== null && abs((float) $point['latitude'] - 26.9124) < 0.0001);
+check('accuracy is stored', $point !== null && (int) $point['accuracy_m'] === 12);
+check('on_duty defaults to true', $point !== null && (int) $point['on_duty'] === 1);
+check('the server clock is recorded separately', $point !== null && $point['received_at'] !== null);
+
+// ---- Rate limiting: a device waking up must not flood the table --------
+$flood = TrackingService::record($trackAgent, ['latitude' => 26.9125, 'longitude' => 75.7874]);
+check('a second point within a minute is dropped', $flood === false);
+check('and the table did not grow', (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]) === 1);
+
+// ---- Obviously wrong coordinates are refused ---------------------------
+foreach ([
+    'null island (a failed fix)' => [0.0, 0.0],
+    'latitude out of range'      => [91.0, 75.0],
+    'longitude out of range'     => [26.0, 181.0],
+] as $label => [$lat, $lng]) {
+    check("$label is not plausible", !TrackingService::plausible($lat, $lng));
+}
+check('a real Jaipur coordinate is plausible', TrackingService::plausible(26.9124, 75.7873));
+
+$rejected = false;
+try {
+    $db->query('DELETE FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]);
+    TrackingService::record($trackAgent, ['latitude' => 0.0, 'longitude' => 0.0]);
+} catch (\Throwable $e) {
+    $rejected = str_contains($e->getMessage(), 'valid coordinate');
+}
+check('a failed fix is rejected rather than stored', $rejected);
+
+// ---- A wrong device clock cannot file points in the future -------------
+$db->query('DELETE FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]);
+TrackingService::record($trackAgent, [
+    'latitude' => 26.9124, 'longitude' => 75.7873, 'logged_at' => '2030-01-01 10:00:00',
+]);
+$future = $db->first('SELECT logged_at FROM bc_location_logs WHERE agent_id = ? ORDER BY id DESC LIMIT 1', [$trackAgent]);
+check('a future device timestamp is replaced with now',
+    $future !== null && strtotime((string) $future['logged_at']) <= time() + 60,
+    (string) ($future['logged_at'] ?? ''));
+
+// ---- Viewing somebody else's trail is audited -------------------------
+$auditBefore = (int) $db->scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'view_location'");
+TrackingService::trailFor($trackAgent, date('Y-m-d'), $trackAgent);
+check('an agent viewing their own trail is not logged as surveillance',
+    (int) $db->scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'view_location'") === $auditBefore);
+
+TrackingService::trailFor($trackAgent, date('Y-m-d'), 1);
+check('somebody else viewing the trail is audited',
+    (int) $db->scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'view_location'") === $auditBefore + 1);
+
+// ---- Withdrawal stops collection immediately --------------------------
+TrackingService::withdrawConsent($trackAgent);
+check('consent can be withdrawn', !TrackingService::hasConsented($trackAgent));
+$afterWithdrawal = false;
+try {
+    TrackingService::record($trackAgent, ['latitude' => 26.92, 'longitude' => 75.79]);
+} catch (\Throwable) {
+    $afterWithdrawal = true;
+}
+check('recording stops the moment consent is withdrawn', $afterWithdrawal);
+check('withdrawal is audited', (int) $db->scalar(
+    "SELECT COUNT(*) FROM audit_logs WHERE action = 'consent' AND summary LIKE '%Withdrew%'") >= 1);
+
+// Re-acknowledging must work rather than collide with the unique key.
+TrackingService::recordConsent($trackAgent, 'Integration test device', '127.0.0.1');
+check('an agent can acknowledge again after withdrawing', TrackingService::hasConsented($trackAgent));
+
+// ---- Retention: old points are purged --------------------------------
+$db->query('DELETE FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]);
+foreach ([200, 120, 5, 1] as $daysAgo) {
+    $db->insert('bc_location_logs', [
+        'agent_id'  => $trackAgent,
+        'latitude'  => 26.9124,
+        'longitude' => 75.7873,
+        'logged_at' => date('Y-m-d H:i:s', strtotime('-' . $daysAgo . ' days')),
+    ]);
+}
+check('four points exist before the purge', (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]) === 4);
+
+$purged = TrackingService::purge(90);
+check('the purge removed the two points past 90 days', $purged === 2, (string) $purged);
+check('recent points survive', (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_location_logs WHERE agent_id = ?', [$trackAgent]) === 2);
+check('retention defaults to 90 days', TrackingService::retentionDays() === 90,
+    (string) TrackingService::retentionDays());
+
+// ---- The audit ENUM must actually accept what the code writes ---------
+// Logger::audit swallows its own failures so that a logging problem cannot break
+// the action being logged - which means an action name missing from the ENUM never
+// raises anything, it just silently never records. That is how the customer-sheet
+// export came to be "audited" without a single row ever appearing.
+$sheetLeadForAudit = $db->first("SELECT id FROM loan_accounts LIMIT 1");
+$auditActions = ['export', 'consent', 'view_location', 'purge'];
+foreach ($auditActions as $action) {
+    $ok = true;
+    try {
+        $db->insert('audit_logs', [
+            'user_id' => 1, 'user_name' => 'Audit ENUM check', 'action' => $action,
+            'entity_type' => 'loan_account', 'entity_id' => (string) $sheetLeadForAudit['id'],
+            'summary' => 'ENUM acceptance check',
+        ]);
+    } catch (\Throwable) {
+        $ok = false;
+    }
+    check("audit_logs accepts the '$action' action", $ok);
+}
+
+// ---------------------------------------------------------------------------
 section('Search (including encrypted columns)');
 
 $byAccount = LoanAccount::paginate(['search' => 'LN1001'], 'created_at', 'DESC', 1, 25);
