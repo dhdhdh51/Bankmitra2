@@ -624,15 +624,24 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 .lrms-auth-brand > * { position: relative; z-index: 1; }
 .lrms-auth-brand h1 { color: #fff; font-size: 1.9rem; letter-spacing: -.025em; margin: 0 0 12px; }
 .lrms-auth-brand p { color: rgba(255,255,255,.86); font-size: .9375rem; max-width: 420px; margin: 0; }
-/* Full brand lockup on the sign-in page. The artwork is square and carries its
-   own dark background, so it is given rounded corners and a drop shadow to read
-   as a deliberate plate on the gradient rather than a pasted screenshot. */
-.lrms-auth-lockup {
+/* The sign-in page carries no logo - see the note in views/layouts/auth.php.
+   The name is set as a wordmark instead: wide letterspacing, a lighter tail on the
+   second word, and a short gold rule beneath. Type and one rule, nothing to load. */
+.lrms-auth-wordmark {
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #fff;
+    line-height: 1;
+}
+.lrms-auth-wordmark::after {
+    content: "";
     display: block;
-    width: 100%; max-width: 264px;
-    height: auto;
-    border-radius: 16px;
-    box-shadow: 0 14px 34px -14px rgba(0,0,0,.6);
+    width: 46px; height: 2px;
+    margin-top: 14px;
+    background: var(--lrms-accent);
+    border-radius: 2px;
 }
 .lrms-auth-points { list-style: none; padding: 0; margin: 26px 0 0; }
 .lrms-auth-points li {
@@ -662,14 +671,25 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
     }
 }
 
-.lrms-auth-mobile-lockup { display: none; }
+.lrms-auth-mobile-wordmark { display: none; }
 @media (max-width: 900px) {
-    .lrms-auth-mobile-lockup {
+    .lrms-auth-mobile-wordmark {
         display: block;
-        width: 100%; max-width: 208px; height: auto;
-        margin: 0 auto 22px;
-        border-radius: 14px;
-        box-shadow: 0 10px 26px -14px rgba(11,42,91,.5);
+        margin: 0 0 24px;
+        font-size: 1.0625rem;
+        font-weight: 700;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--lrms-primary);
+        line-height: 1;
+    }
+    .lrms-auth-mobile-wordmark::after {
+        content: "";
+        display: block;
+        width: 38px; height: 2px;
+        margin-top: 11px;
+        background: var(--lrms-accent);
+        border-radius: 2px;
     }
 }
 

@@ -532,8 +532,13 @@ python3 tools/prepare-brand-assets.py
 | Output | Used by | Where |
 |---|---|---|
 | `android/…/res/drawable-nodpi/brand_lockup.webp` | app | launch screen, login screen |
-| `admin/assets/img/d2-lockup.webp` | panel | sign-in page, both desktop and mobile |
 | `admin/assets/img/d2-mark.webp` | panel | sidebar header, 404 header |
+
+**The panel's sign-in page carries no artwork at all**, by choice: the name is set
+as a letterspaced wordmark with a gold rule under it. A sign-in page is a door, not
+a billboard, and the lockup was competing with the one thing the page exists for.
+It also means the page has nothing to load. A smoke check asserts the sign-in page
+requests no image, so an artwork cannot creep back in.
 
 **To change the logo,** replace the master with another 1024×1024 image and re-run
 the script. If the new artwork has a different layout, re-measure `MARK_BOX` in the

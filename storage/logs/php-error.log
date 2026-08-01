@@ -1,0 +1,2 @@
+[01-Aug-2026 08:41:29 Asia/Kolkata] [D2R audit] SQLSTATE[01000]: Warning: 1265 Data truncated for column 'action' at row 1
+[01-Aug-2026 08:41:30 Asia/Kolkata] [D2R audit] SQLSTATE[01000]: Warning: 1265 Data truncated for column 'action' at row 1
