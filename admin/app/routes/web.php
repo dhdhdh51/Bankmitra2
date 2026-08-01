@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use App\Controllers\Admin\AuthController;
 use App\Controllers\Admin\BackupController;
+use App\Controllers\Admin\BcTargetController;
 use App\Controllers\Admin\BranchController;
 use App\Controllers\Admin\CustomerController;
 use App\Controllers\Admin\DashboardController;
@@ -21,7 +22,9 @@ use App\Controllers\Admin\NotificationController;
 use App\Controllers\Admin\PromiseController;
 use App\Controllers\Admin\ReportController;
 use App\Controllers\Admin\RoleController;
+use App\Controllers\Admin\ScorecardController;
 use App\Controllers\Admin\SettingsController;
+use App\Controllers\Admin\SssController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\Admin\VisitController;
 use App\Core\Auth;
@@ -89,6 +92,25 @@ return static function (Router $router): void {
     $router->get('/reports', [ReportController::class, 'index']);
     $router->get('/reports/{type}', [ReportController::class, 'show']);
     $router->get('/reports/{type}/export', [ReportController::class, 'export']);
+
+    // ---- BC performance --------------------------------------------------
+    // Targets are what the nightly warning check measures against, SSS is the
+    // enrolment count the scorecard sums, and the scorecard is the ranking those
+    // two produce. Export is on the same permission as viewing: exporting a table
+    // somebody can already read is not a separate capability.
+    $router->get ('/bc/targets', [BcTargetController::class, 'index']);
+    $router->form('/bc/targets/create', [BcTargetController::class, 'create']);
+    $router->form('/bc/targets/{id}/edit', [BcTargetController::class, 'edit']);
+    $router->post('/bc/targets/{id}/delete', [BcTargetController::class, 'delete']);
+
+    $router->get ('/bc/sss', [SssController::class, 'index']);
+    $router->form('/bc/sss/create', [SssController::class, 'create']);
+    $router->form('/bc/sss/{id}/edit', [SssController::class, 'edit']);
+    $router->post('/bc/sss/{id}/delete', [SssController::class, 'delete']);
+
+    // Registered before the bare path so /export is never read as a route param.
+    $router->get('/bc/scorecard/export', [ScorecardController::class, 'export']);
+    $router->get('/bc/scorecard', [ScorecardController::class, 'index']);
 
     // ---- Notifications ---------------------------------------------------
     $router->get('/notifications', [NotificationController::class, 'index']);

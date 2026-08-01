@@ -361,6 +361,115 @@ check('secret settings are not echoed back', !str_contains($settings, 'demo-key'
 check('integration status renders', str_contains($settings, 'Integration status'));
 
 // ---------------------------------------------------------------------------
+section('BC performance: targets, SSS, scorecard');
+
+$targetsPage = page('GET /bc/targets', '/bc/targets', 200, 'BC targets');
+page('GET /bc/targets/create', '/bc/targets/create', 200, 'Set BC targets');
+
+// A real round-trip, because the interesting failures here are a column name that
+// does not exist and a unique key that fires - neither of which a GET would show.
+$createForm = request($base . '/bc/targets/create');
+$targetToken = csrfToken($createForm['body']);
+$month = date('Y-m');
+
+$created = request($base . '/bc/targets/create', [
+    '_csrf' => $targetToken,
+    'agent_id' => 3,
+    'target_month' => $month,
+    'daily_visit_target' => 8,
+    'apy_target' => 20,
+    'pmjjby_target' => 15,
+    'pmsby_target' => 15,
+    'pmjdy_target' => 10,
+    'od2_renewal_target' => 4,
+    'npa_recovery_target' => '50000.00',
+]);
+check('POST /bc/targets/create saves', $created['status'] === 200 && str_contains($created['body'], 'Targets saved'),
+    'HTTP ' . $created['status']);
+
+$afterCreate = request($base . '/bc/targets');
+check('the saved target appears in the list', str_contains($afterCreate['body'], '50,000')
+    || str_contains($afterCreate['body'], '50000'));
+
+// The second attempt must not be a 500 from the unique key - it must redirect the
+// user to the row they already have.
+$duplicateForm = request($base . '/bc/targets/create');
+$duplicate = request($base . '/bc/targets/create', [
+    '_csrf' => csrfToken($duplicateForm['body']),
+    'agent_id' => 3,
+    'target_month' => $month,
+    'daily_visit_target' => 9,
+    'npa_recovery_target' => '1000',
+]);
+check('a duplicate month is redirected to the existing row, not a DB error',
+    $duplicate['status'] === 200 && str_contains($duplicate['body'], 'already exist'),
+    'HTTP ' . $duplicate['status']);
+
+// A target of 3000 visits a day would have the warning cron escalating that agent
+// to the regional office every night, so it must be refused at the form.
+$absurdForm = request($base . '/bc/targets/create');
+$absurd = request($base . '/bc/targets/create', [
+    '_csrf' => csrfToken($absurdForm['body']),
+    'agent_id' => 4,
+    'target_month' => $month,
+    'daily_visit_target' => 99999,
+    'npa_recovery_target' => '1000',
+]);
+check('an out-of-range target is rejected', str_contains($absurd['body'], 'correct the highlighted')
+    || str_contains($absurd['body'], 'invalid-feedback'), 'HTTP ' . $absurd['status']);
+
+page('GET /bc/sss', '/bc/sss', 200, 'SSS enrolment');
+page('GET /bc/sss/create', '/bc/sss/create', 200, 'Record SSS enrolment');
+
+$sssForm = request($base . '/bc/sss/create');
+$sssCreated = request($base . '/bc/sss/create', [
+    '_csrf' => csrfToken($sssForm['body']),
+    'agent_id' => 3,
+    'enrollment_date' => date('Y-m-d'),
+    'apy_count' => 2,
+    'pmjjby_count' => 3,
+    'pmsby_count' => 1,
+    'pmjdy_count' => 4,
+    'remarks' => 'smoke test entry',
+]);
+check('POST /bc/sss/create saves', $sssCreated['status'] === 200
+    && str_contains($sssCreated['body'], 'Enrolment recorded'), 'HTTP ' . $sssCreated['status']);
+
+$sssList = request($base . '/bc/sss');
+check('the SSS total is summed across schemes', str_contains($sssList['body'], 'smoke test entry'));
+
+$sssDuplicateForm = request($base . '/bc/sss/create');
+$sssDuplicate = request($base . '/bc/sss/create', [
+    '_csrf' => csrfToken($sssDuplicateForm['body']),
+    'agent_id' => 3,
+    'enrollment_date' => date('Y-m-d'),
+    'apy_count' => 9,
+]);
+check('a second SSS entry for the same day is redirected to the first',
+    str_contains($sssDuplicate['body'], 'already exists'), 'HTTP ' . $sssDuplicate['status']);
+
+$scorecard = page('GET /bc/scorecard', '/bc/scorecard', 200, 'BC summary report');
+check('the scorecard renders a table or an empty state',
+    str_contains($scorecard, 'lrms-table') || str_contains($scorecard, 'No agents to score'));
+check('the scoring weights are shown, not hidden',
+    str_contains($scorecard, 'How the score is calculated'));
+
+page('scorecard with a branch filter', '/bc/scorecard?branch_id=1', 200);
+// Reversed dates are swapped rather than producing an empty table that reads as
+// "nobody did anything".
+page('scorecard with a reversed date range', '/bc/scorecard?from=' . date('Y-m-d') . '&to=' . date('Y-m-01'), 200);
+
+$scorecardExcel = request($base . '/bc/scorecard/export?format=excel');
+check('scorecard Excel export', $scorecardExcel['status'] === 200
+    && str_starts_with($scorecardExcel['body'], "PK\x03\x04"),
+    'HTTP ' . $scorecardExcel['status'] . ' len=' . strlen($scorecardExcel['body']));
+
+$scorecardPdf = request($base . '/bc/scorecard/export?format=pdf');
+check('scorecard PDF export', $scorecardPdf['status'] === 200
+    && str_starts_with($scorecardPdf['body'], '%PDF'),
+    'HTTP ' . $scorecardPdf['status'] . ' len=' . strlen($scorecardPdf['body']));
+
+// ---------------------------------------------------------------------------
 section('All 8 reports');
 
 $reportsIndex = page('GET /reports', '/reports', 200, 'Reports');

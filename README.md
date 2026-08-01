@@ -88,6 +88,26 @@ These are hard product constraints, not missing features:
 - ❌ **No attendance, check-in/check-out or working-hours monitoring.**
 - ❌ **No editing or deletion of submitted visit history.**
 
+### Addresses are derived, never stored as the record
+
+Coordinates are what a visit and a location point carry. An address is resolved
+later, cached, and shown as a label — using **OpenStreetMap's Nominatim**, which is
+free and needs no key.
+
+That ordering is the whole design. A free service will sometimes name the wrong
+village in rural India, or nothing at all, and a name frozen into the report would
+become indistinguishable from something the agent asserted. So `geocode_cache` sits
+beside the record rather than inside it, and the report keeps the coordinate.
+
+The provider's terms then shape the rest: one request per second, no bulk
+reverse-geocoding, and a User-Agent identifying who is calling. Lookups therefore
+run only from `cron/geocode-backfill.php`, throttle themselves, cache on a ~11 m
+grid so a day outside one house is one lookup, remember failures so a nameless
+coordinate is not retried forever, and **stay switched off until an operator
+supplies a contact email** rather than sending anonymous traffic from a shared host.
+No page render ever waits on it; unresolved coordinates are simply shown as
+coordinates.
+
 ### Location recording — this changed
 
 Earlier releases captured **no** location at all, and this section said so. The
@@ -362,18 +382,19 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 120 files (a file count, not assertions) |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 133 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
-| Schema | `sh tools/verify-schema.sh` | **24** — 31 tables, 52 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **484** — includes the customer sheet PDF, warning escalation and the tracking consent gate |
-| Cron jobs | `sh tools/verify-cron.sh` | **50** — backup restores; reminders, warnings, SSS and the location purge are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **192** API |
-| Android | `sh tools/verify-android.sh` | **150** unit tests + both APKs + adaptive-icon safe zone |
+| Schema | `sh tools/verify-schema.sh` | **24** — 32 tables, 52 FKs, seeds, bcrypt login hash |
+| Integration | `sh tools/integration-test.sh` | **534** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache and dense ranking |
+| Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
+| Panel smoke | `sh tools/smoke-panel.sh` | **156** panel + **192** API |
+| Android | `sh tools/verify-android.sh` | **161** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
 | **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
+| **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **11** — a camera capture may carry coordinates, a gallery pick may not (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
@@ -381,7 +402,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,329 assertions total** — the sum of the bold counts above, counting the two
+**1,410 assertions total** — the sum of the bold counts above, counting the three
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -635,6 +656,20 @@ Kept here because they are the reason the tests exist:
     recognise its own earlier notification and sent it again; conversely a catch-up run
     for yesterday was suppressed by today's row. Matching now uses the `date` and `slot`
     carried inside the notification.
+46. **Every BC target submission was silently rejected.** The form uses
+    `<input type="month">`, which posts `2026-08`, while the validator's `date` rule
+    insists on `YYYY-MM-DD`. So the page came back with a red field and the targets
+    were never saved — and because the whole feature was new, this looked like "the
+    form doesn't work" rather than a two-format mismatch. Caught by a smoke test that
+    posts the form rather than only loading it. The parse now accepts both shapes and
+    returns null for a non-month instead of defaulting to the current one, which would
+    have written targets against a period nobody chose and then measured real agents
+    against them.
+47. **The cron CLI-only guard was checked against a hardcoded list of five files.**
+    Two new cron scripts were added and neither was checked — the test passed while
+    saying nothing about them. A cron reachable over HTTP hands an unauthenticated
+    visitor a job that emails agents, purges data or dumps the database. The check now
+    enumerates `cron/` so a script cannot be added without being covered.
 
 ---
 

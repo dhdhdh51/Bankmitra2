@@ -110,6 +110,28 @@ $unread = $unreadNotifications ?? 0;
                 </a>
             <?php endif; ?>
 
+            <?php if (can('scorecard.view') || can('bc_targets.view') || can('sss.view')): ?>
+                <div class="lrms-nav-label">BC Performance</div>
+
+                <?php if (can('scorecard.view')): ?>
+                    <a class="lrms-nav-item<?= active_nav('/bc/scorecard', $currentPath) ?>" href="<?= e(url('/bc/scorecard')) ?>">
+                        <?= icon('chart') ?> BC Summary Report
+                    </a>
+                <?php endif; ?>
+
+                <?php if (can('bc_targets.view')): ?>
+                    <a class="lrms-nav-item<?= active_nav('/bc/targets', $currentPath) ?>" href="<?= e(url('/bc/targets')) ?>">
+                        <?= icon('clipboard') ?> BC Targets
+                    </a>
+                <?php endif; ?>
+
+                <?php if (can('sss.view')): ?>
+                    <a class="lrms-nav-item<?= active_nav('/bc/sss', $currentPath) ?>" href="<?= e(url('/bc/sss')) ?>">
+                        <?= icon('handshake') ?> SSS Enrolment
+                    </a>
+                <?php endif; ?>
+            <?php endif; ?>
+
             <?php if (can('branches.view') || can('users.view') || can('roles.view')): ?>
                 <div class="lrms-nav-label">Administration</div>
 

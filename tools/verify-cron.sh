@@ -415,8 +415,13 @@ grep -q '0 agent(s) with no SSS entry' "$WORK/sss5.log" \
 echo
 echo '== every cron script refuses to run over HTTP'
 # ===========================================================================
-for f in backup reminders bc-warning-check purge-location-logs sss-reminder; do
-    if grep -q "PHP_SAPI !== 'cli'" "$APP/cron/$f.php"; then
+# Enumerated from the directory, not from a list kept here. A hardcoded list means
+# a cron added later is simply never checked - and the whole point of this check is
+# that a cron script reachable over HTTP hands an unauthenticated visitor a job that
+# emails agents, purges data or dumps the database.
+for path in "$APP"/cron/*.php; do
+    f=$(basename "$path" .php)
+    if grep -q "PHP_SAPI !== 'cli'" "$path"; then
         pass "cron/$f.php has a CLI-only guard"
     else
         fail "cron/$f.php has no CLI-only guard"

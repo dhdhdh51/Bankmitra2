@@ -112,7 +112,27 @@ section('Connectivity & seed data');
 
 check('connects to MySQL', $db->scalar('SELECT 1') === 1);
 check('roles seeded', (int) $db->scalar('SELECT COUNT(*) FROM roles') === 4);
-check('permissions seeded', (int) $db->scalar('SELECT COUNT(*) FROM permissions') === 36);
+// Not an exact count: that broke on every legitimate addition and taught nobody
+// anything. What matters is that the codes the panel actually calls can() with are
+// present - a missing one hides a whole screen from every role, silently.
+check('permissions seeded', (int) $db->scalar('SELECT COUNT(*) FROM permissions') >= 36);
+foreach ([
+    'bc_targets.view', 'bc_targets.manage', 'sss.view', 'sss.manage', 'scorecard.view',
+] as $code) {
+    check("permission {$code} exists", (int) $db->scalar(
+        'SELECT COUNT(*) FROM permissions WHERE code = ?', [$code]
+    ) === 1);
+}
+check('a branch manager can set targets for their own agents', (int) $db->scalar(
+    "SELECT COUNT(*) FROM role_permissions rp
+       JOIN permissions p ON p.id = rp.permission_id
+      WHERE rp.role_id = 2 AND p.code = 'bc_targets.manage'"
+) === 1);
+check('an auditor can read targets but not change them', (int) $db->scalar(
+    "SELECT COUNT(*) FROM role_permissions rp
+       JOIN permissions p ON p.id = rp.permission_id
+      WHERE rp.role_id = 4 AND p.code = 'bc_targets.manage'"
+) === 0);
 check('settings seeded', (int) $db->scalar('SELECT COUNT(*) FROM settings') > 25);
 check('seeded admin password verifies', password_verify(
     'Admin@123',
@@ -1712,6 +1732,193 @@ check('agent with leads cannot be deleted', $guard['ok'] === false);
 check('guard explains why', str_contains($guard['reason'], 'lead'));
 $branchGuard = Branch::deletable($branchAId);
 check('branch with leads cannot be deleted', $branchGuard['ok'] === false);
+
+// ---------------------------------------------------------------------------
+section('Geocoding: coordinates are the record, the address is derived');
+
+// The grid key is what collapses a day of standing outside one house into a single
+// lookup. If its rounding changes, every cached address is orphaned at once.
+$keyA = \App\Services\GeocodingService::keyFor(19.07283499, 72.88261099);
+$keyB = \App\Services\GeocodingService::keyFor(19.07284100, 72.88261900);
+check('nearby coordinates share one cache key', $keyA === $keyB, $keyA . ' vs ' . $keyB);
+check('the key is rounded to 4dp', $keyA === '19.0728,72.8826', $keyA);
+
+$keyFar = \App\Services\GeocodingService::keyFor(19.0800, 72.8826);
+check('coordinates 800m apart do not share a key', $keyA !== $keyFar);
+
+// (0,0) is a real place in the Gulf of Guinea and what a phone reports with no fix.
+check('null island is never cached', \App\Services\GeocodingService::cached(0.0, 0.0) === null);
+check('null island has no display form', \App\Services\GeocodingService::formatCoordinates(0.0, 0.0) === null);
+check('a real coordinate formats for display',
+    \App\Services\GeocodingService::formatCoordinates(19.0728, 72.8826) === '19.072800, 72.882600');
+
+// Reading must never call out. A view that could trigger a network request turns one
+// slow third party into a slow panel, and fifty rows into fifty sequential calls.
+$db->query(
+    "INSERT INTO geocode_cache (grid_key, latitude, longitude, address, village, provider)
+     VALUES (?, ?, ?, ?, ?, 'nominatim')",
+    [$keyA, 19.0728, 72.8826, 'Test Nagar, Mumbai Suburban, Maharashtra', 'Test Nagar']
+);
+check('a cached address is read back', \App\Services\GeocodingService::cached(19.0728, 72.8826)
+    === 'Test Nagar, Mumbai Suburban, Maharashtra');
+check('a cache miss returns null rather than blocking',
+    \App\Services\GeocodingService::cached(28.6139, 77.2090) === null);
+
+$many = \App\Services\GeocodingService::cachedMany([[19.0728, 72.8826], [28.6139, 77.2090], [0.0, 0.0]]);
+check('cachedMany resolves in one query and skips the unknown', count($many) === 1);
+check('cachedMany keys by grid key', array_key_exists($keyA, $many));
+
+// A failed lookup must be remembered, or every page view retries it forever - which
+// is exactly what gets a shared host's IP blocked by a free service.
+$db->query(
+    "INSERT INTO geocode_cache (grid_key, latitude, longitude, address, failed_at, attempts)
+     VALUES ('11.1111,11.1111', 11.1111, 11.1111, NULL, NOW(), 3)"
+);
+check('a failure is stored without an address', (int) $db->scalar(
+    "SELECT COUNT(*) FROM geocode_cache WHERE grid_key = '11.1111,11.1111' AND address IS NULL AND failed_at IS NOT NULL"
+) === 1);
+check('a failed coordinate reads as unresolved',
+    \App\Services\GeocodingService::cached(11.1111, 11.1111) === null);
+
+// Lookups stay off until somebody says who is calling. Sending anonymous traffic to
+// a free service borrows goodwill against everyone else on the same IP.
+Settings::updateMany(['geocode_enabled' => '1', 'geocode_contact_email' => ''], null);
+check('lookups are off without a contact address', \App\Services\GeocodingService::enabled() === false);
+check('and it says why', str_contains(
+    (string) \App\Services\GeocodingService::disabledReason(), 'geocode_contact_email'
+));
+Settings::updateMany(['geocode_contact_email' => 'ops@example.test'], null);
+check('lookups are on once a contact address is set', \App\Services\GeocodingService::enabled() === true);
+Settings::updateMany(['geocode_enabled' => '0'], null);
+check('the operator can turn lookups off entirely', \App\Services\GeocodingService::enabled() === false);
+check('turning them off is reported as a choice, not a fault', str_contains(
+    (string) \App\Services\GeocodingService::disabledReason(), 'geocode_enabled'
+));
+$backfill = \App\Services\GeocodingService::backfill(5);
+check('backfill does nothing while disabled', $backfill['queued'] === 0 && $backfill['skipped'] !== null);
+Settings::updateMany(['geocode_enabled' => '1'], null);
+
+// ---------------------------------------------------------------------------
+section('BC targets and SSS enrolment');
+
+// A month that is not a month must not silently become this month, or targets get
+// written against a period nobody chose and the warning cron measures against them.
+check('YYYY-MM parses', \App\Models\BcTarget::parseMonth('2026-08') === '2026-08-01');
+check('YYYY-MM-DD parses to the 1st', \App\Models\BcTarget::parseMonth('2026-08-17') === '2026-08-01');
+check('month 13 is refused', \App\Models\BcTarget::parseMonth('2026-13') === null);
+check('month 00 is refused', \App\Models\BcTarget::parseMonth('2026-00') === null);
+check('a word is refused', \App\Models\BcTarget::parseMonth('August') === null);
+check('an empty string is refused', \App\Models\BcTarget::parseMonth('') === null);
+
+$targetId = \App\Models\BcTarget::create([
+    'agent_id' => $agent1Id,
+    'target_month' => '2026-11-01',
+    'daily_visit_target' => 8,
+    'apy_target' => 20,
+    'npa_recovery_target' => 50000.00,
+    'set_by' => null,
+]);
+check('a target row is created', $targetId > 0);
+check('it is found by the 1st of the month, which is how the service looks it up',
+    \App\Models\BcTarget::findForMonth($agent1Id, '2026-11-19') !== null);
+check('BcPerformanceService finds the same row',
+    \App\Services\BcPerformanceService::targetsFor($agent1Id, '2026-11-19') !== null);
+
+// Deleting a target that warnings were measured against would leave an agent holding
+// a warning nobody can justify or dispute.
+$db->query(
+    "INSERT INTO bc_warnings (agent_id, warning_level, target_type, target_value, achieved_value,
+                              gap_value, miss_streak, triggered_date)
+     VALUES (?, 'L1', 'visit', '8', '2', '6', 1, '2026-11-12')",
+    [$agent1Id]
+);
+$targetGuard = \App\Models\BcTarget::deletable($targetId);
+check('an assessed month cannot be deleted', $targetGuard['ok'] === false);
+check('the refusal explains why', str_contains($targetGuard['reason'], 'warning'));
+
+$sssId = \App\Models\SssEnrollment::create([
+    'agent_id' => $agent1Id,
+    'branch_id' => $branchAId,
+    'enrollment_date' => '2026-11-12',
+    'apy_count' => 2,
+    'pmjjby_count' => 3,
+    'pmsby_count' => 1,
+    'pmjdy_count' => 4,
+]);
+check('an SSS entry is created', $sssId > 0);
+check('the same agent and day is found rather than duplicated',
+    \App\Models\SssEnrollment::findForDate($agent1Id, '2026-11-12') !== null);
+
+$sssSummary = \App\Models\SssEnrollment::summary('2026-11-01', '2026-11-30', $branchAId, $agent1Id);
+check('the summary totals across all four schemes', $sssSummary['total'] === 10, (string) $sssSummary['total']);
+check('the summary counts distinct days', $sssSummary['days'] === 1);
+
+// The unique key is the thing that stops a duplicated form inflating a score, so it
+// is asserted rather than assumed.
+$duplicateRejected = false;
+try {
+    \App\Models\SssEnrollment::create([
+        'agent_id' => $agent1Id,
+        'branch_id' => $branchAId,
+        'enrollment_date' => '2026-11-12',
+        'apy_count' => 99,
+    ]);
+} catch (\Throwable $e) {
+    $duplicateRejected = true;
+}
+check('a second entry for the same agent and day is refused by the database', $duplicateRejected);
+
+$duplicateTarget = false;
+try {
+    \App\Models\BcTarget::create([
+        'agent_id' => $agent1Id,
+        'target_month' => '2026-11-01',
+        'daily_visit_target' => 3,
+    ]);
+} catch (\Throwable $e) {
+    $duplicateTarget = true;
+}
+check('a second target for the same agent and month is refused', $duplicateTarget);
+
+// ---------------------------------------------------------------------------
+section('Scorecard');
+
+$scorecard = \App\Services\BcPerformanceService::scorecard('2026-08-01', '2026-08-31', $branchAId);
+check('the scorecard returns a row per agent', $scorecard !== []);
+check('rows carry a rank', isset($scorecard[0]['rank']));
+check('rows carry a score', isset($scorecard[0]['total_score']));
+check('ranks start at 1', (int) $scorecard[0]['rank'] === 1);
+
+// Dense ranking: equal scores share a rank. Competition ranking would place one of
+// two agents on identical figures above the other, which is simply false.
+$ranks = array_map(static fn (array $r): int => (int) $r['rank'], $scorecard);
+$scores = array_map(static fn (array $r): float => (float) $r['total_score'], $scorecard);
+$denseOk = true;
+foreach ($scorecard as $i => $row) {
+    if ($i === 0) {
+        continue;
+    }
+    if ($scores[$i] === $scores[$i - 1] && $ranks[$i] !== $ranks[$i - 1]) {
+        $denseOk = false;
+    }
+    if ($scores[$i] < $scores[$i - 1] && $ranks[$i] <= $ranks[$i - 1]) {
+        $denseOk = false;
+    }
+}
+check('equal scores share a rank and lower scores rank worse', $denseOk);
+$sorted = $scores;
+rsort($sorted, SORT_NUMERIC);
+check('the scorecard is sorted by score descending', $scores === $sorted);
+
+$weights = \App\Services\BcPerformanceService::weights();
+check('scoring weights are readable, so a ranking can be disputed', $weights !== []);
+$divisorsSane = true;
+foreach ($weights as $weight) {
+    if ((float) $weight['divisor'] <= 0.0) {
+        $divisorsSane = false;
+    }
+}
+check('no weight has a zero divisor to divide by', $divisorsSane);
 
 // ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";

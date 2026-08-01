@@ -18,6 +18,7 @@ import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.databinding.ActivityVisitReportBinding
 import com.lrms.recovery.domain.VisitFormData
 import com.lrms.recovery.ui.BaseActivity
+import com.lrms.recovery.location.GeoStamp
 import com.lrms.recovery.ui.photo.PhotoUploadActivity
 import com.lrms.recovery.ui.signature.SignatureActivity
 import com.lrms.recovery.util.FileStore
@@ -87,6 +88,19 @@ class VisitReportActivity : BaseActivity() {
         }
         data.getStringArrayListExtra(PhotoUploadActivity.RESULT_OTHER_DOCS)?.let { paths ->
             form.otherDocuments = paths.map { File(it) }.toMutableList()
+        }
+
+        // Per-photo coordinates, present only for the slots the camera filled. The
+        // map is rebuilt rather than merged: a photo swapped for a gallery pick
+        // arrives with its key absent, and a stale entry would leave the old
+        // position attached to the new image.
+        form.photoStamps.clear()
+        mapOf(
+            "customer" to PhotoUploadActivity.RESULT_CUSTOMER_GPS,
+            "house" to PhotoUploadActivity.RESULT_HOUSE_GPS,
+            "aadhaar" to PhotoUploadActivity.RESULT_AADHAAR_GPS,
+        ).forEach { (slot, key) ->
+            data.getStringExtra(key)?.let { form.photoStamps[slot] = it }
         }
 
         renderPhotoState()
@@ -792,6 +806,17 @@ class VisitReportActivity : BaseActivity() {
         if (errors.isNotEmpty()) {
             showValidationErrors(errors)
             return
+        }
+
+        // Read at submit time, not when the form opened. A form left open for half
+        // an hour while the agent walks between houses would otherwise file the
+        // position of the previous doorstep.
+        GeoStamp.current(this).let { stamp ->
+            form.gpsSource = stamp.wire
+            form.gpsLatitude = stamp.fix?.latitude
+            form.gpsLongitude = stamp.fix?.longitude
+            form.gpsAccuracyMetres = stamp.fix?.accuracyMetres
+            form.gpsCapturedAt = stamp.fix?.capturedAt ?: ""
         }
 
         submitting = true

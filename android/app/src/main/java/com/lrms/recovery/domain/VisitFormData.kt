@@ -163,6 +163,30 @@ data class VisitFormData(
     var passbookPhoto: File? = null,
     var renewalFormPhoto: File? = null,
 
+    // ---- Where the report was filed ----------------------------------------
+    /**
+     * The agent's position when the report was completed, and per-photo positions
+     * for the slots the camera filled.
+     *
+     * [gpsSource] carries `device`, `denied` or `unavailable` and is always sent,
+     * because "we asked and were refused" and "there was no signal" are different
+     * facts and the server records them differently. Sending nothing at all would
+     * leave the report unable to distinguish either from an older app that never
+     * collected a position.
+     *
+     * The photo stamps are separate from the report's own position on purpose: a
+     * gallery-picked image has none, and inheriting the report's would assert that
+     * an unknown photo was taken at the doorstep.
+     */
+    var gpsLatitude: Double? = null,
+    var gpsLongitude: Double? = null,
+    var gpsAccuracyMetres: Int? = null,
+    var gpsCapturedAt: String = "",
+    var gpsSource: String = "unavailable",
+
+    /** Slot name (`customer`, `house`, `aadhaar`) to "lat,lng,accuracyOrBlank". */
+    var photoStamps: MutableMap<String, String> = mutableMapOf(),
+
     // ---- Meta --------------------------------------------------------------
     val clientUuid: String = UUID.randomUUID().toString(),
     var appVersion: String = "",
@@ -551,6 +575,31 @@ data class VisitFormData(
         putIfNotBlank(fields, "agent_signature_name", agentSignatureName)
         putIfNotBlank(fields, "app_version", appVersion)
         putIfNotBlank(fields, "device_info", deviceInfo)
+
+        // Always sent, even when there is nothing to report, so the server can tell
+        // "no fix" apart from "an app that does not collect one".
+        fields["gps_source"] = gpsSource
+
+        if (gpsSource == "device" && gpsLatitude != null && gpsLongitude != null) {
+            fields["gps_latitude"] = gpsLatitude.toString()
+            fields["gps_longitude"] = gpsLongitude.toString()
+            gpsAccuracyMetres?.let { fields["gps_accuracy_m"] = it.toString() }
+            putIfNotBlank(fields, "gps_captured_at", gpsCapturedAt)
+        }
+
+        photoStamps.forEach { (slot, packed) ->
+            val parts = packed.split(',')
+            if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                return@forEach
+            }
+
+            fields["${slot}_photo_gps_source"] = "camera"
+            fields["${slot}_photo_latitude"] = parts[0]
+            fields["${slot}_photo_longitude"] = parts[1]
+            if (parts.size > 2 && parts[2].isNotBlank()) {
+                fields["${slot}_photo_accuracy_m"] = parts[2]
+            }
+        }
 
         return fields
     }

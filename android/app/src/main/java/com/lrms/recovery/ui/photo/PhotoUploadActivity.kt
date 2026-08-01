@@ -14,6 +14,7 @@ import androidx.core.content.FileProvider
 import com.bumptech.glide.Glide
 import com.lrms.recovery.R
 import com.lrms.recovery.databinding.ActivityPhotoUploadBinding
+import com.lrms.recovery.location.GeoStamp
 import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.util.FileStore
 import java.io.File
@@ -27,6 +28,13 @@ import java.io.File
  * Captures are downscaled and EXIF-rotated before returning: a raw 12 MP JPEG is
  * what makes a report submission time out on a rural connection, and an
  * unrotated one arrives sideways in the admin panel.
+ *
+ * A CAMERA CAPTURE IS STAMPED WITH A LOCATION; A GALLERY PICK IS NOT. That asymmetry
+ * is the whole point of keeping the two paths separate. A photo taken at the doorstep
+ * can honestly carry coordinates. An image chosen from the gallery was taken at an
+ * unknown time in an unknown place, and giving it today's position would manufacture
+ * evidence that an agent stood somewhere they may never have been. So the gallery
+ * path clears the stamp rather than leaving whatever the previous capture set.
  */
 class PhotoUploadActivity : BaseActivity() {
 
@@ -40,6 +48,13 @@ class PhotoUploadActivity : BaseActivity() {
     /** Which slot the in-flight camera or gallery request belongs to. */
     private var pendingSlot: Slot = Slot.CUSTOMER
     private var pendingCaptureFile: File? = null
+
+    /**
+     * Coordinates for the slots filled by the camera. A slot absent from this map
+     * either has no photo or has one that came from the gallery - in both cases the
+     * report must make no claim about where it was taken.
+     */
+    private val stamps = mutableMapOf<Slot, GeoStamp.Fix>()
 
     private enum class Slot { CUSTOMER, HOUSE, AADHAAR, OTHER }
 
@@ -56,7 +71,18 @@ class PhotoUploadActivity : BaseActivity() {
             return@registerForActivityResult
         }
 
-        assign(pendingSlot, FileStore.compressInPlace(file))
+        // Read the fix before compressing: compression takes a moment, and the
+        // point of interest is where the shutter was pressed.
+        val stamp = GeoStamp.current(this).fix
+        val slot = pendingSlot
+
+        if (stamp == null) {
+            stamps.remove(slot)
+        } else {
+            stamps[slot] = stamp
+        }
+
+        assign(slot, FileStore.compressInPlace(file))
     }
 
     private val galleryLauncher = registerForActivityResult(
@@ -69,6 +95,11 @@ class PhotoUploadActivity : BaseActivity() {
             showMessage(R.string.error_unknown, binding.root)
             return@registerForActivityResult
         }
+
+        // Cleared, not left alone. Replacing a camera photo with a gallery one must
+        // drop the coordinates the camera photo had, or the report would attribute a
+        // position to an image that never had one.
+        stamps.remove(pendingSlot)
 
         assign(pendingSlot, imported)
     }
@@ -194,6 +225,8 @@ class PhotoUploadActivity : BaseActivity() {
     }
 
     private fun remove(slot: Slot) {
+        stamps.remove(slot)
+
         when (slot) {
             Slot.CUSTOMER -> { customerPhoto?.delete(); customerPhoto = null }
             Slot.HOUSE -> { housePhoto?.delete(); housePhoto = null }
@@ -236,6 +269,16 @@ class PhotoUploadActivity : BaseActivity() {
         sizeLabel.text = FileStore.humanSize(file.length())
     }
 
+    private fun gpsResultKey(slot: Slot): String = when (slot) {
+        Slot.CUSTOMER -> RESULT_CUSTOMER_GPS
+        Slot.HOUSE -> RESULT_HOUSE_GPS
+        Slot.AADHAAR -> RESULT_AADHAAR_GPS
+        // Other documents are a list with no per-item slot, so they are not stamped.
+        // Inventing a single position for a bundle of unrelated scans would be worse
+        // than leaving them unstamped.
+        Slot.OTHER -> "result_other_gps"
+    }
+
     private fun labelFor(slot: Slot): String = getString(
         when (slot) {
             Slot.CUSTOMER -> R.string.visit_customer_photo
@@ -256,6 +299,18 @@ class PhotoUploadActivity : BaseActivity() {
                     RESULT_OTHER_DOCS,
                     ArrayList(otherDocuments.map { it.absolutePath }),
                 )
+                // "lat,lng,accuracyOrBlank" per stamped slot. Only slots the camera
+                // filled appear here.
+                stamps.forEach { (slot, fix) ->
+                    putExtra(
+                        gpsResultKey(slot),
+                        listOf(
+                            fix.latitude.toString(),
+                            fix.longitude.toString(),
+                            fix.accuracyMetres?.toString() ?: "",
+                        ).joinToString(","),
+                    )
+                }
             },
         )
         finish()
@@ -271,6 +326,10 @@ class PhotoUploadActivity : BaseActivity() {
         const val RESULT_HOUSE_PHOTO = "result_house_photo"
         const val RESULT_AADHAAR_PHOTO = "result_aadhaar_photo"
         const val RESULT_OTHER_DOCS = "result_other_docs"
+
+        const val RESULT_CUSTOMER_GPS = "result_customer_gps"
+        const val RESULT_HOUSE_GPS = "result_house_gps"
+        const val RESULT_AADHAAR_GPS = "result_aadhaar_gps"
 
         fun intent(
             context: Context,
