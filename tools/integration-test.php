@@ -570,6 +570,184 @@ if (preg_match_all('/\(((?:[^()\\\\]|\\\\.)*)\)\s*Tj/', $plainText, $sh2) !== fa
 check('no settlement section when the branch said nothing', !str_contains($plainShown, 'Settlement Position'));
 
 // ---------------------------------------------------------------------------
+section('BC targets, achievement rollup and escalating warnings');
+// ---------------------------------------------------------------------------
+// A warning is a statement about somebody's job, so the arithmetic behind it has
+// to be right: derived from source records, fair about Sundays and part-months,
+// and incapable of firing twice for the same day.
+
+use App\Services\BcPerformanceService;
+
+$perfAgentId = $agent1Id;
+$perfBranchId = (int) $db->scalar('SELECT branch_id FROM users WHERE id = ?', [$perfAgentId]);
+
+// Sundays are never assessed.
+check('Sunday is not a working day', !BcPerformanceService::isWorkingDay('2026-08-02'));
+check('Monday is a working day', BcPerformanceService::isWorkingDay('2026-08-03'));
+
+// Working-day maths, used to pro-rate a monthly target. August 2026 starts on a
+// Saturday, so the 3rd is the 2nd working day of the month.
+check('working days elapsed excludes Sundays', BcPerformanceService::workingDaysElapsed('2026-08-03') === 2,
+    (string) BcPerformanceService::workingDaysElapsed('2026-08-03'));
+check('August 2026 has 26 working days', BcPerformanceService::workingDaysInMonth('2026-08-15') === 26,
+    (string) BcPerformanceService::workingDaysInMonth('2026-08-15'));
+
+// Streak thresholds.
+check('1 miss is Level 1', BcPerformanceService::levelForStreak(1) === 'L1');
+check('2 misses is still Level 1', BcPerformanceService::levelForStreak(2) === 'L1');
+check('3 misses is Level 2', BcPerformanceService::levelForStreak(3) === 'L2');
+check('6 misses is still Level 2', BcPerformanceService::levelForStreak(6) === 'L2');
+check('7 misses is the final warning', BcPerformanceService::levelForStreak(7) === 'L3');
+check('L3 maps to the final-warning badge', BcPerformanceService::statusForLevel('L3') === 'final_warning');
+
+// ---- No targets set means no assessment ---------------------------------
+$db->query('DELETE FROM bc_warnings WHERE agent_id = ?', [$perfAgentId]);
+$db->query('DELETE FROM bc_targets WHERE agent_id = ?', [$perfAgentId]);
+check('no gaps when no targets exist', BcPerformanceService::gapsFor($perfAgentId, '2026-08-03') === []);
+
+// ---- Achievement is derived, not entered --------------------------------
+$db->query('DELETE FROM sss_enrollment WHERE agent_id = ?', [$perfAgentId]);
+$db->insert('sss_enrollment', [
+    'agent_id' => $perfAgentId, 'branch_id' => $perfBranchId, 'enrollment_date' => '2026-08-03',
+    'apy_count' => 2, 'pmjjby_count' => 1, 'pmsby_count' => 0, 'pmjdy_count' => 3,
+]);
+$rolled = BcPerformanceService::rollUpDay($perfAgentId, '2026-08-03');
+check('rollup reads APY from the SSS entry', $rolled['apy_done'] === 2, (string) $rolled['apy_done']);
+check('rollup reads PMJDY from the SSS entry', $rolled['pmjdy_done'] === 3);
+check('an SSS entry counts as having reported', $rolled['report_submitted'] === 1);
+
+$stored = $db->first('SELECT * FROM bc_daily_achievement WHERE agent_id = ? AND achievement_date = ?',
+    [$perfAgentId, '2026-08-03']);
+check('rollup is stored', $stored !== null && (int) $stored['apy_done'] === 2);
+
+// Re-running must overwrite, not accumulate - the cron may be re-run after a failure.
+BcPerformanceService::rollUpDay($perfAgentId, '2026-08-03');
+$rows = (int) $db->scalar('SELECT COUNT(*) FROM bc_daily_achievement WHERE agent_id = ? AND achievement_date = ?',
+    [$perfAgentId, '2026-08-03']);
+check('a second rollup does not duplicate the day', $rows === 1, (string) $rows);
+$again = $db->first('SELECT apy_done FROM bc_daily_achievement WHERE agent_id = ? AND achievement_date = ?',
+    [$perfAgentId, '2026-08-03']);
+check('a second rollup does not double the figure', (int) $again['apy_done'] === 2, (string) $again['apy_done']);
+
+// ---- Gaps, with a monthly target pro-rated ------------------------------
+$db->insert('bc_targets', [
+    'agent_id' => $perfAgentId, 'target_month' => '2026-08-01',
+    'apy_target' => 27, 'pmjjby_target' => 0, 'pmsby_target' => 0, 'pmjdy_target' => 0,
+    'npa_recovery_target' => 0, 'od2_renewal_target' => 0, 'daily_visit_target' => 5,
+]);
+
+// 27 APY over 27 working days = 1 per working day. By the 2nd working day the
+// agent should have 2, and has exactly 2 - so no APY gap.
+$gaps = BcPerformanceService::gapsFor($perfAgentId, '2026-08-03');
+check('a met pro-rated target is not a gap', !isset($gaps['apy']), json_encode(array_keys($gaps)));
+check('an unmet daily visit target is a gap', isset($gaps['visit']));
+check('the visit gap states the target', ($gaps['visit']['target'] ?? 0) === 5.0, json_encode($gaps['visit'] ?? null));
+
+// A target of zero is never assessed: nobody was asked for it.
+check('a zero target is not assessed', !isset($gaps['pmsby']));
+
+// ---- Streak escalation over consecutive working days --------------------
+$db->query('DELETE FROM bc_warnings WHERE agent_id = ?', [$perfAgentId]);
+
+// Six consecutive working days from Mon 3 Aug to Sat 8 Aug 2026.
+$streakDays = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08'];
+$levels = [];
+foreach ($streakDays as $day) {
+    BcPerformanceService::rollUpDay($perfAgentId, $day);
+    $dayGaps = BcPerformanceService::gapsFor($perfAgentId, $day);
+    $warning = BcPerformanceService::recordWarning($perfAgentId, 'visit', $dayGaps['visit'], $day);
+    $levels[] = $warning === null ? 'none' : $warning['level'] . ':' . $warning['streak'];
+}
+check('day 1 issues Level 1', $levels[0] === 'L1:1', $levels[0]);
+check('day 2 stays Level 1', $levels[1] === 'L1:2', $levels[1]);
+check('day 3 escalates to Level 2', $levels[2] === 'L2:3', $levels[2]);
+check('day 6 is still Level 2', $levels[5] === 'L2:6', $levels[5]);
+
+// Sunday 9 Aug is skipped; Monday 10 Aug is the 7th working-day miss.
+BcPerformanceService::rollUpDay($perfAgentId, '2026-08-10');
+$mondayGaps = BcPerformanceService::gapsFor($perfAgentId, '2026-08-10');
+$final = BcPerformanceService::recordWarning($perfAgentId, 'visit', $mondayGaps['visit'], '2026-08-10');
+check('a Sunday in between does not break the streak', $final !== null && $final['streak'] === 7,
+    json_encode($final === null ? null : $final['streak']));
+check('the 7th working-day miss is the final warning', $final !== null && $final['level'] === 'L3');
+
+// Re-running the same day must not issue a second warning or a second email.
+$duplicate = BcPerformanceService::recordWarning($perfAgentId, 'visit', $mondayGaps['visit'], '2026-08-10');
+check('the same day cannot be warned twice', $duplicate === null);
+$warnCount = (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_warnings WHERE agent_id = ? AND target_type = ? AND triggered_date = ?',
+    [$perfAgentId, 'visit', '2026-08-10']
+);
+check('only one warning row exists for that day', $warnCount === 1, (string) $warnCount);
+
+// ---- Standing and escalation flag ---------------------------------------
+$standing = BcPerformanceService::refreshStanding($perfAgentId, '2026-08-10');
+check('the badge reflects the worst open level', $standing['status'] === 'final_warning', $standing['status']);
+$userRow = $db->first('SELECT dashboard_status, escalation_flag FROM users WHERE id = ?', [$perfAgentId]);
+check('the badge is stored on the user', (string) $userRow['dashboard_status'] === 'final_warning');
+check('escalation is not raised on the first final warning', (int) $userRow['escalation_flag'] === 0,
+    (string) $userRow['escalation_flag']);
+
+// A final warning still open a week later raises the admin banner. The other
+// rows go first: the unique key would reject two warnings on the same date.
+$db->query("DELETE FROM bc_warnings WHERE agent_id = ? AND triggered_date <> '2026-08-10'", [$perfAgentId]);
+$db->query(
+    "UPDATE bc_warnings SET warning_level = 'L3', triggered_date = '2026-08-03' WHERE agent_id = ?",
+    [$perfAgentId]
+);
+$escalatedStanding = BcPerformanceService::refreshStanding($perfAgentId, '2026-08-12');
+check('an unimproved final warning escalates', $escalatedStanding['escalation_flag'] === 1,
+    json_encode($escalatedStanding));
+
+// Resolving the warnings clears the badge.
+$db->query("UPDATE bc_warnings SET status = 'resolved' WHERE agent_id = ?", [$perfAgentId]);
+$cleared = BcPerformanceService::refreshStanding($perfAgentId, '2026-08-12');
+check('resolving the warnings clears the badge', $cleared['status'] === 'normal', $cleared['status']);
+check('and clears the escalation flag', $cleared['escalation_flag'] === 0);
+
+// ---- Scorecard ----------------------------------------------------------
+$weights = BcPerformanceService::weights();
+check('score weights are seeded', count($weights) === 9, (string) count($weights));
+check('recovery is scored per 1,000 rupees', ($weights['npa_recovery']['divisor'] ?? 0) === 1000.0);
+check('an enrolment outweighs a visit',
+    ($weights['apy']['weight'] ?? 0) > ($weights['visits']['weight'] ?? 0));
+
+$scorecard = BcPerformanceService::scorecard('2026-08-01', '2026-08-31');
+check('the scorecard lists agents', count($scorecard) > 0, (string) count($scorecard));
+check('every row carries a score', !in_array(null, array_column($scorecard, 'total_score'), true));
+check('every row carries a rank', !in_array(null, array_column($scorecard, 'rank'), true));
+
+$scores = array_column($scorecard, 'total_score');
+$sorted = $scores;
+rsort($sorted);
+check('the scorecard is ranked by score descending', $scores === $sorted, json_encode($scores));
+check('the top row is rank 1', (int) $scorecard[0]['rank'] === 1);
+
+// Our agent enrolled 2 APY + 1 PMJJBY + 3 PMJDY on 3 Aug = 2*5 + 1*5 + 3*3 = 24,
+// plus whatever visits the seed produced. The point is that enrolments reached the
+// score at all, since they come from a different table to visits.
+$mine = null;
+foreach ($scorecard as $row) {
+    if ((int) $row['agent_id'] === $perfAgentId) {
+        $mine = $row;
+    }
+}
+check('the scored agent appears', $mine !== null);
+check('SSS enrolments reach the score', $mine !== null && (int) $mine['apy'] === 2, json_encode($mine['apy'] ?? null));
+check('the score is greater than zero', $mine !== null && (float) $mine['total_score'] > 0);
+
+// Dense ranking: equal scores share a rank rather than being ordered arbitrarily.
+$ranks = array_column($scorecard, 'rank');
+$dense = true;
+for ($i = 1, $n = count($scorecard); $i < $n; $i++) {
+    $sameScore = (float) $scorecard[$i]['total_score'] === (float) $scorecard[$i - 1]['total_score'];
+    if ($sameScore && (int) $ranks[$i] !== (int) $ranks[$i - 1]) {
+        $dense = false;
+    }
+}
+check('agents on the same score share a rank', $dense);
+
+// ---------------------------------------------------------------------------
 section('Search (including encrypted columns)');
 
 $byAccount = LoanAccount::paginate(['search' => 'LN1001'], 'created_at', 'DESC', 1, 25);

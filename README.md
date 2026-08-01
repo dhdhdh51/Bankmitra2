@@ -341,11 +341,11 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 114 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 116 files |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
-| Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **397** — includes re-parsing the generated customer sheet PDF |
-| Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
+| Schema | `sh tools/verify-schema.sh` | **24** — 29 tables, 50 FKs, seeds, bcrypt login hash |
+| Integration | `sh tools/integration-test.sh` | **444** — includes re-parsing the customer sheet PDF and the warning-escalation arithmetic |
+| Cron jobs | `sh tools/verify-cron.sh` | **35** — backup restores, reminders and BC warnings are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **170** API |
 | Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
@@ -359,7 +359,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,176 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
+**1,238 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 

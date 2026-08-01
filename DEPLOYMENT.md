@@ -872,6 +872,41 @@ php ~/public_html/cron/backup.php
 > with `DROP TABLE IF EXISTS` and would delete every record you have. Only ever
 > run it on a fresh, empty database.
 
+### Adding the BC performance module to an existing install
+
+Six new tables and three new `users` columns. On a database created before this
+release:
+
+```sql
+-- see schema.sql for the full definitions, including comments
+SOURCE /path/to/schema-bc-performance.sql;   -- or paste the six CREATE TABLE blocks
+
+ALTER TABLE `users`
+  ADD COLUMN `dashboard_status`  ENUM('normal','warning_1','warning_2','final_warning')
+      NOT NULL DEFAULT 'normal' AFTER `locked_until`,
+  ADD COLUMN `escalation_flag`   TINYINT(1) NOT NULL DEFAULT 0 AFTER `dashboard_status`,
+  ADD COLUMN `status_changed_at` DATETIME DEFAULT NULL AFTER `escalation_flag`;
+
+-- the warning cron and the SSS reminder both raise in-app notifications
+ALTER TABLE `notifications`
+  MODIFY COLUMN `type` ENUM('new_lead_assigned','followup_reminder','promise_reminder',
+                            'broadcast','target_warning','sss_pending') NOT NULL;
+```
+
+Then set targets under **Admin → BC Targets** before relying on the cron: an agent
+with no target row is deliberately never assessed, so until targets exist the
+nightly run reports "no targets set" and warns nobody.
+
+Add the cron:
+
+```
+55 23 * * * /usr/local/bin/php /home/USER/public_html/cron/bc-warning-check.php
+```
+
+It takes `--date=YYYY-MM-DD` for a backfill and `--dry-run` to see what it would
+do without writing or mailing anything. It is idempotent — a unique key on
+(agent, target, date) means a re-run after a failure cannot warn or mail twice.
+
 ### Adding the settlement-position columns to an existing install
 
 The importer can now carry the branch's own settlement decision with each lead.

@@ -130,6 +130,13 @@ CREATE TABLE `users` (
   `last_login_ip`        VARCHAR(45)  DEFAULT NULL,
   `failed_attempts`      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   `locked_until`         DATETIME     DEFAULT NULL,
+
+  -- Performance standing, maintained by cron/bc-warning-check.php. Denormalised
+  -- onto the user so a BC list or dashboard can show the badge without joining
+  -- and aggregating bc_warnings for every row.
+  `dashboard_status`     ENUM('normal','warning_1','warning_2','final_warning') NOT NULL DEFAULT 'normal',
+  `escalation_flag`      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'final warning unimproved past its window',
+  `status_changed_at`    DATETIME     DEFAULT NULL,
   `created_by`           INT UNSIGNED DEFAULT NULL,
   `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -747,7 +754,7 @@ CREATE TABLE `notifications` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`         INT UNSIGNED DEFAULT NULL COMMENT 'NULL = broadcast to all',
   `branch_id`       INT UNSIGNED DEFAULT NULL COMMENT 'scope a broadcast to one branch',
-  `type`            ENUM('new_lead_assigned','followup_reminder','promise_reminder','broadcast') NOT NULL,
+  `type`            ENUM('new_lead_assigned','followup_reminder','promise_reminder','broadcast','target_warning','sss_pending') NOT NULL,
   `title`           VARCHAR(180) NOT NULL,
   `body`            VARCHAR(1000) DEFAULT NULL,
   `loan_account_id` BIGINT UNSIGNED DEFAULT NULL,
@@ -848,6 +855,173 @@ CREATE TABLE `settings` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_settings_key` (`setting_key`),
   KEY `idx_settings_group` (`group_name`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 14. BC PERFORMANCE: targets, daily achievement, warnings, SSS enrolment
+--
+-- The four tables below are the only genuinely new storage this module needs.
+-- Everything else the module specification asked for already exists and is
+-- deliberately NOT duplicated:
+--
+--   borrower KYC          -> `customers` (with encrypted mobile/Aadhaar). A second
+--                            plaintext KYC table would fork the borrower record and
+--                            put unencrypted Aadhaar numbers back in the database.
+--   CKCC / OD loan detail -> `loan_accounts` already carries cif_number,
+--                            sanction_date, sanction_limit, drawing_power,
+--                            interest_overdue and ckcc_renewal_due_date, and
+--                            `visit_ckcc_details` carries the per-visit renewal
+--                            checklist. Two parallel side tables keyed on the same
+--                            loan account would mean three places to ask "what is
+--                            the outstanding?" and three answers.
+--   lead distribution     -> `loan_accounts.assigned_agent_id` / `assigned_at` /
+--                            `assigned_by`, with `visit_history` as the audit trail.
+--   import batches        -> `lead_imports`.
+--   field visit reports   -> `visit_reports` plus `photos` / `signatures` /
+--                            `documents`.
+-- ============================================================================
+
+DROP TABLE IF EXISTS `bc_targets`;
+CREATE TABLE `bc_targets` (
+  `id`                  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `agent_id`            INT UNSIGNED NOT NULL COMMENT 'users.id with the agent role',
+  `target_month`        DATE         NOT NULL COMMENT 'always the 1st of the month',
+
+  `apy_target`          INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjjby_target`       INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmsby_target`        INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjdy_target`        INT UNSIGNED NOT NULL DEFAULT 0,
+  `npa_recovery_target` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  `od2_renewal_target`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `daily_visit_target`  INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'per working day, not per month',
+
+  `set_by`              INT UNSIGNED DEFAULT NULL,
+  `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  -- One target row per agent per month. Without this a second row silently halves
+  -- or doubles every gap the warning cron computes.
+  UNIQUE KEY `uq_bc_target_agent_month` (`agent_id`, `target_month`),
+  KEY `idx_bc_target_month` (`target_month`),
+  CONSTRAINT `fk_bc_target_agent`  FOREIGN KEY (`agent_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_bc_target_setter` FOREIGN KEY (`set_by`)   REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Nightly rollup, one row per agent per day. Derived entirely from visit_reports,
+-- promises and sss_enrollment, so it can be rebuilt from scratch at any time - it
+-- is a cache for dashboard and streak queries, never a source of truth.
+DROP TABLE IF EXISTS `bc_daily_achievement`;
+CREATE TABLE `bc_daily_achievement` (
+  `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `agent_id`          INT UNSIGNED NOT NULL,
+  `achievement_date`  DATE         NOT NULL,
+
+  `apy_done`          INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjjby_done`       INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmsby_done`        INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjdy_done`        INT UNSIGNED NOT NULL DEFAULT 0,
+  `npa_recovery_done` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  `od2_renewal_done`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `visits_done`       INT UNSIGNED NOT NULL DEFAULT 0,
+  `contacts_done`     INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'visits where the borrower was actually met',
+  `ptp_done`          INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'promises to pay taken',
+  `report_submitted`  TINYINT(1)   NOT NULL DEFAULT 0,
+
+  `computed_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_bc_achievement_agent_date` (`agent_id`, `achievement_date`),
+  KEY `idx_bc_achievement_date` (`achievement_date`),
+  CONSTRAINT `fk_bc_achievement_agent` FOREIGN KEY (`agent_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Append-only escalation log. A warning is a statement about someone's employment,
+-- so rows are never edited or deleted; a withdrawn warning is recorded as a new row
+-- with status 'withdrawn' and a reason.
+DROP TABLE IF EXISTS `bc_warnings`;
+CREATE TABLE `bc_warnings` (
+  `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `agent_id`       INT UNSIGNED NOT NULL,
+  `warning_level`  ENUM('L1','L2','L3') NOT NULL,
+  `target_type`    ENUM('apy','pmjjby','pmsby','pmjdy','npa_recovery','od2_renewal','visit','report') NOT NULL,
+
+  `target_value`   VARCHAR(40)  DEFAULT NULL,
+  `achieved_value` VARCHAR(40)  DEFAULT NULL,
+  `gap_value`      VARCHAR(40)  DEFAULT NULL,
+  `miss_streak`    SMALLINT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'consecutive working days missed',
+
+  `triggered_date` DATE         NOT NULL,
+  `email_sent`     TINYINT(1)   NOT NULL DEFAULT 0,
+  `sms_sent`       TINYINT(1)   NOT NULL DEFAULT 0,
+  `notified_at`    DATETIME     DEFAULT NULL,
+  `delivery_note`  VARCHAR(255) DEFAULT NULL COMMENT 'why a notification did not go out',
+
+  `status`         ENUM('open','acknowledged','resolved','withdrawn') NOT NULL DEFAULT 'open',
+  `resolved_at`    DATETIME     DEFAULT NULL,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  -- The cron runs daily and may be re-run after a failure; without this it would
+  -- issue the same warning twice and mail the supervisor twice.
+  UNIQUE KEY `uq_bc_warning_daily` (`agent_id`, `target_type`, `triggered_date`),
+  KEY `idx_bc_warning_agent_date` (`agent_id`, `triggered_date`),
+  KEY `idx_bc_warning_level` (`warning_level`, `status`),
+  CONSTRAINT `fk_bc_warning_agent` FOREIGN KEY (`agent_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Daily SSS quick entry by the agent. Separate from visit_reports because these
+-- enrolments happen at the CSP point, not on a field visit.
+DROP TABLE IF EXISTS `sss_enrollment`;
+CREATE TABLE `sss_enrollment` (
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `agent_id`        INT UNSIGNED NOT NULL,
+  `branch_id`       INT UNSIGNED NOT NULL,
+  `enrollment_date` DATE         NOT NULL,
+
+  `apy_count`       INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjjby_count`    INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmsby_count`     INT UNSIGNED NOT NULL DEFAULT 0,
+  `pmjdy_count`     INT UNSIGNED NOT NULL DEFAULT 0,
+
+  `remarks`         VARCHAR(500) DEFAULT NULL,
+  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  -- One row per agent per day, edited rather than appended, so the day's figure
+  -- cannot be double counted by an agent who submits twice.
+  UNIQUE KEY `uq_sss_agent_date` (`agent_id`, `enrollment_date`),
+  KEY `idx_sss_date` (`enrollment_date`),
+  KEY `idx_sss_branch_date` (`branch_id`, `enrollment_date`),
+  CONSTRAINT `fk_sss_agent`  FOREIGN KEY (`agent_id`)  REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sss_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Scorecard weights, editable rather than compiled in, so a region can weight
+-- recovery over enrolment without a deploy.
+DROP TABLE IF EXISTS `score_weights`;
+CREATE TABLE `score_weights` (
+  `metric`      VARCHAR(40)   NOT NULL,
+  `weight`      DECIMAL(10,4) NOT NULL DEFAULT 1.0000,
+  `label`       VARCHAR(100)  NOT NULL,
+  `divisor`     DECIMAL(12,2) NOT NULL DEFAULT 1.00 COMMENT 'rupee metrics score per this many rupees',
+  `sort_order`  SMALLINT      NOT NULL DEFAULT 0,
+  `updated_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`metric`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Where a warning escalates to, per branch. One fixed regional address across a
+-- multi-region deployment is how escalations end up going to the wrong office.
+DROP TABLE IF EXISTS `branch_escalation_emails`;
+CREATE TABLE `branch_escalation_emails` (
+  `branch_id`             INT UNSIGNED NOT NULL,
+  `supervisor_email`      VARCHAR(190) DEFAULT NULL,
+  `service_provider_email` VARCHAR(190) DEFAULT NULL COMMENT 'CBC / corporate BC',
+  `regional_office_email` VARCHAR(190) DEFAULT NULL,
+  `updated_at`            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`branch_id`),
+  CONSTRAINT `fk_branch_escalation` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1011,6 +1185,26 @@ VALUES
    '$2y$12$2q28FzDqMSbQH/rK66GwWOB7QhCplC4jBmkYwcQfEy6OR7R3sXB.G',
    1, NULL, 'active', 1);
 
+
+-- ============================================================================
+-- SEED: scorecard weights
+--
+-- Starting values only; they are meant to be tuned from Settings. Recovery is
+-- scored per 1,000 rupees (divisor) so a single large recovery cannot swamp a
+-- month of field work, and enrolments are worth more than a visit because they
+-- are a completed outcome rather than an activity.
+-- ============================================================================
+
+INSERT INTO `score_weights` (`metric`, `weight`, `label`, `divisor`, `sort_order`) VALUES
+  ('visits',       1.0000, 'Per visit',                      1.00, 1),
+  ('contacts',     1.5000, 'Per borrower actually met',      1.00, 2),
+  ('ptp',          2.0000, 'Per promise to pay',             1.00, 3),
+  ('npa_recovery', 1.0000, 'Per Rs 1,000 recovered',      1000.00, 4),
+  ('od2_renewal',  3.0000, 'Per OD-2 / CKCC renewal',        1.00, 5),
+  ('apy',          5.0000, 'Per APY enrolment',              1.00, 6),
+  ('pmjjby',       5.0000, 'Per PMJJBY enrolment',           1.00, 7),
+  ('pmsby',        5.0000, 'Per PMSBY enrolment',            1.00, 8),
+  ('pmjdy',        3.0000, 'Per PMJDY account',              1.00, 9);
 
 -- ============================================================================
 -- Restore foreign key enforcement for the remainder of this session.

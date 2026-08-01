@@ -209,9 +209,115 @@ fi
 
 # ===========================================================================
 echo
-echo '== both scripts refuse to run over HTTP'
+echo '== cron/bc-warning-check.php'
 # ===========================================================================
-for f in backup reminders; do
+# A warning is a statement about somebody's job, so this cron gets exercised
+# against real rows rather than trusted. --date lets the whole thing be driven
+# deterministically instead of depending on what day the suite happens to run.
+
+sqlv "DELETE FROM bc_warnings;" > /dev/null
+sqlv "DELETE FROM bc_daily_achievement;" > /dev/null
+sqlv "DELETE FROM bc_targets;" > /dev/null
+
+# A Sunday must be refused outright.
+if php "$APP/cron/bc-warning-check.php" --date=2026-08-02 > "$WORK/bcw_sun.log" 2>&1; then
+    if grep -qi 'Sunday' "$WORK/bcw_sun.log"; then
+        pass 'a Sunday is not assessed at all'
+    else
+        fail 'Sunday should be skipped' "$(tail -3 "$WORK/bcw_sun.log")"
+    fi
+else
+    fail 'Sunday run exits 0' "$(tail -5 "$WORK/bcw_sun.log")"
+fi
+SUNW=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+[ "${SUNW:-1}" = '0' ] && pass 'no warning is issued on a Sunday' \
+    || fail 'Sunday issued warnings' "count=$SUNW"
+
+# With no targets set, nobody can be warned for missing one.
+if php "$APP/cron/bc-warning-check.php" --date=2026-08-03 > "$WORK/bcw_notgt.log" 2>&1; then
+    pass "runs with no targets set  ($(grep -c 'no targets set' "$WORK/bcw_notgt.log" > /dev/null && echo 'reported' || echo 'ok'))"
+else
+    fail 'no-targets run exits 0' "$(tail -5 "$WORK/bcw_notgt.log")"
+fi
+NOTGT=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+[ "${NOTGT:-1}" = '0' ] && pass 'an agent with no target is never warned' \
+    || fail 'warned without a target' "count=$NOTGT"
+
+# Give one agent an impossible daily visit target and assess a working day.
+BCAG=$(sqlv "SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id
+              WHERE r.slug='agent' AND u.status='active' ORDER BY u.id LIMIT 1;")
+if [ -z "${BCAG:-}" ]; then
+    fail 'fixture: need an active agent'
+else
+    sqlv "INSERT INTO bc_targets (agent_id, target_month, daily_visit_target)
+          VALUES ($BCAG, '2026-08-01', 99);" > /dev/null
+    pass "fixture: agent $BCAG given a daily visit target of 99"
+
+    php "$APP/cron/bc-warning-check.php" --date=2026-08-03 > "$WORK/bcw1.log" 2>&1 \
+        || fail 'targeted run exits 0' "$(tail -5 "$WORK/bcw1.log")"
+
+    L1=$(sqlv "SELECT warning_level FROM bc_warnings
+                WHERE agent_id=$BCAG AND target_type='visit' AND triggered_date='2026-08-03';")
+    [ "${L1:-}" = 'L1' ] && pass 'a first miss issues Level 1' \
+        || fail 'first miss level' "got '${L1:-none}'"
+
+    GAP=$(sqlv "SELECT gap_value FROM bc_warnings
+                 WHERE agent_id=$BCAG AND target_type='visit' AND triggered_date='2026-08-03';")
+    [ "${GAP:-0}" = '99' ] && pass 'the warning records the gap (99 visits short)' \
+        || fail 'gap value' "got '${GAP:-}'"
+
+    ROLL=$(sqlv "SELECT COUNT(*) FROM bc_daily_achievement
+                  WHERE agent_id=$BCAG AND achievement_date='2026-08-03';")
+    [ "${ROLL:-0}" = '1' ] && pass 'the cron rolled the day up' \
+        || fail 'rollup missing' "count=$ROLL"
+
+    # Idempotency: re-running the same day must not warn or mail twice.
+    W1=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+    php "$APP/cron/bc-warning-check.php" --date=2026-08-03 > "$WORK/bcw2.log" 2>&1 \
+        || fail 'second run exits 0'
+    W2=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+    [ "$W1" = "$W2" ] && pass "re-running the same day warns nobody twice (still $W2)" \
+        || fail 'cron is not idempotent' "$W1 -> $W2"
+
+    # Escalation across consecutive working days: 4 Aug is day 2, 5 Aug day 3 = L2.
+    php "$APP/cron/bc-warning-check.php" --date=2026-08-04 > "$WORK/bcw3.log" 2>&1 || true
+    php "$APP/cron/bc-warning-check.php" --date=2026-08-05 > "$WORK/bcw4.log" 2>&1 || true
+    L2=$(sqlv "SELECT warning_level FROM bc_warnings
+                WHERE agent_id=$BCAG AND target_type='visit' AND triggered_date='2026-08-05';")
+    [ "${L2:-}" = 'L2' ] && pass 'a third consecutive miss escalates to Level 2' \
+        || fail 'third miss level' "got '${L2:-none}'"
+
+    BADGE=$(sqlv "SELECT dashboard_status FROM users WHERE id=$BCAG;")
+    [ "${BADGE:-}" = 'warning_2' ] && pass 'the dashboard badge follows the level' \
+        || fail 'dashboard badge' "got '${BADGE:-}'"
+
+    # The agent must be told in the app, not only by email.
+    APPN=$(sqlv "SELECT COUNT(*) FROM notifications
+                  WHERE user_id=$BCAG AND type='target_warning';")
+    [ "${APPN:-0}" -ge 1 ] && pass "the agent is notified in the app ($APPN)" \
+        || fail 'no in-app notification' "count=$APPN"
+
+    # A dry run must change nothing.
+    W3=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+    php "$APP/cron/bc-warning-check.php" --date=2026-08-06 --dry-run > "$WORK/bcw5.log" 2>&1 \
+        || fail 'dry run exits 0'
+    W4=$(sqlv "SELECT COUNT(*) FROM bc_warnings;")
+    [ "$W3" = "$W4" ] && pass 'a dry run writes nothing' \
+        || fail 'dry run wrote rows' "$W3 -> $W4"
+
+    # A bad --date must be refused rather than silently assessed as today.
+    if php "$APP/cron/bc-warning-check.php" --date=notadate > "$WORK/bcw6.log" 2>&1; then
+        fail 'a malformed --date should exit non-zero'
+    else
+        pass 'a malformed --date is refused'
+    fi
+fi
+
+# ===========================================================================
+echo
+echo '== every cron script refuses to run over HTTP'
+# ===========================================================================
+for f in backup reminders bc-warning-check; do
     if grep -q "PHP_SAPI !== 'cli'" "$APP/cron/$f.php"; then
         pass "cron/$f.php has a CLI-only guard"
     else
