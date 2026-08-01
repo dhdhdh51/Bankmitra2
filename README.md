@@ -362,17 +362,18 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 119 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 120 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
 | Schema | `sh tools/verify-schema.sh` | **24** — 31 tables, 52 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **484** — includes the customer sheet PDF, warning escalation and the tracking consent gate |
 | Cron jobs | `sh tools/verify-cron.sh` | **50** — backup restores; reminders, warnings, SSS and the location purge are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **170** API |
-| Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **192** API |
+| Android | `sh tools/verify-android.sh` | **148** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
-| **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
+| **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
+| **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **12** — consent gate, foreground-only, no background permission (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
@@ -380,9 +381,10 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,318 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
-(measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
-disk, so plain `du -h` overstates it as 6.7 MB).
+**1,327 assertions total** — the sum of the bold counts above, counting the two
+subset rows only once and excluding the syntax row, which counts files. Release APK
+is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
+signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
 
 Exported files are cross-validated by a *second, independent* implementation: the
 generated `.xlsx` and `.pdf` are re-read in Python (`openpyxl` / `pypdf`) and the
@@ -617,6 +619,22 @@ Kept here because they are the reason the tests exist:
     `SELECT *` — so a new column is invisible until it is added in two places. The
     customer sheet is what exposed it: the settlement section rendered empty for a
     lead that plainly had figures.
+43. **One value missing from an ENUM killed the entire nightly run.** `notifications.type`
+    had no `target_warning`, so the first warning insert threw and took the rest of
+    `bc-warning-check.php` with it — no warnings, no escalation emails, and the failure
+    only visible in a cron log nobody reads. The cron harness now asserts each job is
+    idempotent *and* completes.
+44. **`audit_logs.action` had no `export`, so customer-sheet downloads were never
+    audited** — for two commits. This one is worse than a crash: `Logger::audit()`
+    deliberately swallows its own failures so a logging fault cannot break the action
+    being logged, which means a missing ENUM value records nothing and says nothing.
+    Downloading a borrower's full PII sheet was the exact operation that needed a
+    trail. Both ENUMs now carry a comment saying to extend rather than reuse.
+45. **The SSS reminder deduplicated on `DATE(created_at)` instead of the date in the
+    payload.** A job that ran late — past midnight, or re-run after a failure — did not
+    recognise its own earlier notification and sent it again; conversely a catch-up run
+    for yesterday was suppressed by today's row. Matching now uses the `date` and `slot`
+    carried inside the notification.
 
 ---
 

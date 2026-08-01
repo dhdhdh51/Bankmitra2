@@ -5,15 +5,35 @@
     <!--
         Permissions are deliberately minimal.
 
-        There is NO location permission of any kind: this app does no GPS
-        tracking, no live agent tracking, no attendance and no map monitoring.
-        There is also no payment capability - agents record field verification
-        and recovery follow-up only, they never collect money.
+        This block used to say "There is NO location permission of any kind". That
+        stopped being true when duty-session location recording was added, so it has
+        been corrected rather than left to mislead whoever reads the manifest next.
+        See the location block below for what is and is not requested, and why.
+
+        There is still no payment capability - agents record field verification and
+        recovery follow-up only, they never collect money.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!--
+        Location. This app DOES record where its agents are; earlier releases did
+        not, and the comment above this block used to say so. Nothing is collected
+        until the agent has acknowledged the written notice - the server returns 412
+        for every point until then - and the foreground service exists precisely so
+        that collection is impossible to run invisibly: Android shows a permanent
+        notification for as long as it is active.
+
+        ACCESS_BACKGROUND_LOCATION is deliberately NOT requested. A foreground
+        service with a visible notification covers a duty session, and asking for
+        background access would let the app collect with nothing on screen to say so.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Gallery access: scoped storage on 33+, legacy read below that. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
@@ -117,5 +137,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!--
+            Duty-session location recording. foregroundServiceType="location" is
+            required from API 34 and is also the declaration that makes Android show
+            the ongoing notification - which is the point, not a side effect.
+        -->
+        <service
+            android:name=".location.DutyLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <activity
+            android:name=".ui.location.LocationConsentActivity"
+            android:exported="false"
+            android:label="@string/location_notice_title"
+            android:theme="@style/Theme.LRMS" />
+
     </application>
 </manifest>

@@ -478,3 +478,46 @@ data class FlagDto(
     @SerializedName("key") val key: String = "",
     @SerializedName("label") val label: String = "",
 )
+
+// ---------------------------------------------------------------------------
+// Location notice and consent
+// ---------------------------------------------------------------------------
+
+/**
+ * The notice text plus whether THIS agent has acknowledged THIS version.
+ *
+ * version matters: the server refuses an acknowledgement quoting an older version,
+ * so changing the notice forces the app to show it again rather than carrying the
+ * old consent forward over new collection.
+ */
+data class LocationNoticePayload(
+    @SerializedName("version") val version: String = "",
+    @SerializedName("english") val english: String = "",
+    @SerializedName("hindi") val hindi: String = "",
+    @SerializedName("retention_days") val retentionDays: Int = 0,
+    @SerializedName("acknowledged") val acknowledged: Boolean = false,
+    @SerializedName("tracking_allowed") val trackingAllowed: Boolean = false,
+)
+
+data class LocationConsentRequest(
+    @SerializedName("notice_version") val noticeVersion: String,
+    @SerializedName("device_info") val deviceInfo: String? = null,
+)
+
+data class LocationPointDto(
+    @SerializedName("latitude") val latitude: Double,
+    @SerializedName("longitude") val longitude: Double,
+    @SerializedName("accuracy_m") val accuracyMetres: Int? = null,
+    @SerializedName("logged_at") val loggedAt: String? = null,
+    @SerializedName("on_duty") val onDuty: Boolean = true,
+)
+
+data class LocationBatchRequest(
+    @SerializedName("points") val points: List<LocationPointDto>,
+)
+
+data class LocationUploadPayload(
+    @SerializedName("stored") val stored: Int = 0,
+    /** Accepted then discarded as too close to the previous fix - treat as delivered. */
+    @SerializedName("dropped") val dropped: Int = 0,
+)

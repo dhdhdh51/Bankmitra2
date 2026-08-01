@@ -270,6 +270,13 @@
     <string name="location_withdrawn">Location recording has been stopped.</string>
     <string name="location_on_duty">On duty — location is being recorded</string>
     <string name="location_off_duty">Off duty — location is not being recorded</string>
+    <string name="location_start_duty">Start duty session</string>
+    <string name="location_stop_duty">Stop</string>
+    <string name="location_channel_name">Duty session</string>
+    <string name="location_channel_description">Shown while your location is being recorded, so you can always tell that it is on.</string>
+    <string name="location_permission_needed">Location permission is needed to start a duty session.</string>
+    <string name="location_retention_note">Kept for %1$d days, then deleted automatically.</string>
+    <string name="location_notice_updated">This notice has been updated. Please read it again.</string>
 
     <!-- Content descriptions -->
     <string name="cd_call">Call customer</string>

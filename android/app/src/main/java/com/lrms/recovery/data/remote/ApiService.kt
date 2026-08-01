@@ -124,6 +124,21 @@ interface ApiService {
 
     // ---------------- Media ----------------
 
+    // ---------------- Location notice, consent and points ----------------
+
+    @GET("tracking/notice")
+    suspend fun locationNotice(): Response<ApiEnvelope<LocationNoticePayload>>
+
+    @POST("tracking/consent")
+    suspend fun acceptLocationNotice(@Body body: LocationConsentRequest): Response<ApiEnvelope<Unit>>
+
+    @POST("tracking/consent/withdraw")
+    suspend fun withdrawLocationConsent(): Response<ApiEnvelope<Unit>>
+
+    /** Batched: a village with no signal is the normal case, not the exception. */
+    @POST("tracking/location")
+    suspend fun uploadLocations(@Body body: LocationBatchRequest): Response<ApiEnvelope<LocationUploadPayload>>
+
     /** Streamed so a large document is not buffered entirely in memory. */
     @Streaming
     @GET("media")

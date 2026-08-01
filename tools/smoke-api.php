@@ -317,6 +317,72 @@ check('history includes visits', is_array($history['json']['data']['visits'] ?? 
 $missingLead = api('GET', '/customers/99999999', null, $agentToken);
 check('unknown customer returns 404', $missingLead['status'] === 404, 'HTTP ' . $missingLead['status']);
 
+// ---- Location notice, consent and trail ----------------------------------
+// The whole point of this ordering: location is refused with 412 until the notice
+// has been acknowledged, so there is no path that collects first and asks later.
+$db2 = null;
+$notice = api('GET', '/tracking/notice', null, $agentToken);
+check('GET /tracking/notice returns 200', $notice['status'] === 200, 'HTTP ' . $notice['status']);
+check('the notice is versioned', !empty($notice['json']['data']['version'] ?? null));
+check('the notice has English text', str_contains((string) ($notice['json']['data']['english'] ?? ''), 'records your location'));
+check('the notice has Hindi text', str_contains((string) ($notice['json']['data']['hindi'] ?? ''), 'लोकेशन'));
+check('the notice states the retention period', (int) ($notice['json']['data']['retention_days'] ?? 0) > 0);
+$noticeVersion = (string) ($notice['json']['data']['version'] ?? '');
+
+// Before consent, posting a point must be refused with 412 and a clear flag.
+$before = api('POST', '/tracking/location', ['points' => [['latitude' => 26.9124, 'longitude' => 75.7873]]], $agentToken);
+check('location is refused before consent', $before['status'] === 412, 'HTTP ' . $before['status']);
+check('the refusal asks for consent explicitly', ($before['json']['data']['consent_required'] ?? false) === true);
+
+// A stale notice version must not be accepted as consent.
+$stale = api('POST', '/tracking/consent', ['notice_version' => '1999-01-01'], $agentToken);
+check('a stale notice version is rejected', $stale['status'] === 409, 'HTTP ' . $stale['status']);
+
+$consent = api('POST', '/tracking/consent', ['notice_version' => $noticeVersion, 'device_info' => 'smoke test'], $agentToken);
+check('POST /tracking/consent returns 200', $consent['status'] === 200, 'HTTP ' . $consent['status']);
+check('consent is reported as recorded', ($consent['json']['data']['acknowledged'] ?? false) === true);
+check('the notice now reports acknowledged',
+    (api('GET', '/tracking/notice', null, $agentToken)['json']['data']['acknowledged'] ?? false) === true);
+
+// Now points are accepted.
+$post = api('POST', '/tracking/location', ['points' => [
+    ['latitude' => 26.9124, 'longitude' => 75.7873, 'accuracy_m' => 15, 'on_duty' => true],
+]], $agentToken);
+check('POST /tracking/location returns 200 after consent', $post['status'] === 200, 'HTTP ' . $post['status']);
+check('the point was stored', (int) ($post['json']['data']['stored'] ?? 0) === 1, json_encode($post['json']['data'] ?? null));
+
+// A malformed point is rejected on its own without failing the batch.
+$mixed = api('POST', '/tracking/location', ['points' => [
+    ['latitude' => 0, 'longitude' => 0],
+    ['longitude' => 75.0],
+]], $agentToken);
+check('a bad point does not fail the whole batch', $mixed['status'] === 200, 'HTTP ' . $mixed['status']);
+check('bad points are reported individually', count((array) ($mixed['json']['data']['rejected'] ?? [])) === 2,
+    json_encode($mixed['json']['data'] ?? null));
+
+check('an empty points array is refused',
+    api('POST', '/tracking/location', ['points' => []], $agentToken)['status'] === 422);
+check('location requires a token',
+    api('POST', '/tracking/location', ['points' => [['latitude' => 26.9, 'longitude' => 75.7]]])['status'] === 401);
+
+// An agent may read their own trail and nobody else's.
+$agentUserId = (int) ($login['json']['data']['user']['id'] ?? 0);
+$ownTrail = api('GET', '/tracking/' . $agentUserId . '/trail?date=' . date('Y-m-d'), null, $agentToken);
+check('an agent can read their own trail', $ownTrail['status'] === 200, 'HTTP ' . $ownTrail['status']);
+check('the trail returns points', is_array($ownTrail['json']['data']['points'] ?? null));
+
+$otherTrail = api('GET', '/tracking/' . ($agentUserId + 1000) . '/trail', null, $agentToken);
+check('an agent cannot read another user\'s trail', $otherTrail['status'] === 403, 'HTTP ' . $otherTrail['status']);
+
+// Withdrawal stops collection immediately.
+$withdraw = api('POST', '/tracking/consent/withdraw', null, $agentToken);
+check('POST /tracking/consent/withdraw returns 200', $withdraw['status'] === 200, 'HTTP ' . $withdraw['status']);
+$afterWithdraw = api('POST', '/tracking/location', ['points' => [['latitude' => 26.9124, 'longitude' => 75.7873]]], $agentToken);
+check('location is refused again after withdrawal', $afterWithdraw['status'] === 412, 'HTTP ' . $afterWithdraw['status']);
+
+// Put it back so later checks are unaffected.
+api('POST', '/tracking/consent', ['notice_version' => $noticeVersion], $agentToken);
+
 // ---- Customer data sheet --------------------------------------------------
 // The sheet leaves the device as a file, so it is scoped to leads assigned to
 // this agent - not merely leads in their branch, which is all the rest of the

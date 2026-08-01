@@ -33,7 +33,13 @@ import com.lrms.recovery.data.remote.ValidationPayload
 import com.lrms.recovery.data.remote.VisitDetailPayload
 import com.lrms.recovery.data.remote.VisitSubmitPayload
 import com.lrms.recovery.data.remote.VisitSummaryDto
+import com.lrms.recovery.data.remote.LocationBatchRequest
+import com.lrms.recovery.data.remote.LocationConsentRequest
+import com.lrms.recovery.data.remote.LocationNoticePayload
+import com.lrms.recovery.data.remote.LocationPointDto
+import com.lrms.recovery.data.remote.LocationUploadPayload
 import com.lrms.recovery.domain.VisitFormData
+import com.lrms.recovery.location.DutyLocationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -347,6 +353,42 @@ class LrmsRepository(context: Context) {
             } catch (error: Throwable) {
                 toNetworkError(error)
             }
+        }
+
+    // =======================================================================
+    // Location notice, consent and points
+    // =======================================================================
+
+    suspend fun locationNotice(): ApiResult<LocationNoticePayload> = call { api.locationNotice() }
+
+    suspend fun acceptLocationNotice(version: String, deviceInfo: String?): ApiResult<Unit> =
+        callUnit { api.acceptLocationNotice(LocationConsentRequest(version, deviceInfo)) }
+
+    suspend fun withdrawLocationConsent(): ApiResult<Unit> =
+        callUnit { api.withdrawLocationConsent() }
+
+    /**
+     * Posts a batch of queued fixes.
+     *
+     * The 412 the server returns when consent is missing is passed through as a
+     * Failure carrying that code, so the caller can stop the duty session rather
+     * than queueing points that will never be accepted.
+     */
+    suspend fun uploadLocations(points: List<DutyLocationService.QueuedPoint>): ApiResult<LocationUploadPayload> =
+        call {
+            api.uploadLocations(
+                LocationBatchRequest(
+                    points.map {
+                        LocationPointDto(
+                            latitude = it.latitude,
+                            longitude = it.longitude,
+                            accuracyMetres = it.accuracyMetres,
+                            loggedAt = it.loggedAt,
+                            onDuty = true,
+                        )
+                    },
+                ),
+            )
         }
 
     private suspend fun <T> call(block: suspend () -> Response<ApiEnvelope<T>>): ApiResult<T> =

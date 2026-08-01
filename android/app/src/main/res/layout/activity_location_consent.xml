@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The location notice, the acknowledgement and the duty toggle, on one screen.
+    The Hindi text is placed first: it is the language most of these agents read
+    most easily, and a notice nobody reads is not a notice.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:navigationIcon="@drawable/ic_chevron_right"
+        app:title="@string/location_notice_title"
+        app:titleTextColor="?attr/colorOnPrimary" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/screen_padding">
+
+            <TextView
+                android:id="@+id/textStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_notice"
+                android:padding="12dp"
+                android:text="@string/location_off_duty"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/textNoticeHindi"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:fontFamily="monospace"
+                android:textColor="?attr/colorOnSurface"
+                android:textIsSelectable="true"
+                android:textSize="13sp"
+                tools:text="लोकेशन रिकॉर्डिंग सूचना" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="20dp"
+                android:background="@color/lrms_border" />
+
+            <TextView
+                android:id="@+id/textNoticeEnglish"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:fontFamily="monospace"
+                android:textColor="@color/lrms_slate"
+                android:textIsSelectable="true"
+                android:textSize="12sp"
+                tools:text="LOCATION RECORDING NOTICE" />
+
+            <TextView
+                android:id="@+id/textRetention"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:textColor="@color/lrms_muted"
+                android:textSize="12sp"
+                tools:text="Kept for 90 days, then deleted automatically." />
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:orientation="vertical"
+        android:padding="@dimen/screen_padding">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonAccept"
+            style="@style/Widget.LRMS.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/location_notice_accept" />
+
+        <!-- Only visible once acknowledged: a duty session cannot start before. -->
+        <LinearLayout
+            android:id="@+id/groupDuty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonStartDuty"
+                style="@style/Widget.LRMS.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/location_start_duty" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonStopDuty"
+                style="@style/Widget.LRMS.Button.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/location_stop_duty"
+                android:visibility="gone"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonWithdraw"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/location_withdraw"
+            android:textColor="@color/lrms_danger"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </LinearLayout>
+</LinearLayout>
