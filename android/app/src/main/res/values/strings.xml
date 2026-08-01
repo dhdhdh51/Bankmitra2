@@ -262,6 +262,30 @@
         left to quietly mislead the person reading it.
     -->
     <string name="account_location">Location and duty session</string>
+    <string name="account_sss">Today\'s SSS enrolment</string>
+
+    <!-- SSS enrolment, entered by the agent -->
+    <string name="sss_title">SSS enrolment</string>
+    <string name="sss_for_date">For %1$s</string>
+    <string name="sss_read_only">This day can no longer be changed here. Ask your supervisor to correct it.</string>
+    <string name="sss_counted_heading">Counted for you today</string>
+    <string name="sss_counted_note">Taken from the visit reports you have filed. You never type these.</string>
+    <string name="sss_counted_visits">Visits</string>
+    <string name="sss_counted_contacts">Met</string>
+    <string name="sss_counted_ptp">PTP</string>
+    <string name="sss_entry_heading">Enrolments you did today</string>
+    <string name="sss_apy">APY</string>
+    <string name="sss_apy_full">Atal Pension Yojana</string>
+    <string name="sss_pmjjby">PMJJBY</string>
+    <string name="sss_pmjjby_full">Pradhan Mantri Jeevan Jyoti Bima Yojana</string>
+    <string name="sss_pmsby">PMSBY</string>
+    <string name="sss_pmsby_full">Pradhan Mantri Suraksha Bima Yojana</string>
+    <string name="sss_pmjdy">PMJDY</string>
+    <string name="sss_pmjdy_full">Pradhan Mantri Jan Dhan Yojana</string>
+    <string name="sss_remarks">Remarks (optional)</string>
+    <string name="sss_save">Save today\'s enrolment</string>
+    <string name="sss_saved">Saved — %1$d enrolment(s) today.</string>
+    <string name="sss_month_total">This month: %1$d enrolment(s) over %2$d day(s)</string>
     <string name="location_notice_short">This app records your location while you are on duty, and when you take a visit photo. Tap to read the full notice.</string>
     <string name="location_notice_title">Location recording notice</string>
     <string name="location_notice_accept">I have read and understood this</string>

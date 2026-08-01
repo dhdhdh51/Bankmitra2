@@ -33,6 +33,9 @@ import com.lrms.recovery.data.remote.ValidationPayload
 import com.lrms.recovery.data.remote.VisitDetailPayload
 import com.lrms.recovery.data.remote.VisitSubmitPayload
 import com.lrms.recovery.data.remote.VisitSummaryDto
+import com.lrms.recovery.data.remote.SssDayPayload
+import com.lrms.recovery.data.remote.SssEntryRequest
+import com.lrms.recovery.data.remote.SssSavePayload
 import com.lrms.recovery.data.remote.LocationBatchRequest
 import com.lrms.recovery.data.remote.LocationConsentRequest
 import com.lrms.recovery.data.remote.LocationNoticePayload
@@ -358,6 +361,25 @@ class LrmsRepository(context: Context) {
     // =======================================================================
     // Location notice, consent and points
     // =======================================================================
+
+    suspend fun sssDay(date: String? = null): ApiResult<SssDayPayload> = call { api.sssDay(date) }
+
+    /**
+     * Records or corrects the agent's own figures for a day.
+     *
+     * Safe to retry: the server upserts on (agent, date), so a resend after a
+     * timeout leaves the same numbers rather than doubling them.
+     */
+    suspend fun saveSss(
+        date: String?,
+        apy: Int,
+        pmjjby: Int,
+        pmsby: Int,
+        pmjdy: Int,
+        remarks: String?,
+    ): ApiResult<SssSavePayload> = call {
+        api.saveSss(SssEntryRequest(date, apy, pmjjby, pmsby, pmjdy, remarks))
+    }
 
     suspend fun locationNotice(): ApiResult<LocationNoticePayload> = call { api.locationNotice() }
 

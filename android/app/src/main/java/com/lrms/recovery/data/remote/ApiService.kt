@@ -124,6 +124,18 @@ interface ApiService {
 
     // ---------------- Media ----------------
 
+    // ---------------- SSS enrolment, filed by the agent -------------------
+
+    @GET("sss")
+    suspend fun sssDay(@Query("date") date: String? = null): Response<ApiEnvelope<SssDayPayload>>
+
+    /**
+     * An upsert. A retry on a dropped connection must not double a figure that feeds
+     * a ranking, so the server replaces the day rather than adding a second row.
+     */
+    @POST("sss")
+    suspend fun saveSss(@Body body: SssEntryRequest): Response<ApiEnvelope<SssSavePayload>>
+
     // ---------------- Location notice, consent and points ----------------
 
     @GET("tracking/notice")

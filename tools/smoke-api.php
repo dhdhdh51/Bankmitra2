@@ -607,14 +607,98 @@ $badStatus = api('POST', '/promises/' . $promiseId . '/settle', ['status' => 'no
 check('invalid promise status is rejected', $badStatus['status'] === 422, 'HTTP ' . $badStatus['status']);
 
 // ---------------------------------------------------------------------------
+section('SSS enrolment filed by the agent');
+
+// A day this agent certainly has no entry for. "Nothing recorded yet" is the normal
+// state of every morning, so it must not be an error - an app that treats it as one
+// shows a red screen to somebody who simply has not started.
+$emptyDay = date('Y-m-d', strtotime('-9 days'));
+$sssEmpty = api('GET', '/sss?date=' . $emptyDay, null, $agentToken);
+check('GET /sss returns 200 for a day with nothing recorded', $sssEmpty['status'] === 200,
+    'HTTP ' . $sssEmpty['status']);
+check('an empty day reports zeros rather than 404',
+    ($sssEmpty['json']['data']['recorded'] ?? null) === false
+    && (int) ($sssEmpty['json']['data']['apy'] ?? -1) === 0,
+    json_encode($sssEmpty['json']['data'] ?? null));
+// Readable but not writable: showing an old day is useful, backdating it is not.
+check('an old day is returned read-only', ($sssEmpty['json']['data']['editable'] ?? null) === false);
+
+$sssBefore = api('GET', '/sss', null, $agentToken);
+check('GET /sss returns 200 for today', $sssBefore['status'] === 200, 'HTTP ' . $sssBefore['status']);
+check('today is editable', ($sssBefore['json']['data']['editable'] ?? null) === true);
+check('visits are returned counted, not asked for',
+    isset($sssBefore['json']['data']['today']['visits']));
+
+$sssPost = api('POST', '/sss', [
+    'apy_count' => 3, 'pmjjby_count' => 4, 'pmsby_count' => 2, 'pmjdy_count' => 5,
+    'remarks' => 'filed from the app',
+], $agentToken);
+check('POST /sss records the day', $sssPost['status'] === 200, 'HTTP ' . $sssPost['status']);
+check('the four schemes are totalled', (int) ($sssPost['json']['data']['total'] ?? 0) === 14,
+    (string) ($sssPost['json']['data']['total'] ?? 'null'));
+
+// The whole reason this is an upsert: a retry on a dropped rural connection must not
+// double a figure that feeds a ranking agents are measured on.
+$sssRetry = api('POST', '/sss', [
+    'apy_count' => 3, 'pmjjby_count' => 4, 'pmsby_count' => 2, 'pmjdy_count' => 5,
+], $agentToken);
+check('a resend is accepted, not rejected as a duplicate', $sssRetry['status'] === 200,
+    'HTTP ' . $sssRetry['status']);
+check('a resend does not double the figures', (int) ($sssRetry['json']['data']['total'] ?? 0) === 14,
+    (string) ($sssRetry['json']['data']['total'] ?? 'null'));
+
+$sssCorrect = api('POST', '/sss', ['apy_count' => 1, 'pmjjby_count' => 1], $agentToken);
+check('a correction replaces rather than adds', (int) ($sssCorrect['json']['data']['total'] ?? 0) === 2,
+    (string) ($sssCorrect['json']['data']['total'] ?? 'null'));
+
+$sssAfter = api('GET', '/sss', null, $agentToken);
+check('the corrected figures read back', (int) ($sssAfter['json']['data']['apy'] ?? 0) === 1);
+check('the month total reflects the entry',
+    (int) ($sssAfter['json']['data']['month']['total'] ?? -1) >= 2);
+
+// Backdating a month of enrolments the night before an assessment is exactly the
+// pressure a scored metric creates, so the window is small and enforced server-side.
+$sssOld = api('POST', '/sss', ['date' => date('Y-m-d', strtotime('-30 days')), 'apy_count' => 99], $agentToken);
+check('an old date is refused', $sssOld['status'] === 422, 'HTTP ' . $sssOld['status']);
+$sssFuture = api('POST', '/sss', ['date' => date('Y-m-d', strtotime('+3 days')), 'apy_count' => 99], $agentToken);
+check('a future date is refused', $sssFuture['status'] === 422, 'HTTP ' . $sssFuture['status']);
+$sssYesterday = api('POST', '/sss', ['date' => date('Y-m-d', strtotime('-1 day')), 'apy_count' => 2], $agentToken);
+check('yesterday is still correctable', $sssYesterday['status'] === 200, 'HTTP ' . $sssYesterday['status']);
+
+$sssAbsurd = api('POST', '/sss', ['apy_count' => 50000], $agentToken);
+check('an absurd count is rejected', $sssAbsurd['status'] === 422, 'HTTP ' . $sssAbsurd['status']);
+
+$sssAnon = api('GET', '/sss', null, null);
+check('/sss requires authentication', $sssAnon['status'] === 401, 'HTTP ' . $sssAnon['status']);
+
+// The agent id comes from the token. Nobody files enrolments in somebody else's name
+// when those numbers feed a ranking and a disciplinary trail.
+$sssSpoof = api('POST', '/sss', ['agent_id' => 999, 'apy_count' => 7], $agentToken);
+check('an agent_id in the body is ignored', $sssSpoof['status'] === 200, 'HTTP ' . $sssSpoof['status']);
+$sssSpoofCheck = api('GET', '/sss', null, $agentToken);
+check('the spoofed id did not move the entry', (int) ($sssSpoofCheck['json']['data']['apy'] ?? 0) === 7);
+
+// ---------------------------------------------------------------------------
 section('Reports API');
 
 $reportIndex = api('GET', '/reports', null, $managerToken);
 check('GET /reports returns 200', $reportIndex['status'] === 200, 'HTTP ' . $reportIndex['status']);
-check('8 report types are listed', count((array) $reportIndex['json']['data']) === 8,
-    (string) count((array) $reportIndex['json']['data']));
+// Driven by whatever the API advertises, not a list kept here. The app builds its
+// report picker from this response, so a type the server offers and cannot render is
+// a crash in the app - and a hardcoded list would have let a ninth type ship
+// unexercised.
+$advertisedTypes = array_map(
+    static fn (array $entry): string => (string) ($entry['type'] ?? $entry['code'] ?? ''),
+    array_values((array) ($reportIndex['json']['data'] ?? []))
+);
+$advertisedTypes = array_values(array_filter($advertisedTypes));
 
-foreach (['daily', 'weekly', 'monthly', 'branch', 'village', 'loan-type', 'agent', 'promise'] as $type) {
+check('the API advertises its report types', $advertisedTypes !== [],
+    json_encode($reportIndex['json']['data'] ?? null));
+check('the BC daily report is advertised', in_array('bc-daily', $advertisedTypes, true),
+    implode(',', $advertisedTypes));
+
+foreach ($advertisedTypes as $type) {
     $response = api('GET', '/reports/' . $type, null, $managerToken);
     check("GET /reports/{$type} returns 200", $response['status'] === 200, 'HTTP ' . $response['status']);
     check("report [{$type}] returns columns", is_array($response['json']['data']['columns'] ?? null));

@@ -473,10 +473,18 @@ check('scorecard PDF export', $scorecardPdf['status'] === 200
 section('All 8 reports');
 
 $reportsIndex = page('GET /reports', '/reports', 200, 'Reports');
-check('report grid shows 8 cards', substr_count($reportsIndex, 'lrms-report-card') === 8,
-    (string) substr_count($reportsIndex, 'lrms-report-card'));
+// Types are read off the rendered picker rather than hardcoded here. A new report
+// then gets exercised - table, Excel and PDF - without anyone remembering to add it
+// to this list, which is how the previous hardcoded list of eight would have let a
+// ninth type ship untested.
+preg_match_all('#lrms-report-card" href="[^"]*/reports/([a-z0-9-]+)"#', $reportsIndex, $cardMatches);
+$reportTypes = array_values(array_unique($cardMatches[1] ?? []));
 
-$reportTypes = ['daily', 'weekly', 'monthly', 'branch', 'village', 'loan-type', 'agent', 'promise'];
+check('the report picker lists every type as a card',
+    count($reportTypes) === substr_count($reportsIndex, 'lrms-report-card') && $reportTypes !== [],
+    count($reportTypes) . ' slugs from ' . substr_count($reportsIndex, 'lrms-report-card') . ' cards');
+check('the BC daily report is one of them', in_array('bc-daily', $reportTypes, true),
+    implode(',', $reportTypes));
 
 foreach ($reportTypes as $type) {
     $body = page("GET /reports/{$type}", '/reports/' . $type, 200);

@@ -399,4 +399,39 @@ final class LoanAccount
             [$loanAccountId]
         );
     }
+
+    /**
+     * Repairs every account whose visit counters disagree with `visit_reports`.
+     *
+     * `refreshVisitCounters()` only ever runs for the account a visit was just filed
+     * against, so a row that drifts stays wrong until somebody happens to visit that
+     * borrower again - which for a closed or reassigned account may be never. The
+     * drift matters because `last_visit_at` drives the "no visit for N days" nudge in
+     * cron/reminders.php: a count that is too high silently suppresses the reminder
+     * for a borrower nobody has been to see.
+     *
+     * Only mismatched rows are touched, so this is cheap enough to run daily and the
+     * returned count is a real signal - anything other than zero means something
+     * wrote to visit_reports outside VisitService.
+     *
+     * @return int rows corrected
+     */
+    public static function rebuildVisitCounters(): int
+    {
+        return Database::instance()->query(
+            'UPDATE loan_accounts la
+               JOIN (
+                     SELECT la2.id,
+                            (SELECT COUNT(*) FROM visit_reports vr WHERE vr.loan_account_id = la2.id) AS real_count,
+                            (SELECT MAX(vr.created_at) FROM visit_reports vr WHERE vr.loan_account_id = la2.id) AS real_last
+                       FROM loan_accounts la2
+                    ) AS truth ON truth.id = la.id
+                SET la.visit_count = truth.real_count,
+                    la.last_visit_at = truth.real_last
+              WHERE la.visit_count <> truth.real_count
+                 OR (la.last_visit_at IS NULL) <> (truth.real_last IS NULL)
+                 OR (la.last_visit_at IS NOT NULL AND truth.real_last IS NOT NULL
+                     AND la.last_visit_at <> truth.real_last)'
+        )->rowCount();
+    }
 }

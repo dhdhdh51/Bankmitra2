@@ -53,6 +53,124 @@ final class BcPerformanceService
     // =======================================================================
 
     /**
+     * Live per-agent figures for a date range, derived from source records.
+     *
+     * This is the single definition of every metric in this module. `rollUpDay()`
+     * persists a snapshot of it, `scorecard()` and the daily report read it
+     * directly, and nothing computes any of these numbers a second way.
+     *
+     * READ THIS BEFORE REPLACING IT WITH THE CACHE. `bc_daily_achievement` is only
+     * written by the 23:55 cron. Reading the scorecard from that cache meant that
+     * for the whole working day every agent showed zero visits, zero contacts and a
+     * zero score - the report was blank precisely while it was useful, and it read
+     * as "these agents did nothing" rather than "the data is not in yet". The cache
+     * is a historical snapshot for warnings, not the answer to what happened today.
+     *
+     * Counted from source rather than from a stored counter, so there is nothing to
+     * drift out of step:
+     *   visits       - rows in visit_reports for the agent on the date
+     *   contacts     - those where the borrower was actually met
+     *   od2_renewal  - those filed as a CKCC / OD-2 renewal
+     *   ptp          - promises created that day, whatever they later become
+     *   npa_recovery - promises the branch marked kept, plus confirmed OTS deposits
+     *   apy..pmjdy   - the SSS enrolment figures recorded for the day
+     *
+     * @param  string   $from     inclusive, Y-m-d
+     * @param  string   $to       inclusive, Y-m-d
+     * @param  int|null $branchId restrict to one branch
+     * @param  int|null $agentId  restrict to one agent
+     * @return list<array<string,mixed>>
+     */
+    public static function figures(
+        string $from,
+        string $to,
+        ?int $branchId = null,
+        ?int $agentId = null
+    ): array {
+        // Correlated subqueries rather than a pile of LEFT JOINs. Joining
+        // visit_reports, promises and sss_enrollment in one statement multiplies the
+        // rows together, and every SUM then counts each visit once per promise -
+        // which does not error, it just reads as an agent doing suspiciously well.
+        $range = [$from, $to];
+
+        $params = [];
+        for ($i = 0; $i < 12; $i++) {
+            array_push($params, ...$range);
+        }
+
+        $where = '';
+        if ($branchId !== null) {
+            $where .= ' AND u.branch_id = ?';
+            $params[] = $branchId;
+        }
+        if ($agentId !== null) {
+            $where .= ' AND u.id = ?';
+            $params[] = $agentId;
+        }
+
+        $rows = Database::instance()->all(
+            "SELECT u.id AS agent_id, u.employee_code, u.name AS agent_name, u.bc_code,
+                    u.branch_id, u.dashboard_status, u.escalation_flag,
+                    b.name AS branch_name,
+                    (SELECT COUNT(*) FROM loan_accounts la
+                      WHERE la.assigned_agent_id = u.id) AS allocated,
+                    (SELECT COUNT(*) FROM visit_reports vr
+                      WHERE vr.agent_id = u.id AND vr.visit_date BETWEEN ? AND ?) AS visits,
+                    (SELECT COALESCE(SUM(CASE WHEN vr.customer_met = 1 THEN 1 ELSE 0 END), 0)
+                       FROM visit_reports vr
+                      WHERE vr.agent_id = u.id AND vr.visit_date BETWEEN ? AND ?) AS contacts,
+                    (SELECT COALESCE(SUM(CASE WHEN vr.report_type = 'ckcc_renewal' THEN 1 ELSE 0 END), 0)
+                       FROM visit_reports vr
+                      WHERE vr.agent_id = u.id AND vr.visit_date BETWEEN ? AND ?) AS od2_renewal,
+                    (SELECT COUNT(*) FROM promises p
+                      WHERE p.agent_id = u.id AND DATE(p.created_at) BETWEEN ? AND ?) AS ptp,
+                    (SELECT COALESCE(SUM(p.promise_amount), 0) FROM promises p
+                      WHERE p.agent_id = u.id AND p.status = 'kept'
+                        AND DATE(p.settled_at) BETWEEN ? AND ?) AS kept_recovery,
+                    (SELECT COALESCE(SUM(o.deposit_amount), 0)
+                       FROM visit_ots_details o
+                       JOIN visit_reports v ON v.id = o.visit_report_id
+                      WHERE v.agent_id = u.id AND o.deposit_received = 1
+                        AND o.deposit_date BETWEEN ? AND ?) AS ots_recovery,
+                    (SELECT COALESCE(SUM(s.apy_count), 0) FROM sss_enrollment s
+                      WHERE s.agent_id = u.id AND s.enrollment_date BETWEEN ? AND ?) AS apy,
+                    (SELECT COALESCE(SUM(s.pmjjby_count), 0) FROM sss_enrollment s
+                      WHERE s.agent_id = u.id AND s.enrollment_date BETWEEN ? AND ?) AS pmjjby,
+                    (SELECT COALESCE(SUM(s.pmsby_count), 0) FROM sss_enrollment s
+                      WHERE s.agent_id = u.id AND s.enrollment_date BETWEEN ? AND ?) AS pmsby,
+                    (SELECT COALESCE(SUM(s.pmjdy_count), 0) FROM sss_enrollment s
+                      WHERE s.agent_id = u.id AND s.enrollment_date BETWEEN ? AND ?) AS pmjdy,
+                    (SELECT COUNT(*) FROM sss_enrollment s
+                      WHERE s.agent_id = u.id AND s.enrollment_date BETWEEN ? AND ?) AS sss_days,
+                    (SELECT COUNT(DISTINCT vr.visit_date) FROM visit_reports vr
+                      WHERE vr.agent_id = u.id AND vr.visit_date BETWEEN ? AND ?) AS visit_days
+               FROM users u
+               JOIN roles r ON r.id = u.role_id
+          LEFT JOIN branches b ON b.id = u.branch_id
+              WHERE r.slug = 'agent' AND u.status = 'active'" . $where . '
+           ORDER BY u.name ASC',
+            $params
+        );
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['npa_recovery'] = round(
+                (float) $row['kept_recovery'] + (float) $row['ots_recovery'],
+                2
+            );
+
+            // Reported at all: filed a visit, or entered enrolment figures. The one
+            // target that is about showing up rather than about numbers.
+            $rows[$index]['report_submitted'] =
+                ((int) $row['visits'] > 0 || (int) $row['sss_days'] > 0) ? 1 : 0;
+
+            $rows[$index]['sss_total'] = (int) $row['apy'] + (int) $row['pmjjby']
+                + (int) $row['pmsby'] + (int) $row['pmjdy'];
+        }
+
+        return $rows;
+    }
+
+    /**
      * Recomputes and stores one agent's figures for one day.
      *
      * Idempotent: running it again for the same day overwrites rather than adds,
@@ -64,60 +182,28 @@ final class BcPerformanceService
     {
         $db = Database::instance();
 
-        $visits = $db->first(
-            "SELECT COUNT(*) AS visits,
-                    COALESCE(SUM(CASE WHEN customer_met = 1 THEN 1 ELSE 0 END), 0) AS contacts,
-                    COALESCE(SUM(CASE WHEN report_type = 'ckcc_renewal' THEN 1 ELSE 0 END), 0) AS renewals
-               FROM visit_reports
-              WHERE agent_id = ? AND visit_date = ?",
-            [$agentId, $date]
-        ) ?? [];
-
-        $ptp = (int) ($db->scalar(
-            'SELECT COUNT(*) FROM promises WHERE agent_id = ? AND DATE(created_at) = ?',
-            [$agentId, $date]
-        ) ?? 0);
-
-        // Recovery credited to an agent is money the BORROWER paid at the bank -
-        // this system never records the agent handling cash, which is the point of
-        // the no-payments rule. So it comes from the two places the bank's own
-        // receipt is recorded: a promise the branch has marked kept, and an OTS
-        // initial deposit confirmed against a receipt number.
-        $keptPromises = (float) ($db->scalar(
-            "SELECT COALESCE(SUM(promise_amount), 0) FROM promises
-              WHERE agent_id = ? AND status = 'kept' AND DATE(settled_at) = ?",
-            [$agentId, $date]
-        ) ?? 0);
-
-        $otsDeposits = (float) ($db->scalar(
-            'SELECT COALESCE(SUM(o.deposit_amount), 0)
-               FROM visit_ots_details o
-               JOIN visit_reports v ON v.id = o.visit_report_id
-              WHERE v.agent_id = ? AND o.deposit_received = 1 AND o.deposit_date = ?',
-            [$agentId, $date]
-        ) ?? 0);
-
-        $sss = $db->first(
-            'SELECT apy_count, pmjjby_count, pmsby_count, pmjdy_count
-               FROM sss_enrollment WHERE agent_id = ? AND enrollment_date = ? LIMIT 1',
-            [$agentId, $date]
-        ) ?? [];
+        // Derived by figures(), not by a second copy of the same SQL living here.
+        // Two implementations of "how many visits did this agent make" is two
+        // answers, and the one an agent is warned on would not be the one their
+        // supervisor sees on screen.
+        $live = self::figures($date, $date, null, $agentId);
+        $figures = $live[0] ?? [];
 
         $row = [
             'agent_id'          => $agentId,
             'achievement_date'  => $date,
-            'apy_done'          => (int) ($sss['apy_count'] ?? 0),
-            'pmjjby_done'       => (int) ($sss['pmjjby_count'] ?? 0),
-            'pmsby_done'        => (int) ($sss['pmsby_count'] ?? 0),
-            'pmjdy_done'        => (int) ($sss['pmjdy_count'] ?? 0),
-            'npa_recovery_done' => round($keptPromises + $otsDeposits, 2),
-            'od2_renewal_done'  => (int) ($visits['renewals'] ?? 0),
-            'visits_done'       => (int) ($visits['visits'] ?? 0),
-            'contacts_done'     => (int) ($visits['contacts'] ?? 0),
-            'ptp_done'          => $ptp,
+            'apy_done'          => (int) ($figures['apy'] ?? 0),
+            'pmjjby_done'       => (int) ($figures['pmjjby'] ?? 0),
+            'pmsby_done'        => (int) ($figures['pmsby'] ?? 0),
+            'pmjdy_done'        => (int) ($figures['pmjdy'] ?? 0),
+            'npa_recovery_done' => round((float) ($figures['npa_recovery'] ?? 0), 2),
+            'od2_renewal_done'  => (int) ($figures['od2_renewal'] ?? 0),
+            'visits_done'       => (int) ($figures['visits'] ?? 0),
+            'contacts_done'     => (int) ($figures['contacts'] ?? 0),
+            'ptp_done'          => (int) ($figures['ptp'] ?? 0),
             // "Did this agent report at all today?" - the one target that is about
             // showing up rather than about numbers.
-            'report_submitted'  => ((int) ($visits['visits'] ?? 0) > 0 || $sss !== []) ? 1 : 0,
+            'report_submitted'  => (int) ($figures['report_submitted'] ?? 0),
             'computed_at'       => date('Y-m-d H:i:s'),
         ];
 
@@ -443,37 +529,11 @@ final class BcPerformanceService
      */
     public static function scorecard(string $from, string $to, ?int $branchId = null): array
     {
-        $params = [$from, $to];
-        $branchClause = '';
-        if ($branchId !== null) {
-            $branchClause = ' AND u.branch_id = ?';
-            $params[] = $branchId;
-        }
-
-        $rows = Database::instance()->all(
-            "SELECT u.id AS agent_id, u.employee_code, u.name AS agent_name,
-                    u.dashboard_status, u.escalation_flag,
-                    b.name AS branch_name,
-                    (SELECT COUNT(*) FROM loan_accounts la WHERE la.assigned_agent_id = u.id) AS allocated,
-                    COALESCE(SUM(a.visits_done), 0)       AS visits,
-                    COALESCE(SUM(a.contacts_done), 0)     AS contacts,
-                    COALESCE(SUM(a.ptp_done), 0)          AS ptp,
-                    COALESCE(SUM(a.npa_recovery_done), 0) AS npa_recovery,
-                    COALESCE(SUM(a.od2_renewal_done), 0)  AS od2_renewal,
-                    COALESCE(SUM(a.apy_done), 0)          AS apy,
-                    COALESCE(SUM(a.pmjjby_done), 0)       AS pmjjby,
-                    COALESCE(SUM(a.pmsby_done), 0)        AS pmsby,
-                    COALESCE(SUM(a.pmjdy_done), 0)        AS pmjdy
-               FROM users u
-               JOIN roles r ON r.id = u.role_id
-          LEFT JOIN branches b ON b.id = u.branch_id
-          LEFT JOIN bc_daily_achievement a
-                 ON a.agent_id = u.id AND a.achievement_date BETWEEN ? AND ?
-              WHERE r.slug = 'agent' AND u.status = 'active'" . $branchClause . '
-           GROUP BY u.id
-           ORDER BY u.name',
-            $params
-        );
+        // Live, via figures(). This used to read bc_daily_achievement, which the
+        // 23:55 cron fills - so any range including today showed every agent on
+        // zero, all day, on the one screen a supervisor opens to see how the day is
+        // going.
+        $rows = self::figures($from, $to, $branchId);
 
         $weights = self::weights();
 

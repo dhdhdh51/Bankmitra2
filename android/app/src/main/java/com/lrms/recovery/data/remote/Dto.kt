@@ -490,6 +490,62 @@ data class FlagDto(
  * so changing the notice forces the app to show it again rather than carrying the
  * old consent forward over new collection.
  */
+/**
+ * The agent's own SSS figures for a day, plus what the system counted for them.
+ *
+ * [today] is deliberately part of the same payload: visits, contacts and PTP are
+ * counted from the reports already filed and are never sent by the app, so showing
+ * them next to the four fields the agent does type is what stops "how many visits am
+ * I credited with today" being a guess.
+ */
+data class SssDayPayload(
+    @SerializedName("date") val date: String = "",
+    @SerializedName("editable") val editable: Boolean = false,
+    @SerializedName("recorded") val recorded: Boolean = false,
+    @SerializedName("apy") val apy: Int = 0,
+    @SerializedName("pmjjby") val pmjjby: Int = 0,
+    @SerializedName("pmsby") val pmsby: Int = 0,
+    @SerializedName("pmjdy") val pmjdy: Int = 0,
+    @SerializedName("remarks") val remarks: String? = null,
+    @SerializedName("month") val month: SssMonthTotals? = null,
+    @SerializedName("today") val today: SssCountedFigures? = null,
+)
+
+data class SssMonthTotals(
+    @SerializedName("apy") val apy: Int = 0,
+    @SerializedName("pmjjby") val pmjjby: Int = 0,
+    @SerializedName("pmsby") val pmsby: Int = 0,
+    @SerializedName("pmjdy") val pmjdy: Int = 0,
+    @SerializedName("total") val total: Int = 0,
+    @SerializedName("days") val days: Int = 0,
+)
+
+/** Counted by the server from filed reports. Never sent up by the app. */
+data class SssCountedFigures(
+    @SerializedName("visits") val visits: Int = 0,
+    @SerializedName("contacts") val contacts: Int = 0,
+    @SerializedName("ptp") val ptp: Int = 0,
+    @SerializedName("od2_renewal") val od2Renewal: Int = 0,
+    @SerializedName("npa_recovery") val npaRecovery: Double = 0.0,
+    @SerializedName("sss_total") val sssTotal: Int = 0,
+)
+
+data class SssEntryRequest(
+    @SerializedName("date") val date: String? = null,
+    @SerializedName("apy_count") val apyCount: Int,
+    @SerializedName("pmjjby_count") val pmjjbyCount: Int,
+    @SerializedName("pmsby_count") val pmsbyCount: Int,
+    @SerializedName("pmjdy_count") val pmjdyCount: Int,
+    @SerializedName("remarks") val remarks: String? = null,
+)
+
+data class SssSavePayload(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("date") val date: String = "",
+    @SerializedName("total") val total: Int = 0,
+    @SerializedName("today") val today: SssCountedFigures? = null,
+)
+
 data class LocationNoticePayload(
     @SerializedName("version") val version: String = "",
     @SerializedName("english") val english: String = "",

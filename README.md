@@ -236,7 +236,7 @@ php -S 127.0.0.1:8080 -t admin tools/router-dev.php
 | **Agent** | Own assigned leads only: view, visit, upload, promise history |
 | **Auditor** | Read-only: reports, audit and activity logs. No edits, no PII |
 
-36 permissions across the four seeded roles (68 role/permission grants).
+41 permissions across the four seeded roles, including the BC performance group.
 
 Permissions are rows in `permissions`, joined to roles through `role_permissions`, so
 the matrix is editable in the panel rather than hard-coded. Two decisions worth knowing:
@@ -263,6 +263,15 @@ reach another branch's records by editing an ID in the URL.
 | Loan-type-wise | Portfolio split by loan type |
 | Agent performance | Visits, promises made, promises kept, conversion |
 | Promise tracking | Due, overdue, kept and broken promises |
+| **BC Daily** | Per-agent visits, contacts, PTP, **APY / PMJJBY / PMSBY / PMJDY**, OD-2 renewals and recovery for one date, against that day's target |
+
+The BC Daily report is worth one note. Visits are **counted, never entered** — the
+number is `COUNT(visit_reports)` for that agent and date, so there is no field
+anywhere in the system for typing it and nothing to inflate or fall behind. The four
+scheme figures are the only numbers a human enters, once per agent per day under a
+unique key, either by the agent in the app or by a manager in the panel. Agents who
+filed nothing are still listed: "who reported nothing today" is the most useful line
+on the report, and dropping those rows would hide exactly the people it should show.
 
 Every report supports the same filters (date range, branch, agent, village, loan type,
 status) and exports to **PDF** and **Excel**. Both writers are in `admin/app/Core/`
@@ -382,19 +391,20 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 133 files (a file count, not assertions) |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 134 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
 | Schema | `sh tools/verify-schema.sh` | **24** — 32 tables, 52 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **534** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache and dense ranking |
+| Integration | `sh tools/integration-test.sh` | **562** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures and visit-counter repair |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **156** panel + **192** API |
-| Android | `sh tools/verify-android.sh` | **161** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **161** panel + **216** API |
+| Android | `sh tools/verify-android.sh` | **172** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
 | **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
 | **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **11** — a camera capture may carry coordinates, a gallery pick may not (a subset of the Android row) |
+| **SSS entry** | `:app:testDebugUnitTest` (`SssEntryTest`) | **11** — four typed schemes, and no field anywhere for typing a visit count (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
@@ -402,7 +412,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,410 assertions total** — the sum of the bold counts above, counting the three
+**1,478 assertions total** — the sum of the bold counts above, counting the four
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -670,6 +680,26 @@ Kept here because they are the reason the tests exist:
     saying nothing about them. A cron reachable over HTTP hands an unauthenticated
     visitor a job that emails agents, purges data or dumps the database. The check now
     enumerates `cron/` so a script cannot be added without being covered.
+48. **The BC scorecard was blank all day, every day.** It read
+    `bc_daily_achievement`, which the 23:55 cron writes — so any range including
+    today showed every agent on zero visits, zero contacts and a zero score. The
+    screen was empty precisely while it was useful, and it did not read as "the data
+    is not in yet", it read as "these agents have done nothing". Every metric is now
+    derived from source records by one shared method; the nightly table went back to
+    being what it always should have been, a historical snapshot for warnings.
+49. **Agents were being warned for figures they had no way to report.** The four SSS
+    scheme counts were enterable only in the admin panel, which an agent cannot open,
+    while `cron/bc-warning-check.php` measured those same four metrics nightly and
+    escalated a sustained shortfall to the supervisor, then the service provider, then
+    the regional office. The software was generating written warnings about its own
+    gap. There is now an API endpoint and an app screen; the endpoint is an upsert on
+    (agent, date) so a retry on a dropped rural connection cannot double a figure that
+    feeds a ranking, and backdating is limited to yesterday because a scored metric
+    invites exactly that.
+50. **Two hardcoded "8 report types" assertions.** Both the panel and API smoke tests
+    checked a literal count and iterated a literal list, so a ninth report type would
+    have shipped completely unexercised — no table, no Excel, no PDF. Both now read
+    the types from what the server actually serves.
 
 ---
 

@@ -17,6 +17,7 @@ import com.lrms.recovery.ui.BaseFragment
 import com.lrms.recovery.location.DutyLocationService
 import com.lrms.recovery.ui.location.LocationConsentActivity
 import com.lrms.recovery.ui.login.ChangePasswordActivity
+import com.lrms.recovery.ui.sss.SssEntryActivity
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
 
@@ -66,6 +67,10 @@ class AccountFragment : BaseFragment() {
         // The only route to the location notice. It sits in Settings permanently
         // rather than appearing as a one-time prompt, because "you can withdraw at
         // any time" is only true if there is somewhere to go and do it.
+        binding.rowSss.setOnClickListener {
+            startActivity(SssEntryActivity.intent(requireContext()))
+        }
+
         binding.rowLocation.setOnClickListener {
             startActivity(LocationConsentActivity.intent(requireContext()))
         }

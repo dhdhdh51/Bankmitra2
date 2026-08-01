@@ -1921,6 +1921,124 @@ foreach ($weights as $weight) {
 check('no weight has a zero divisor to divide by', $divisorsSane);
 
 // ---------------------------------------------------------------------------
+section("Today's figures are live, not waiting for the nightly cron");
+
+// This is the bug this section exists for. scorecard() used to read
+// bc_daily_achievement, which is only written at 23:55 - so for the whole working
+// day every agent showed zero visits and a zero score on the one screen a supervisor
+// opens to see how the day is going. It did not look like missing data, it looked
+// like the agents had done nothing.
+$today = date('Y-m-d');
+
+$db->query(
+    "INSERT INTO sss_enrollment (agent_id, branch_id, enrollment_date, apy_count, pmjjby_count, pmsby_count, pmjdy_count)
+     VALUES (?, ?, ?, 2, 3, 1, 4)
+     ON DUPLICATE KEY UPDATE apy_count = VALUES(apy_count), pmjjby_count = VALUES(pmjjby_count),
+                             pmsby_count = VALUES(pmsby_count), pmjdy_count = VALUES(pmjdy_count)",
+    [$agent1Id, $branchAId, $today]
+);
+
+// Deliberately NOT running rollUpDay() first: that is the whole point.
+$db->query('DELETE FROM bc_daily_achievement WHERE agent_id = ? AND achievement_date = ?',
+    [$agent1Id, $today]);
+
+$liveToday = \App\Services\BcPerformanceService::figures($today, $today, null, $agent1Id);
+check('figures() returns a row for the agent', count($liveToday) === 1);
+$live = $liveToday[0] ?? [];
+
+check('the four schemes are read live from sss_enrollment',
+    (int) ($live['apy'] ?? -1) === 2 && (int) ($live['pmjjby'] ?? -1) === 3
+    && (int) ($live['pmsby'] ?? -1) === 1 && (int) ($live['pmjdy'] ?? -1) === 4,
+    json_encode([$live['apy'] ?? null, $live['pmjjby'] ?? null, $live['pmsby'] ?? null, $live['pmjdy'] ?? null]));
+check('the scheme total is summed', (int) ($live['sss_total'] ?? 0) === 10);
+check('an agent who filed enrolment counts as having reported',
+    (int) ($live['report_submitted'] ?? 0) === 1);
+
+$cacheRows = (int) $db->scalar(
+    'SELECT COUNT(*) FROM bc_daily_achievement WHERE agent_id = ? AND achievement_date = ?',
+    [$agent1Id, $today]
+);
+check('figures() does not need the nightly cache to exist', $cacheRows === 0);
+
+$liveScorecard = \App\Services\BcPerformanceService::scorecard($today, $today, $branchAId);
+$scoredAgent = null;
+foreach ($liveScorecard as $row) {
+    if ((int) $row['agent_id'] === $agent1Id) {
+        $scoredAgent = $row;
+    }
+}
+check('the scorecard finds the agent', $scoredAgent !== null);
+check('the scorecard shows today\'s enrolments without the cron having run',
+    (int) ($scoredAgent['apy'] ?? 0) === 2, json_encode($scoredAgent['apy'] ?? null));
+check('and therefore scores above zero for today',
+    (float) ($scoredAgent['total_score'] ?? 0) > 0.0,
+    (string) ($scoredAgent['total_score'] ?? 'null'));
+
+// rollUpDay() must agree with the live figures exactly - it persists a snapshot of
+// them rather than computing them a second way. Two implementations would mean the
+// number an agent is warned on is not the number their supervisor sees.
+$snapshot = \App\Services\BcPerformanceService::rollUpDay($agent1Id, $today);
+check('the stored snapshot matches the live visits', (int) $snapshot['visits_done'] === (int) $live['visits']);
+check('the stored snapshot matches the live contacts', (int) $snapshot['contacts_done'] === (int) $live['contacts']);
+check('the stored snapshot matches the live PTP', (int) $snapshot['ptp_done'] === (int) $live['ptp']);
+check('the stored snapshot matches the live APY', (int) $snapshot['apy_done'] === (int) $live['apy']);
+check('the stored snapshot matches the live recovery',
+    (float) $snapshot['npa_recovery_done'] === (float) $live['npa_recovery']);
+check('the stored snapshot matches the live OD-2 count',
+    (int) $snapshot['od2_renewal_done'] === (int) $live['od2_renewal']);
+
+// A range that spans a real visit must count it from visit_reports, never from a
+// counter somebody could have typed.
+$august = \App\Services\BcPerformanceService::figures('2026-08-01', '2026-08-31', null, $agent1Id);
+$augustRow = $august[0] ?? [];
+$countedVisits = (int) $db->scalar(
+    'SELECT COUNT(*) FROM visit_reports WHERE agent_id = ? AND visit_date BETWEEN ? AND ?',
+    [$agent1Id, '2026-08-01', '2026-08-31']
+);
+check('visits are counted from visit_reports, not from a stored counter',
+    (int) ($augustRow['visits'] ?? -1) === $countedVisits,
+    ($augustRow['visits'] ?? 'null') . ' vs ' . $countedVisits);
+
+// Joining visit_reports, promises and sss_enrollment in one statement multiplies the
+// rows; the correlated subqueries exist so a visit is not counted once per promise.
+$promiseCount = (int) $db->scalar(
+    'SELECT COUNT(*) FROM promises WHERE agent_id = ? AND DATE(created_at) BETWEEN ? AND ?',
+    [$agent1Id, '2026-08-01', '2026-08-31']
+);
+check('a visit is not multiplied by the promises attached to it',
+    $promiseCount === 0 || (int) $augustRow['visits'] <= $countedVisits);
+
+// ---------------------------------------------------------------------------
+section('Visit counters repair themselves');
+
+// refreshVisitCounters() only ever runs for the account just visited, so a drifted
+// row stays wrong until somebody happens to visit that borrower again - which for a
+// closed account may be never. last_visit_at drives the "no visit for N days" nudge,
+// so a count that is too high silently suppresses a reminder.
+$driftLead = (int) $db->scalar('SELECT id FROM loan_accounts WHERE visit_count > 0 LIMIT 1');
+check('a lead with visits exists to test against', $driftLead > 0);
+
+$db->query('UPDATE loan_accounts SET visit_count = 99, last_visit_at = NULL WHERE id = ?', [$driftLead]);
+$repaired = \App\Models\LoanAccount::rebuildVisitCounters();
+check('the drifted row was repaired', $repaired >= 1, (string) $repaired);
+
+$fixed = $db->first('SELECT visit_count, last_visit_at FROM loan_accounts WHERE id = ?', [$driftLead]);
+$trueCount = (int) $db->scalar('SELECT COUNT(*) FROM visit_reports WHERE loan_account_id = ?', [$driftLead]);
+check('visit_count now matches COUNT(visit_reports)', (int) $fixed['visit_count'] === $trueCount,
+    $fixed['visit_count'] . ' vs ' . $trueCount);
+check('last_visit_at was restored', $fixed['last_visit_at'] !== null);
+
+// Idempotent, and the return value is a real signal: a second run must report zero,
+// otherwise "rows corrected" cannot be used to detect writes outside VisitService.
+$secondRun = \App\Models\LoanAccount::rebuildVisitCounters();
+check('a second run corrects nothing', $secondRun === 0, (string) $secondRun);
+
+check('no lead is left with a wrong visit_count', (int) $db->scalar(
+    'SELECT COUNT(*) FROM loan_accounts la
+      WHERE la.visit_count <> (SELECT COUNT(*) FROM visit_reports vr WHERE vr.loan_account_id = la.id)'
+) === 0);
+
+// ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";
 printf("  INTEGRATION: %d passed, %d failed\n", $passed, $failed);
 if ($failures !== []) {
