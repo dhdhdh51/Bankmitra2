@@ -190,6 +190,53 @@ class LocationTrackingTest {
         assertTrue("withdrawal must mention the effect on reports", confirm.contains("Visit reports"))
     }
 
+    // -----------------------------------------------------------------------
+    // The agent can find it, and what they are shown is true
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `the consent screen is reachable from the app`() {
+        // A consent screen nothing opens is not a consent mechanism: recording could
+        // never be switched on, and more to the point could never be switched off.
+        val reachable = File("src/main/java/com/lrms/recovery")
+            .walkTopDown()
+            .filter { it.extension == "kt" && !it.path.contains("/ui/location/") }
+            .any { it.readText().contains("LocationConsentActivity") }
+        assertTrue("no screen in the app opens LocationConsentActivity", reachable)
+    }
+
+    @Test
+    fun `duty state is read from the service rather than assumed`() {
+        // Both screens used to draw "off duty" from a hardcoded false. Reopening
+        // either one mid-session then offered "Start duty session" while the ongoing
+        // notification said recording was already on.
+        assertTrue(
+            "the service must expose whether it is recording",
+            code(service).contains("val isRunning"),
+        )
+        assertTrue(
+            "the flag must be cleared in onDestroy, which every exit path reaches",
+            Regex("""onDestroy\(\)(.|\n)*?active = false""").containsMatchIn(code(service)),
+        )
+
+        for (screen in listOf(
+            "src/main/java/com/lrms/recovery/ui/location/LocationConsentActivity.kt",
+            "src/main/java/com/lrms/recovery/ui/account/AccountFragment.kt",
+        )) {
+            val text = code(File(screen).readText())
+            assertTrue(
+                "$screen must read DutyLocationService.isRunning",
+                text.contains("DutyLocationService.isRunning"),
+            )
+            // Without this, stopping from the notification leaves the screen behind
+            // it still showing a Stop button for a session that already ended.
+            assertTrue(
+                "$screen must refresh duty state in onResume",
+                Regex("""onResume\(\)(.|\n)*?isRunning""").containsMatchIn(text),
+            )
+        }
+    }
+
     @Test
     fun `the notice is available in Hindi as well as English`() {
         val activity = File(

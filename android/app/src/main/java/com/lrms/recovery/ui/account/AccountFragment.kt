@@ -14,6 +14,8 @@ import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.databinding.FragmentAccountBinding
 import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.ui.BaseFragment
+import com.lrms.recovery.location.DutyLocationService
+import com.lrms.recovery.ui.location.LocationConsentActivity
 import com.lrms.recovery.ui.login.ChangePasswordActivity
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
@@ -61,6 +63,13 @@ class AccountFragment : BaseFragment() {
             AppCompatDelegate.setDefaultNightMode(mode)
         }
 
+        // The only route to the location notice. It sits in Settings permanently
+        // rather than appearing as a one-time prompt, because "you can withdraw at
+        // any time" is only true if there is somewhere to go and do it.
+        binding.rowLocation.setOnClickListener {
+            startActivity(LocationConsentActivity.intent(requireContext()))
+        }
+
         binding.buttonSignOut.setOnClickListener { confirmSignOut() }
 
         binding.textVersion.text = getString(
@@ -72,6 +81,20 @@ class AccountFragment : BaseFragment() {
         binding.swipeRefresh.setOnRefreshListener { loadStats() }
 
         loadStats()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-read on every return: a session can be stopped from the notification or
+        // from the consent screen, and a stale "recording" line here would be the one
+        // place in the app that lies about it.
+        _binding?.textLocationState?.setText(
+            if (DutyLocationService.isRunning) {
+                R.string.location_on_duty
+            } else {
+                R.string.location_off_duty
+            },
+        )
     }
 
     private fun bindUser() {

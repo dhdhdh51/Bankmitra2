@@ -73,13 +73,25 @@ class LocationConsentActivity : BaseActivity() {
         load()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // The Stop action in the notification can end a session while this screen is
+        // in the background. Re-read the state on the way back rather than trusting
+        // whatever was drawn before, or the screen offers to stop something that
+        // already stopped.
+        notice?.let { render(it, onDuty = DutyLocationService.isRunning) }
+    }
+
     private fun load() {
         binding.progress.visibility = View.VISIBLE
         lifecycleScope.launch {
             when (val result = repository.locationNotice()) {
                 is ApiResult.Success -> {
                     notice = result.data
-                    render(result.data, onDuty = false)
+                    // Not `false`. Reopening this screen mid-session must not show
+                    // "Off duty" and a Start button while the notification says
+                    // recording is on.
+                    render(result.data, onDuty = DutyLocationService.isRunning)
                 }
                 else -> handleFailure(result, binding.root)
             }

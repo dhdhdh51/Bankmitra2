@@ -368,12 +368,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Integration | `sh tools/integration-test.sh` | **484** — includes the customer sheet PDF, warning escalation and the tracking consent gate |
 | Cron jobs | `sh tools/verify-cron.sh` | **50** — backup restores; reminders, warnings, SSS and the location purge are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **192** API |
-| Android | `sh tools/verify-android.sh` | **148** unit tests + both APKs + adaptive-icon safe zone |
+| Android | `sh tools/verify-android.sh` | **150** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
-| **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **12** — consent gate, foreground-only, no background permission (a subset of the Android row) |
+| **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
@@ -381,7 +381,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,327 assertions total** — the sum of the bold counts above, counting the two
+**1,329 assertions total** — the sum of the bold counts above, counting the two
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

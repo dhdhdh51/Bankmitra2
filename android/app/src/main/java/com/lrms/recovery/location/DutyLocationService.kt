@@ -92,6 +92,7 @@ class DutyLocationService : Service() {
 
         startAsForeground()
         beginUpdates()
+        active = true
 
         // START_STICKY would have Android silently restart this after the process
         // dies, resuming recording without the agent choosing to. A duty session is
@@ -102,6 +103,9 @@ class DutyLocationService : Service() {
     override fun onBind(intent: Intent): IBinder? = null
 
     override fun onDestroy() {
+        // Cleared first, and unconditionally: every path out of this service ends
+        // here, so nothing can leave the flag reading "recording" after it stopped.
+        active = false
         listener?.let { locationManager?.removeUpdates(it) }
         listener = null
         // Flush whatever is queued; the session is ending and these points are
@@ -286,6 +290,21 @@ class DutyLocationService : Service() {
 
     companion object {
         const val ACTION_STOP = "com.lrms.recovery.location.STOP"
+
+        /**
+         * Whether a duty session is recording right now.
+         *
+         * A plain flag is enough and is not a shortcut: the service lives in this
+         * process, so if the process is gone the service is gone and a fresh flag
+         * reads false - which is the truth. It exists so no screen can offer "Start
+         * duty session" while the ongoing notification says recording is already on.
+         * An agent who sees the app and the notification disagree has no reason to
+         * believe either.
+         */
+        @Volatile
+        private var active = false
+
+        val isRunning: Boolean get() = active
 
         private const val CHANNEL_ID = "duty_location"
         private const val NOTIFICATION_ID = 4201

@@ -261,6 +261,7 @@
         true when location recording was added, so it was replaced rather than
         left to quietly mislead the person reading it.
     -->
+    <string name="account_location">Location and duty session</string>
     <string name="location_notice_short">This app records your location while you are on duty, and when you take a visit photo. Tap to read the full notice.</string>
     <string name="location_notice_title">Location recording notice</string>
     <string name="location_notice_accept">I have read and understood this</string>
