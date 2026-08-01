@@ -341,15 +341,16 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 110 files |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 112 files |
 | Core unit tests | `php tools/selftest-core.php` | **97** |
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
 | Integration | `sh tools/integration-test.sh` | **330** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
-| Panel smoke | `sh tools/smoke-panel.sh` | **134** panel + **162** API |
-| Android | `sh tools/verify-android.sh` | **134** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **162** API |
+| Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
-| Brand previews | `python3 tools/render-brand-preview.py` | renders the real vectors to `docs/previews/` for review |
+| Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
+| Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
@@ -358,7 +359,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,015 assertions total.** Release APK is 2.8 MB after R8; debug APK is 7.8 MB
+**1,021 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -542,6 +543,19 @@ Kept here because they are the reason the tests exist:
     be the same navy as the icon background, and computes WCAG contrast for the
     brand pairs — including an assertion that white on the gold measures about
     2:1, so nobody "tidies" `colorOnSecondary` back to white.
+34. **The logo was the letters "LR" in a coloured box.** Four panel layouts and the
+    app's login screen drew an initial from the old product name as *text*, which is
+    why renaming the product did not reach it — there was no logo to replace, only a
+    `TextView` and a `<span>`. The supplied artwork now ships as the single master in
+    `docs/brand/`, with `prepare-brand-assets.py` deriving the full lockup and a
+    monogram crop from it, so the app and the panel cannot drift apart. `BrandingTest`
+    scans every layout for an initial drawn as text and fails if one comes back.
+35. **The launch screen could be skipped entirely.** The system splash was held until
+    the session check finished, so on a warm start with a cached session the activity
+    behind it — the one carrying the brand — was created and navigated away from
+    within a frame. The system splash is now released as soon as the lockup is drawn,
+    and routing waits out a minimum instead, which is the only reason the artwork is
+    reliably seen at all.
 
 ---
 

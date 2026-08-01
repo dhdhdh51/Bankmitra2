@@ -40,10 +40,11 @@ $bankName = Settings::get('bank_name', '');
 
 <div class="lrms-auth">
     <section class="lrms-auth-brand">
-        <div class="lrms-auth-logo">
-            <span class="mark">LR</span>
-            <span><?= e($appName) ?></span>
-        </div>
+        <img
+            class="lrms-auth-lockup"
+            src="<?= e(asset('img/d2-lockup.webp')) ?>"
+            alt="<?= e($appName) ?>"
+            width="900" height="900">
 
         <div>
             <h1>Loan Recovery<br>Management System</h1>
@@ -67,10 +68,13 @@ $bankName = Settings::get('bank_name', '');
 
     <section class="lrms-auth-form">
         <div class="lrms-auth-box">
-            <div class="lrms-auth-mobile-logo align-items-center gap-2 mb-4">
-                <span class="lrms-brand-mark">LR</span>
-                <span style="font-weight:700"><?= e($appName) ?></span>
-            </div>
+            <!-- The brand panel beside this one is hidden below 900px, so the
+                 lockup is repeated here rather than dropping to an initial. -->
+            <img
+                class="lrms-auth-mobile-lockup"
+                src="<?= e(asset('img/d2-lockup.webp')) ?>"
+                alt="<?= e($appName) ?>"
+                width="900" height="900">
 
             <?= \App\Core\View::partial('partials/flash', ['flash' => $flash ?? []]) ?>
             <?= $content ?>

@@ -23,12 +23,12 @@ import kotlinx.coroutines.launch
  * the account may have been suspended or its password reset since the last use,
  * and an agent should discover that at launch rather than when a submission fails.
  *
- * The branded splash covers that round trip. It is held on screen deliberately
- * (see [MIN_SPLASH_MS]) because the alternative is worse in both directions: let
- * it go immediately and a cached session produces a one-frame flicker of the
- * brand; leave the routing until after it and a slow connection shows a bare
- * window. The layout behind the splash carries the same navy and the same mark,
- * so whichever finishes first the screen never changes appearance.
+ * The brand lockup covers that round trip, and is guaranteed a minimum time on
+ * screen (see [MIN_BRAND_MS]) because a cached session can resolve in under a
+ * frame and would otherwise skip the launch screen entirely. The system splash,
+ * this layout and the window background are all the same navy, so nothing about
+ * the screen changes while the call is in flight - a slow connection looks like
+ * loading rather than a hang.
  */
 class SplashActivity : BaseActivity() {
 
@@ -44,20 +44,18 @@ class SplashActivity : BaseActivity() {
 
         shownAt = SystemClock.elapsedRealtime()
 
-        // Hold the splash until the destination is known, but never past
-        // MAX_SPLASH_MS: an unreachable server must not freeze the launch. When
-        // it is dismissed on the timeout the activity's own layout is already
-        // behind it, showing the same brand plus a spinner.
-        splash.setKeepOnScreenCondition {
-            val elapsed = SystemClock.elapsedRealtime() - shownAt
-            elapsed < MIN_SPLASH_MS || (routing && elapsed < MAX_SPLASH_MS)
-        }
+        // Let the system splash go as soon as this layout is drawn. It can only
+        // show a small centred icon; the layout behind it carries the full brand
+        // lockup on the same navy, so releasing early shows MORE brand, not less.
+        // Holding it instead would keep the monogram on screen and could hide the
+        // lockup entirely when a cached session resolves quickly.
+        splash.setKeepOnScreenCondition { false }
 
         setContentView(R.layout.activity_splash)
 
         if (!session.isLoggedIn) {
-            // No session to verify, so nothing to wait for. Still let the splash
-            // serve its minimum so the app does not appear to blink.
+            // No session to verify, so nothing to wait for. Still show the brand
+            // for its minimum so the app does not appear to blink.
             lifecycleScope.launch {
                 holdForMinimum()
                 routing = false
@@ -104,9 +102,16 @@ class SplashActivity : BaseActivity() {
         }
     }
 
-    /** Keeps a fast path from finishing before the brand has been seen. */
+    /**
+     * Keeps a fast path from finishing before the brand has been seen.
+     *
+     * On a warm start with a cached session the profile call can return in well
+     * under 100 ms, which would flash the lockup for a single frame or skip it
+     * altogether. This is the only thing making the launch screen a launch screen
+     * rather than a stutter.
+     */
     private suspend fun holdForMinimum() {
-        val remaining = MIN_SPLASH_MS - (SystemClock.elapsedRealtime() - shownAt)
+        val remaining = MIN_BRAND_MS - (SystemClock.elapsedRealtime() - shownAt)
         if (remaining > 0) {
             delay(remaining)
         }
@@ -133,11 +138,12 @@ class SplashActivity : BaseActivity() {
     }
 
     private companion object {
-        /** Long enough to register as a launch screen, short enough not to annoy. */
-        const val MIN_SPLASH_MS = 600L
-
-        /** Beyond this the splash gives way to the in-app loading screen. */
-        const val MAX_SPLASH_MS = 2_500L
+        /**
+         * How long the brand lockup is guaranteed to stay on screen. Long enough
+         * to read the wordmark, short enough that an agent opening the app for the
+         * twentieth time that morning is not waiting on decoration.
+         */
+        const val MIN_BRAND_MS = 1_300L
 
         /** When to admit that the network is being slow. */
         const val STATUS_HINT_MS = 2_000L

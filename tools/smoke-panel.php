@@ -155,6 +155,23 @@ page('unknown route returns 404', '/no-such-page', 404);
 $asset = request($base . '/assets/css/app.css');
 check('CSS asset is served', $asset['status'] === 200 && str_contains($asset['body'], '--lrms-primary'));
 
+// The brand artwork is referenced by both layouts, so a missing file would leave
+// a broken image on the sign-in page - the first thing anyone sees.
+foreach (['img/d2-lockup.webp' => 'lockup', 'img/d2-mark.webp' => 'monogram'] as $file => $label) {
+    $image = request($base . '/assets/' . $file);
+    check(
+        "brand $label is served",
+        $image['status'] === 200 && str_starts_with($image['body'], "RIFF"),
+        'HTTP ' . $image['status'] . ', ' . strlen((string) $image['body']) . ' bytes',
+    );
+}
+check('login page shows the brand lockup', str_contains($loginPage, 'd2-lockup.webp'));
+check(
+    'login page no longer shows the old LR monogram',
+    !str_contains($loginPage, '>LR<'),
+    'the "LR" initial is still rendered',
+);
+
 $blocked = request($base . '/config/config.php');
 check('config directory is not readable', $blocked['status'] === 404, 'HTTP ' . $blocked['status']);
 $blockedApp = request($base . '/app/Core/Database.php');

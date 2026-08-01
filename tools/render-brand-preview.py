@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import cairosvg
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 RES = ROOT / "android/app/src/main/res"
@@ -102,45 +103,46 @@ def render_icon(out_dir: Path) -> None:
 
 
 def render_splash(out_dir: Path) -> None:
-    """The launch screen, laid out like activity_splash.xml on a 1080x2280 phone."""
-    body, vw, vh = vector_to_svg_body(RES / "drawable/ic_splash_logo.xml")
+    """
+    The launch screen, laid out like activity_splash.xml on a 1080x2280 phone.
+
+    This composites the real shipped WebP, not a redraw, so what comes out is what
+    the phone shows apart from the system font in the slow-network hint.
+    """
     navy = read_colour("lrms_brand_navy", NAVY)
     gold = read_colour("lrms_brand_gold", GOLD)
 
-    strings = (RES / "values/strings.xml").read_text()
-
-    def string(name: str) -> str:
-        m = re.search(rf'<string name="{name}">([^<]*)</string>', strings)
-        return m.group(1) if m else name
-
-    app_name = string("app_name")
-    tagline = string("splash_tagline")
+    lockup_path = RES / "drawable-nodpi/brand_lockup.webp"
+    if not lockup_path.is_file():
+        raise SystemExit(f"!! missing {lockup_path} - run tools/prepare-brand-assets.py")
 
     # dp -> px at 3x (a 1080x2280 phone is xxhdpi).
     s = 3
     w, h = 360 * s, 760 * s
-    logo = 128 * s
-    lx, ly = (w - logo) / 2, h * 0.34 - logo / 2
 
-    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-  <rect width="{w}" height="{h}" fill="{navy}"/>
-  <svg x="{lx}" y="{ly}" width="{logo}" height="{logo}" viewBox="0 0 {vw} {vh}">
-{body}
-  </svg>
-  <text x="{w / 2}" y="{ly + logo + 34 * s}" fill="#FFFFFF" text-anchor="middle"
-        font-family="DejaVu Sans, sans-serif" font-size="{26 * s}" font-weight="bold"
-        letter-spacing="{3.1 * s}">{app_name}</text>
-  <text x="{w / 2}" y="{ly + logo + 58 * s}" fill="{gold}" text-anchor="middle"
-        font-family="DejaVu Sans, sans-serif" font-size="{13 * s}">{tagline}</text>
-  <g transform="translate({w / 2},{h - 84 * s})">
-    <circle r="{14 * s}" fill="none" stroke="#FFFFFF" stroke-opacity="0.18"
-            stroke-width="{3 * s}"/>
-    <path d="M 0 {-14 * s} A {14 * s} {14 * s} 0 0 1 {14 * s} 0" fill="none"
-          stroke="{gold}" stroke-width="{3 * s}" stroke-linecap="round"/>
-  </g>
-</svg>"""
+    canvas = Image.new("RGB", (w, h), navy)
+    lockup = Image.open(lockup_path).convert("RGB")
+
+    # match_parent minus a 26dp inset each side, capped at 420dp, centred.
+    target_w = min(w - 2 * 26 * s, 420 * s)
+    target_h = round(lockup.size[1] * target_w / lockup.size[0])
+    plate = lockup.resize((target_w, target_h), Image.LANCZOS)
+
+    # Rounded corners, matching ShapeAppearance.LRMS.BrandLarge (22dp).
+    mask = Image.new("L", (target_w, target_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, target_w - 1, target_h - 1], radius=22 * s, fill=255
+    )
+    canvas.paste(plate, ((w - target_w) // 2, (h - target_h) // 2), mask)
+
+    # The gold progress ring near the bottom.
+    draw = ImageDraw.Draw(canvas)
+    cx, cy, r = w // 2, h - 48 * s - 13 * s, 13 * s
+    draw.arc([cx - r, cy - r, cx + r, cy + r], 0, 360, fill="#33FFFFFF"[:7], width=3 * s)
+    draw.arc([cx - r, cy - r, cx + r, cy + r], -90, 20, fill=gold, width=3 * s)
+
     target = out_dir / "splash-screen.png"
-    cairosvg.svg2png(bytestring=svg.encode(), write_to=str(target), output_width=540, output_height=1140)
+    canvas.resize((540, 1140), Image.LANCZOS).save(target)
     print(f"  wrote {target.relative_to(ROOT)}  (540x1140, laid out like activity_splash.xml)")
 
 

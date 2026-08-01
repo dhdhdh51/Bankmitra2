@@ -4,7 +4,6 @@
     <string name="app_full_name">Loan Recovery Management System</string>
 
     <!-- ==================== Launch screen ==================== -->
-    <string name="splash_tagline">Loan Recovery Management</string>
     <string name="splash_still_checking">Checking your session…</string>
 
     <!-- ==================== Login ==================== -->

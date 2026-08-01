@@ -112,6 +112,46 @@ class BrandingTest {
         )
     }
 
+    @Test
+    fun `no screen draws an initial in place of the logo`() {
+        // The login screen had an "LR" tile - the initial of the old product name,
+        // typed into a TextView - sitting next to the app name. An initial is not a
+        // logo, and a rename cannot reach one that is drawn as text.
+        val offenders = (File(res, "layout").listFiles() ?: emptyArray())
+            .filter { it.extension == "xml" }
+            .filter { file ->
+                Regex("""android:text="LR[SM]?"""").containsMatchIn(file.readText())
+            }
+            .map { it.name }
+
+        assertTrue("these layouts draw an initial instead of the logo: $offenders", offenders.isEmpty())
+    }
+
+    @Test
+    fun `the supplied artwork ships and is used where it is meant to be`() {
+        // Generated from docs/brand by tools/prepare-brand-assets.py. The monogram
+        // crop is a panel asset only - the app has room for the full lockup on both
+        // screens that show branding, so a mark drawable here would be unreferenced.
+        assertTrue(
+            "missing drawable-nodpi/brand_lockup.webp - run tools/prepare-brand-assets.py",
+            File(res, "drawable-nodpi/brand_lockup.webp").isFile,
+        )
+
+        val unused = (File(res, "drawable-nodpi").listFiles() ?: emptyArray())
+            .map { it.name }
+            .filter { it.startsWith("brand_") && it != "brand_lockup.webp" }
+        assertTrue("these brand drawables are shipped but never used: $unused", unused.isEmpty())
+
+        assertTrue(
+            "the launch screen must show the full lockup",
+            text("layout/activity_splash.xml").contains("@drawable/brand_lockup"),
+        )
+        assertTrue(
+            "the login screen must show the full lockup",
+            text("layout/activity_login.xml").contains("@drawable/brand_lockup"),
+        )
+    }
+
     // -----------------------------------------------------------------------
     // Palette
     // -----------------------------------------------------------------------

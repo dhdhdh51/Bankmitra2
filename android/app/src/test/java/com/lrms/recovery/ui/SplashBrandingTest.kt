@@ -133,19 +133,28 @@ class SplashBrandingTest {
             source.indexOf("installSplashScreen()") < source.indexOf("super.onCreate"),
         )
         assertTrue(
-            "the splash must cover the session check",
+            "the system splash must be released so the lockup behind it is visible",
             source.contains("setKeepOnScreenCondition"),
         )
+        // Without a floor the launch screen is skipped entirely on a warm start
+        // with a cached session, which is how "the image never appears" happens.
         assertTrue(
-            "an unreachable server must not hold the splash forever",
-            source.contains("MAX_SPLASH_MS"),
+            "the lockup needs a guaranteed minimum time on screen",
+            source.contains("MIN_BRAND_MS"),
+        )
+        assertTrue(
+            "routing must wait for that minimum",
+            source.contains("holdForMinimum()"),
         )
     }
 
     @Test
     fun `the loading layout exists behind the splash`() {
         val layout = text("layout/activity_splash.xml")
-        assertTrue("must show the mark", layout.contains("@drawable/ic_splash_logo"))
+        // The full lockup, not the monogram: the system splash slot can only show
+        // a small centred icon, so this layout is the only place the supplied
+        // artwork can appear at launch.
+        assertTrue("must show the brand lockup", layout.contains("@drawable/brand_lockup"))
         assertTrue("must stay on brand navy", layout.contains("@color/lrms_brand_navy"))
         assertTrue("must show progress", layout.contains("CircularProgressIndicator"))
         assertTrue(

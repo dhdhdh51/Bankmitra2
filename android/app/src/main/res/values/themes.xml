@@ -88,6 +88,18 @@
         <item name="android:navigationBarColor">@color/lrms_ink</item>
     </style>
 
+    <!-- Rounded corners for the brand lockup, so the artwork's own dark edges
+         read as a deliberate card on a light screen rather than a stray photo. -->
+    <style name="ShapeAppearance.LRMS.Brand" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="ShapeAppearance.LRMS.BrandLarge" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">22dp</item>
+    </style>
+
     <!-- ==================== Components ==================== -->
 
     <style name="Widget.LRMS.CardView" parent="Widget.Material3.CardView.Outlined">

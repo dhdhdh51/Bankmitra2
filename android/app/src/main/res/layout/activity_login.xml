@@ -13,39 +13,24 @@
         android:orientation="vertical"
         android:padding="@dimen/screen_padding">
 
-        <!-- Brand block -->
-        <LinearLayout
-            android:layout_width="wrap_content"
+        <!-- Brand lockup. This replaced an "LR" tile next to the app name - a
+             leftover initial from the old product name, drawn in a TextView. -->
+        <com.google.android.material.imageview.ShapeableImageView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="48dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="@color/lrms_primary"
-                android:gravity="center"
-                android:text="LR"
-                android:textColor="@color/white"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="@string/app_name"
-                android:textAppearance="?attr/textAppearanceHeadlineSmall"
-                android:textStyle="bold" />
-        </LinearLayout>
+            android:layout_marginTop="32dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="@string/app_name"
+            android:maxWidth="320dp"
+            android:src="@drawable/brand_lockup"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.LRMS.Brand" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="10dp"
             android:text="@string/app_full_name"
             android:textColor="@color/lrms_muted"
             android:textSize="@dimen/text_caption" />
