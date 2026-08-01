@@ -41,6 +41,7 @@ use App\Models\LoanAccount;
 use App\Models\Promise;
 use App\Models\User;
 use App\Services\ImportService;
+use App\Services\TrackingService;
 use App\Services\VisitService;
 
 // Prefer an existing config.php (written by the smoke script); fall back to env.
@@ -117,6 +118,57 @@ Settings::updateMany([
     'sms_api_key' => 'demo-key',
 ], 1);
 
+/**
+ * A small JPEG that looks vaguely like a photograph, as base64.
+ *
+ * Deliberately a real encoded image rather than a fixed blob: Uploader sniffs the
+ * MIME with finfo and rejects anything that getimagesize() cannot read, so a fake
+ * would be refused and the seed would silently produce visits with no media.
+ */
+function demo_photo_base64(int $seed): string
+{
+    $image = imagecreatetruecolor(640, 480);
+    for ($x = 0; $x < 640; $x += 16) {
+        imagefilledrectangle(
+            $image,
+            $x,
+            0,
+            $x + 15,
+            479,
+            (int) imagecolorallocate($image, ($seed * 7 + $x) % 200, 110 + ($seed % 90), 160 - ($x % 140))
+        );
+    }
+    imagestring($image, 5, 18, 18, 'DEMO PHOTO ' . $seed, (int) imagecolorallocate($image, 255, 255, 255));
+
+    ob_start();
+    imagejpeg($image, null, 82);
+    $bytes = (string) ob_get_clean();
+    imagedestroy($image);
+
+    return base64_encode($bytes);
+}
+
+/** Line art on transparency, like a real captured signature. */
+function demo_signature_base64(): string
+{
+    $image = imagecreatetruecolor(520, 180);
+    imagesavealpha($image, true);
+    imagefill($image, 0, 0, (int) imagecolorallocatealpha($image, 0, 0, 0, 127));
+
+    $ink = (int) imagecolorallocate($image, 12, 12, 24);
+    imagesetthickness($image, 5);
+    imagearc($image, 150, 90, 200, 90, 20, 300, $ink);
+    imagearc($image, 320, 95, 180, 70, 200, 20, $ink);
+    imageline($image, 40, 140, 480, 132, $ink);
+
+    ob_start();
+    imagepng($image);
+    $bytes = (string) ob_get_clean();
+    imagedestroy($image);
+
+    return base64_encode($bytes);
+}
+
 // ---------------------------------------------------------------------------
 // Branches
 // ---------------------------------------------------------------------------
@@ -153,6 +205,14 @@ foreach ([
         'designation' => 'BC/DC Agent', 'role_id' => 3, 'branch_id' => $branchIds[$branchCode],
         'status' => 'active', 'must_change_password' => 0,
     ], 'Agent@123', '982220000' . ($index + 1));
+
+    // Acknowledge the location notice.
+    //
+    // Not decoration: TrackingService gates every stored coordinate on consent, so
+    // without this the seeded visits all record gps_source = 'denied', every
+    // per-photo fix is dropped, and the entire geo-tagging path ships exercised by
+    // nothing at all - which is exactly the state it was in until this line existed.
+    TrackingService::recordConsent($agents[$code], 'Seeded demo device', '127.0.0.1');
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +350,36 @@ foreach ($assigned as $index => $lead) {
         'client_uuid'     => sprintf('%08x-0000-4000-8000-%012x', $index, $index),
         'app_version'     => '1.0.0',
     ];
+
+    // Every third visit carries a geo-stamped photograph and both signatures, so the
+    // printed report, the photo gallery and the approval screen all have something
+    // real to render. Seeded data with no media meant the PDF's image embedding was
+    // exercised by nothing at all.
+    if ($index % 3 === 0) {
+        $payload['gps_source'] = 'device';
+        $payload['gps_latitude'] = (string) round(19.0728 + ($index * 0.0007), 7);
+        $payload['gps_longitude'] = (string) round(72.8826 + ($index * 0.0005), 7);
+        $payload['gps_accuracy_m'] = (string) (8 + ($index % 20));
+        $payload['gps_captured_at'] = $visitDate . ' ' . sprintf('%02d:%02d:00', 9 + ($index % 8), ($index * 7) % 60);
+
+        // A camera photograph gets its own fix; see VisitService::photoPoint().
+        $payload['customer_photo_base64'] = demo_photo_base64($index);
+        $payload['customer_photo_source'] = 'camera';
+        $payload['customer_photo_gps_source'] = 'camera';
+        $payload['customer_photo_latitude'] = $payload['gps_latitude'];
+        $payload['customer_photo_longitude'] = $payload['gps_longitude'];
+        $payload['customer_photo_accuracy_m'] = $payload['gps_accuracy_m'];
+
+        // And a gallery-picked one, which must print as having no location rather
+        // than quietly inheriting the visit's.
+        $payload['house_photo_base64'] = demo_photo_base64($index + 100);
+        $payload['house_photo_source'] = 'gallery';
+
+        $payload['customer_signature_base64'] = demo_signature_base64();
+        $payload['customer_signature_name'] = (string) $lead['customer_name'];
+        $payload['agent_signature_base64'] = demo_signature_base64();
+        $payload['agent_signature_name'] = (string) $agentCtx['name'];
+    }
 
     if ($makesPromise) {
         $payload['customer_met'] = '1';

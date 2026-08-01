@@ -83,8 +83,16 @@ final class MediaController extends Controller
              SELECT la.branch_id
                FROM signatures s JOIN loan_accounts la ON la.id = s.loan_account_id
               WHERE s.file_path = ?
+              UNION
+             SELECT u.branch_id
+               FROM users u
+              WHERE u.photo_path = ? OR u.signature_path = ?
+              UNION
+             SELECT vr.branch_id
+               FROM visit_reports vr
+              WHERE vr.approval_photo_path = ? OR vr.approval_signature_path = ?
               LIMIT 1',
-            [$relative, $relative, $relative]
+            [$relative, $relative, $relative, $relative, $relative, $relative, $relative]
         );
 
         if ($branchId === null) {

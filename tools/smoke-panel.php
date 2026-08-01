@@ -104,6 +104,91 @@ function hasPhpError(string $body): string
 /**
  * Asserts a page renders: expected status, no PHP errors, and the shell present.
  */
+/**
+ * POSTs a form with file parts.
+ *
+ * Separate from request() because that one uses http_build_query, which sends the
+ * filename as a plain string and nothing else - an upload that silently arrives
+ * empty looks identical to one that worked until you go looking for the file.
+ *
+ * @param array<string,string> $fields
+ * @param array<string,string> $files  field name => absolute path on disk
+ * @return array{status:int,body:string}
+ */
+function postMultipart(string $url, array $fields, array $files): array
+{
+    global $cookieJar;
+
+    $payload = $fields;
+    foreach ($files as $field => $path) {
+        $payload[$field] = new CURLFile($path, mime_content_type($path) ?: 'application/octet-stream', basename($path));
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 6,
+        CURLOPT_COOKIEJAR      => $cookieJar,
+        CURLOPT_COOKIEFILE     => $cookieJar,
+        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+    ]);
+
+    $raw = (string) curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    curl_close($ch);
+
+    return ['status' => $status, 'body' => substr($raw, $headerSize)];
+}
+
+/** The value of a text input, so a test can resubmit a form without changing it. */
+function formValue(string $html, string $name): string
+{
+    if (preg_match('/name="' . preg_quote($name, '/') . '"[^>]*value="([^"]*)"/', $html, $m) === 1) {
+        return html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
+    }
+    // Some inputs put value= before name=.
+    if (preg_match('/value="([^"]*)"[^>]*name="' . preg_quote($name, '/') . '"/', $html, $m) === 1) {
+        return html_entity_decode($m[1], ENT_QUOTES, 'UTF-8');
+    }
+
+    return '';
+}
+
+/**
+ * The currently selected option of a <select>, or a hidden input of the same name.
+ *
+ * Needed because a test that hardcodes a branch id silently REASSIGNS the user to
+ * that branch, and the next test to rely on branch scoping then fails somewhere
+ * completely unrelated - which is exactly what happened when this was written.
+ */
+function selectedOption(string $html, string $name): string
+{
+    if (preg_match('/<select[^>]*name="' . preg_quote($name, '/') . '"(.*?)<\/select>/s', $html, $block) === 1) {
+        if (preg_match('/<option[^>]*value="([^"]*)"[^>]*selected/', $block[1], $m) === 1) {
+            return $m[1];
+        }
+    }
+
+    return formValue($html, $name);
+}
+
+/** A small valid PNG on disk, for upload tests. */
+function tempPng(int $w = 40, int $h = 20, array $rgb = [10, 40, 90]): string
+{
+    $image = imagecreatetruecolor($w, $h);
+    imagefill($image, 0, 0, imagecolorallocate($image, ...$rgb));
+    $path = sys_get_temp_dir() . '/lrms_smoke_' . bin2hex(random_bytes(6)) . '.png';
+    imagepng($image, $path);
+    imagedestroy($image);
+
+    return $path;
+}
+
 function page(string $label, string $path, int $expected = 200, ?string $mustContain = null): string
 {
     global $base;
@@ -263,6 +348,56 @@ $visitPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('visit report PDF downloads', $visitPdf['status'] === 200 && str_starts_with($visitPdf['body'], '%PDF'),
     'HTTP ' . $visitPdf['status']);
 
+// The printed report has to SHOW the evidence, not count it. Until images were
+// embeddable this section said "Photos: 3" and stopped there, which is not evidence
+// of anything. Walk the list for a report that actually has media - the seeder gives
+// media to every third visit and its ordering is not a contract.
+preg_match_all('#/visits/(\d+)"#', $visits, $mediaVisitMatches);
+$mediaCandidates = array_slice(array_unique(array_map('intval', $mediaVisitMatches[1] ?? [])), 0, 14);
+
+$pdfWithMedia = null;
+$pdfWithMediaId = null;
+foreach ($mediaCandidates as $candidateId) {
+    $candidate = request($base . '/visits/' . $candidateId . '/pdf');
+    if ($candidate['status'] === 200 && str_contains($candidate['body'], '/Subtype /Image')) {
+        $pdfWithMedia = $candidate['body'];
+        $pdfWithMediaId = $candidateId;
+        break;
+    }
+}
+
+check('a visit report with media was found to print', $pdfWithMedia !== null,
+    'no seeded visit produced a PDF containing an image');
+
+if ($pdfWithMedia !== null) {
+    check('the printed report embeds the images', substr_count($pdfWithMedia, '/Subtype /Image') >= 2,
+        (string) substr_count($pdfWithMedia, '/Subtype /Image'));
+    check('the images are declared in the page resources', str_contains($pdfWithMedia, '/XObject <<'));
+    check('and are actually drawn', str_contains($pdfWithMedia, ' Do'));
+
+    // The sections that only exist because images do.
+    foreach (['Location Recorded', 'Field Photographs', 'Signatures', 'Approval'] as $section) {
+        check("printed report has section: {$section}", str_contains($pdfWithMedia, $section));
+    }
+
+    // A geo caption is the whole point of a geo-tagged photograph: latitude to six
+    // decimal places, so pasting it into a map lands where the agent stood.
+    check('a photograph carries its coordinates',
+        preg_match('/\d{2}\.\d{6}, \d{2}\.\d{6}/', $pdfWithMedia) === 1);
+    // And a gallery pick must say it has none rather than borrowing the visit's fix.
+    check('a gallery photograph is labelled as having no location',
+        str_contains($pdfWithMedia, 'Chosen from the gallery'));
+
+    check('the append-only statement is still printed',
+        str_contains($pdfWithMedia, 'has not been modified')
+        || str_contains($pdfWithMedia, 'every change is retained'));
+
+    $pdfFile = sys_get_temp_dir() . '/lrms_visit_pdf_' . bin2hex(random_bytes(4)) . '.pdf';
+    file_put_contents($pdfFile, $pdfWithMedia);
+    check('the PDF with images is well formed', filesize($pdfFile) > 4000, (string) filesize($pdfFile));
+    @unlink($pdfFile);
+}
+
 // ---------------------------------------------------------------------------
 // The two report-type sections.
 //
@@ -343,6 +478,101 @@ page('GET /branches/{id}/edit', '/branches/1/edit', 200, 'Edit branch');
 page('GET /users', '/users', 200, 'Managers &amp; Agents');
 page('GET /users/create', '/users/create', 200, 'Add user');
 page('GET /users/{id}/edit', '/users/2/edit', 200, 'Edit user');
+
+// ---------------------------------------------------------------------------
+section('Staff photograph and signature');
+
+$userForm = page('GET /users/{id}/edit carries an upload form', '/users/2/edit', 200, 'Photograph');
+check('the user form can actually carry a file',
+    str_contains($userForm, 'enctype="multipart/form-data"'),
+    'without enctype the browser sends only the filename');
+check('both file inputs are present',
+    str_contains($userForm, 'name="photo"') && str_contains($userForm, 'name="signature"'));
+
+$photoFile = tempPng(60, 60, [20, 60, 120]);
+$signatureFile = tempPng(120, 40, [10, 10, 10]);
+
+/**
+ * The user's current field values, so an image test never changes anything else.
+ *
+ * @return array<string,string>
+ */
+$userFields = static function (string $html): array {
+    return [
+        'employee_code' => formValue($html, 'employee_code'),
+        'name'          => formValue($html, 'name'),
+        'role_id'       => selectedOption($html, 'role_id'),
+        'branch_id'     => selectedOption($html, 'branch_id'),
+        'designation'   => formValue($html, 'designation'),
+        'status'        => selectedOption($html, 'status'),
+    ];
+};
+
+$editForm = request($base . '/users/2/edit');
+$base2 = $userFields($editForm['body']);
+check('the edit form exposes the user\'s current branch', $base2['branch_id'] !== '',
+    'a hardcoded branch here would silently reassign the user');
+
+$upload = postMultipart(
+    $base . '/users/2/edit',
+    $base2 + ['_csrf' => csrfToken($editForm['body'])],
+    ['photo' => $photoFile, 'signature' => $signatureFile]
+);
+
+check('POST /users/{id}/edit accepts both images', $upload['status'] === 200
+    && str_contains($upload['body'], 'updated'), 'HTTP ' . $upload['status']);
+
+$afterUpload = request($base . '/users/2/edit');
+check('the stored photograph is rendered back', str_contains($afterUpload['body'], 'Current photograph'));
+check('the stored signature is rendered back', str_contains($afterUpload['body'], 'Current signature'));
+
+// A staff file has no owning row in photos/documents/signatures, so /media would have
+// refused it until the authorisation query learned about users.
+preg_match('#media\?f=(staff[^"&]+)#', $afterUpload['body'], $mediaMatch);
+check('the image URL points at the staff kind', isset($mediaMatch[1]), $mediaMatch[1] ?? 'no staff media url found');
+
+if (isset($mediaMatch[1])) {
+    $served = request($base . '/media?f=' . $mediaMatch[1]);
+    check('a staff image is served through /media', $served['status'] === 200
+        && str_starts_with($served['body'], "\x89PNG"), 'HTTP ' . $served['status']);
+}
+
+// Saving again without touching the file inputs must not wipe the images - absence
+// has to mean "leave it alone", not "clear it".
+$keepForm = request($base . '/users/2/edit');
+$keep = request($base . '/users/2/edit', $userFields($keepForm['body']) + ['_csrf' => csrfToken($keepForm['body'])]);
+check('a save with no file chosen keeps the images', $keep['status'] === 200);
+$stillThere = request($base . '/users/2/edit');
+check('the photograph survived an unrelated save', str_contains($stillThere['body'], 'Current photograph'));
+check('the signature survived an unrelated save', str_contains($stillThere['body'], 'Current signature'));
+
+// And an explicit removal does clear it - only the one asked for.
+$removeForm = request($base . '/users/2/edit');
+$removed = request(
+    $base . '/users/2/edit',
+    $userFields($removeForm['body']) + ['_csrf' => csrfToken($removeForm['body']), 'remove_photo' => '1']
+);
+check('an explicit removal is accepted', $removed['status'] === 200);
+$afterRemove = request($base . '/users/2/edit');
+check('the photograph was removed on request', !str_contains($afterRemove['body'], 'Current photograph'));
+check('but the signature was left alone', str_contains($afterRemove['body'], 'Current signature'));
+
+// A non-image must be refused rather than stored and served later as one.
+$notAnImage = sys_get_temp_dir() . '/lrms_smoke_' . bin2hex(random_bytes(4)) . '.png';
+file_put_contents($notAnImage, "#!/bin/sh\necho not an image\n");
+$rejectForm = request($base . '/users/2/edit');
+$rejected = postMultipart(
+    $base . '/users/2/edit',
+    $userFields($rejectForm['body']) + ['_csrf' => csrfToken($rejectForm['body'])],
+    ['photo' => $notAnImage]
+);
+check('a file that is not an image is refused',
+    str_contains($rejected['body'], 'could not be accepted') || str_contains($rejected['body'], 'invalid-feedback'),
+    'HTTP ' . $rejected['status']);
+
+@unlink($photoFile);
+@unlink($signatureFile);
+@unlink($notAnImage);
 
 $roles = page('GET /roles', '/roles', 200, 'Roles &amp; Permissions');
 check('permission matrix renders', str_contains($roles, 'lrms-check-grid'));

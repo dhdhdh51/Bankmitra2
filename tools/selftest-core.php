@@ -613,6 +613,109 @@ check('pdf wrap splits lines', count(Pdf::wrap(str_repeat('word ', 80), 200.0, 9
 check('pdf text() converts rupee', Pdf::text('₹100') === 'Rs.100', Pdf::text('₹100'));
 
 // ---------------------------------------------------------------------------
+section('PDF image embedding');
+
+// The writer carried no images at all until visit reports had to print the agent's
+// photograph beside their signature, and each field photograph with the coordinates
+// it was taken at. A report that says "Photos: 3" is not evidence of anything.
+$imgDir = sys_get_temp_dir() . '/lrms_pdfimg_' . bin2hex(random_bytes(4));
+@mkdir($imgDir, 0777, true);
+
+// A photograph: large, RGB, baseline JPEG - the common case, and the one that must
+// pass through untouched rather than being re-encoded.
+$photo = imagecreatetruecolor(1600, 1200);
+for ($x = 0; $x < 1600; $x += 8) {
+    imagefilledrectangle($photo, $x, 0, $x + 7, 1199, imagecolorallocate($photo, $x % 255, 120, 200 - ($x % 200)));
+}
+imagejpeg($photo, $imgDir . '/photo.jpg', 90);
+imagedestroy($photo);
+
+// A signature: PNG line art on a TRANSPARENT background. Unflattened, the
+// transparent pixels are zero in an RGB buffer, so the whole thing prints as a solid
+// black rectangle over the signature block.
+$sig = imagecreatetruecolor(600, 200);
+imagesavealpha($sig, true);
+imagefill($sig, 0, 0, imagecolorallocatealpha($sig, 0, 0, 0, 127));
+imagesetthickness($sig, 6);
+imagearc($sig, 300, 100, 400, 120, 20, 300, imagecolorallocate($sig, 5, 5, 5));
+imagepng($sig, $imgDir . '/sign.png');
+imagedestroy($sig);
+
+// A progressive JPEG. Still DCT, but /DCTDecode cannot read it: embedded raw it
+// opens without complaint and renders as a grey box, which is the kind of fault that
+// reaches a printed report before anyone notices.
+$prog = imagecreatetruecolor(400, 300);
+imagefill($prog, 0, 0, imagecolorallocate($prog, 200, 30, 30));
+imageinterlace($prog, true);
+imagejpeg($prog, $imgDir . '/prog.jpg', 85);
+imagedestroy($prog);
+
+$imgPdf = new Pdf('Image embedding', 'photo, signature, progressive', false, 'test');
+$imgPdf->heading('Agent');
+$imgPdf->imageStrip([
+    ['path' => $imgDir . '/photo.jpg', 'label' => 'Photograph', 'caption' => 'Lat 19.072835, Lng 72.882610'],
+    ['path' => $imgDir . '/sign.png',  'label' => 'Signature',  'caption' => 'Ramesh Kumar'],
+], 90.0);
+$imgPdf->heading('Awkward inputs');
+$imgPdf->imageStrip([
+    ['path' => $imgDir . '/prog.jpg',    'label' => 'Progressive'],
+    ['path' => $imgDir . '/missing.jpg', 'label' => 'Missing'],
+    ['path' => $imgDir . '/sign.png',    'label' => 'Repeat'],
+], 90.0);
+$imgBytes = $imgPdf->output();
+
+check('a pdf with images is still a pdf', str_starts_with($imgBytes, '%PDF-'));
+check('three distinct images are embedded', substr_count($imgBytes, '/Subtype /Image') === 3,
+    (string) substr_count($imgBytes, '/Subtype /Image'));
+// Four draw operators for three images: the signature is used twice and must embed
+// once. Without deduplication a report with the same signature on every page grows
+// without bound.
+check('a repeated file is embedded once but drawn twice', substr_count($imgBytes, ' Do') === 4,
+    (string) substr_count($imgBytes, ' Do'));
+check('a baseline photograph passes through as DCTDecode', substr_count($imgBytes, '/DCTDecode') === 2,
+    (string) substr_count($imgBytes, '/DCTDecode'));
+check('line art is carried as FlateDecode', substr_count($imgBytes, '/FlateDecode') === 1,
+    (string) substr_count($imgBytes, '/FlateDecode'));
+check('images are declared in the page resources', str_contains($imgBytes, '/XObject <<'));
+check('a missing file degrades instead of aborting', str_contains($imgBytes, 'image unavailable'));
+
+// The xref has to stay correct now that image objects sit between the fonts and the
+// pages - a wrong offset table is a file that some viewers open and others reject.
+$imgXrefOk = false;
+if (preg_match('#startxref\s+(\d+)#', $imgBytes, $m) === 1) {
+    $imgXrefOk = substr($imgBytes, (int) $m[1], 4) === 'xref';
+}
+check('the xref survives image objects being inserted', $imgXrefOk);
+
+$declared = 0;
+if (preg_match('#/Size (\d+)#', $imgBytes, $m) === 1) {
+    $declared = (int) $m[1];
+}
+check('every object is accounted for in the trailer', $declared >= 5 + 3 + 1 + 1, (string) $declared);
+
+// A progressive source must not still be progressive after embedding: GD strips the
+// interlacing when it re-encodes, so no SOF2 marker may survive inside the streams.
+check('no progressive JPEG survives into the file', !str_contains($imgBytes, "\xFF\xC2"));
+
+check('canEmbed accepts a real image', $imgPdf->canEmbed($imgDir . '/photo.jpg'));
+check('canEmbed rejects a missing file', !$imgPdf->canEmbed($imgDir . '/nope.jpg'));
+
+// A text file with an image extension must be refused, not embedded and then served
+// back later as an image.
+file_put_contents($imgDir . '/fake.png', "#!/bin/sh\necho hello\n");
+check('canEmbed rejects a non-image', !$imgPdf->canEmbed($imgDir . '/fake.png'));
+
+// An empty strip must not draw an empty box or move the cursor.
+$emptyPdf = new Pdf('Empty strip', '', false, '');
+$before = strlen($emptyPdf->output());
+$emptyPdf2 = new Pdf('Empty strip', '', false, '');
+$emptyPdf2->imageStrip([]);
+check('an empty image strip renders nothing', abs(strlen($emptyPdf2->output()) - $before) < 40);
+
+array_map('unlink', glob($imgDir . '/*') ?: []);
+@rmdir($imgDir);
+
+// ---------------------------------------------------------------------------
 section('Validator');
 
 $v = Validator::make(

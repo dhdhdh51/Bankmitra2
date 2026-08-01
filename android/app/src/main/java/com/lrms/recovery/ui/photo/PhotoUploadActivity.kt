@@ -56,6 +56,16 @@ class PhotoUploadActivity : BaseActivity() {
      */
     private val stamps = mutableMapOf<Slot, GeoStamp.Fix>()
 
+    /**
+     * Where each filled slot's image came from: "camera" or "gallery".
+     *
+     * Reported separately from the coordinates, and never inferred from them. A camera
+     * photograph taken indoors has no fix, so treating "no coordinates" as "gallery"
+     * would label an honest doorstep photograph as something picked off the phone -
+     * which on a recovery file is an accusation.
+     */
+    private val sources = mutableMapOf<Slot, String>()
+
     private enum class Slot { CUSTOMER, HOUSE, AADHAAR, OTHER }
 
     // ---- Launchers ---------------------------------------------------------
@@ -81,6 +91,7 @@ class PhotoUploadActivity : BaseActivity() {
         } else {
             stamps[slot] = stamp
         }
+        sources[slot] = SOURCE_CAMERA
 
         assign(slot, FileStore.compressInPlace(file))
     }
@@ -100,6 +111,7 @@ class PhotoUploadActivity : BaseActivity() {
         // drop the coordinates the camera photo had, or the report would attribute a
         // position to an image that never had one.
         stamps.remove(pendingSlot)
+        sources[pendingSlot] = SOURCE_GALLERY
 
         assign(pendingSlot, imported)
     }
@@ -226,6 +238,7 @@ class PhotoUploadActivity : BaseActivity() {
 
     private fun remove(slot: Slot) {
         stamps.remove(slot)
+        sources.remove(slot)
 
         when (slot) {
             Slot.CUSTOMER -> { customerPhoto?.delete(); customerPhoto = null }
@@ -269,6 +282,13 @@ class PhotoUploadActivity : BaseActivity() {
         sizeLabel.text = FileStore.humanSize(file.length())
     }
 
+    private fun sourceResultKey(slot: Slot): String = when (slot) {
+        Slot.CUSTOMER -> RESULT_CUSTOMER_SOURCE
+        Slot.HOUSE -> RESULT_HOUSE_SOURCE
+        Slot.AADHAAR -> RESULT_AADHAAR_SOURCE
+        Slot.OTHER -> "result_other_source"
+    }
+
     private fun gpsResultKey(slot: Slot): String = when (slot) {
         Slot.CUSTOMER -> RESULT_CUSTOMER_GPS
         Slot.HOUSE -> RESULT_HOUSE_GPS
@@ -301,6 +321,9 @@ class PhotoUploadActivity : BaseActivity() {
                 )
                 // "lat,lng,accuracyOrBlank" per stamped slot. Only slots the camera
                 // filled appear here.
+                sources.forEach { (slot, source) ->
+                    putExtra(sourceResultKey(slot), source)
+                }
                 stamps.forEach { (slot, fix) ->
                     putExtra(
                         gpsResultKey(slot),
@@ -326,6 +349,13 @@ class PhotoUploadActivity : BaseActivity() {
         const val RESULT_HOUSE_PHOTO = "result_house_photo"
         const val RESULT_AADHAAR_PHOTO = "result_aadhaar_photo"
         const val RESULT_OTHER_DOCS = "result_other_docs"
+
+        const val SOURCE_CAMERA = "camera"
+        const val SOURCE_GALLERY = "gallery"
+
+        const val RESULT_CUSTOMER_SOURCE = "result_customer_source"
+        const val RESULT_HOUSE_SOURCE = "result_house_source"
+        const val RESULT_AADHAAR_SOURCE = "result_aadhaar_source"
 
         const val RESULT_CUSTOMER_GPS = "result_customer_gps"
         const val RESULT_HOUSE_GPS = "result_house_gps"

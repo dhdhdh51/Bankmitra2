@@ -47,6 +47,16 @@ final class Pdf
     /** @var list<array{label:string,width:float,align:string}> */
     private array $columns = [];
 
+    /**
+     * Embedded images, keyed by the name used in the content stream (Im1, Im2...).
+     *
+     * @var array<string,array{data:string,width:int,height:int,filter:string,colorspace:string}>
+     */
+    private array $images = [];
+
+    /** Absolute path (plus mtime) to image name, so the same file embeds once. */
+    private array $imageKeys = [];
+
     public function __construct(
         string $title,
         string $subtitle = '',
@@ -248,6 +258,357 @@ final class Pdf
         }
 
         $this->y -= 4.0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Images
+    // -----------------------------------------------------------------------
+
+    /**
+     * Lays out images side by side, each with an optional label and caption.
+     *
+     * Used for the two things a printed visit report has to show rather than
+     * describe: the agent's photograph next to their signature, and each field
+     * photograph with the coordinates it was taken at. A report that merely says
+     * "Photos: 3" is not evidence of anything.
+     *
+     * An image that cannot be read is skipped and its cell shows why, rather than
+     * aborting the whole report. A missing file is a housekeeping problem; a print
+     * button that returns a 500 is a different and worse one.
+     *
+     * @param list<array{path:string,label?:string,caption?:string}> $items
+     */
+    public function imageStrip(array $items, float $maxHeight = 96.0, float $gap = 12.0): void
+    {
+        $items = array_values(array_filter($items, static fn (array $i): bool => ($i['path'] ?? '') !== ''));
+        if ($items === []) {
+            return;
+        }
+
+        $count = count($items);
+        $cellWidth = ($this->contentWidth() - ($gap * ($count - 1))) / $count;
+
+        // Measure first so the whole strip moves to the next page together. A
+        // caption orphaned under a blank space is worse than a page break.
+        $labelSpace = 0.0;
+        $captionLines = 0;
+        foreach ($items as $item) {
+            if (($item['label'] ?? '') !== '') {
+                $labelSpace = 12.0;
+            }
+            if (($item['caption'] ?? '') !== '') {
+                $captionLines = max($captionLines, count(self::wrap(self::text($item['caption']), $cellWidth, 7.2, false)));
+            }
+        }
+        $captionSpace = $captionLines * 8.6;
+
+        $this->ensureSpace($labelSpace + $maxHeight + $captionSpace + 10.0);
+
+        $top = $this->y;
+        $x = $this->marginX;
+
+        foreach ($items as $item) {
+            $cellTop = $top;
+
+            if (($item['label'] ?? '') !== '') {
+                $this->textAt(self::text($item['label']), $x, $cellTop - 8.0, 7.6, true, '#4b5563');
+                $cellTop -= $labelSpace;
+            }
+
+            $image = $this->registerImage((string) $item['path']);
+
+            if ($image === null) {
+                $this->rect($x, $cellTop - $maxHeight, $cellWidth, $maxHeight, '#e2e5ea', false);
+                $this->textAt(
+                    'image unavailable',
+                    $x,
+                    $cellTop - ($maxHeight / 2),
+                    7.4,
+                    false,
+                    '#9aa1ab',
+                    $cellWidth,
+                    'center'
+                );
+            } else {
+                // Fit inside the cell without distorting: a stretched signature is a
+                // different signature.
+                $scale = min($cellWidth / $image['width'], $maxHeight / $image['height'], 1.0);
+                $drawWidth = $image['width'] * $scale;
+                $drawHeight = $image['height'] * $scale;
+
+                // Scaling up a small image is worse than leaving it small, so scale is
+                // capped at 1 and the result is centred in its cell.
+                $offsetX = $x + (($cellWidth - $drawWidth) / 2);
+                $bottom = $cellTop - $drawHeight;
+
+                $this->rect($x, $cellTop - $maxHeight, $cellWidth, $maxHeight, '#eef0f3', false);
+                $this->drawImage($image['name'], $offsetX, $bottom, $drawWidth, $drawHeight);
+            }
+
+            if (($item['caption'] ?? '') !== '') {
+                $lineY = $cellTop - $maxHeight - 9.0;
+                foreach (self::wrap(self::text($item['caption']), $cellWidth, 7.2, false) as $line) {
+                    $this->textAt($line, $x, $lineY, 7.2, false, '#6b7280');
+                    $lineY -= 8.6;
+                }
+            }
+
+            $x += $cellWidth + $gap;
+        }
+
+        $this->y = $top - $labelSpace - $maxHeight - $captionSpace - 10.0;
+    }
+
+    /** True when at least one of these paths can actually be embedded. */
+    public function canEmbed(string $path): bool
+    {
+        return $this->registerImage($path) !== null;
+    }
+
+    /**
+     * Decodes an image once and returns the name to reference it by.
+     *
+     * @return array{name:string,width:int,height:int}|null
+     */
+    private function registerImage(string $path): ?array
+    {
+        $key = $path . '|' . (string) @filemtime($path);
+
+        if (isset($this->imageKeys[$key])) {
+            $name = $this->imageKeys[$key];
+
+            return [
+                'name'   => $name,
+                'width'  => $this->images[$name]['width'],
+                'height' => $this->images[$name]['height'],
+            ];
+        }
+
+        $decoded = self::decodeImage($path);
+        if ($decoded === null) {
+            return null;
+        }
+
+        $name = 'Im' . (count($this->images) + 1);
+        $this->images[$name] = $decoded;
+        $this->imageKeys[$key] = $name;
+
+        return ['name' => $name, 'width' => $decoded['width'], 'height' => $decoded['height']];
+    }
+
+    /**
+     * Emits the operators that place a registered image.
+     *
+     * The cm matrix is the image's size and position in one step; PDF draws every
+     * image into a 1x1 unit square, so the width and height ARE the scale.
+     */
+    private function drawImage(string $name, float $x, float $y, float $width, float $height): void
+    {
+        $this->buffer .= sprintf(
+            "q %.2F 0 0 %.2F %.2F %.2F cm /%s Do Q\n",
+            $width,
+            $height,
+            $x,
+            $y,
+            $name
+        );
+    }
+
+    /**
+     * Reads an image file into something a PDF can carry.
+     *
+     * Two routes, chosen by what the source is:
+     *
+     *   A baseline JPEG in RGB or greyscale is passed through untouched with
+     *   /DCTDecode. PDF speaks JPEG natively, so this costs no quality and no time -
+     *   which matters because field photographs are JPEG and there can be several.
+     *
+     *   Everything else is re-encoded through GD: PNG (signatures), WebP, CMYK JPEG
+     *   and progressive JPEG. Progressive is the subtle one - it is still DCT, but
+     *   /DCTDecode does not support it and viewers render a grey box, so it has to be
+     *   detected rather than assumed safe.
+     *
+     * @return array{data:string,width:int,height:int,filter:string,colorspace:string}|null
+     */
+    private static function decodeImage(string $path): ?array
+    {
+        if ($path === '' || !is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $info = @getimagesize($path);
+        if ($info === false) {
+            return null;
+        }
+
+        $width = (int) $info[0];
+        $height = (int) $info[1];
+        if ($width < 1 || $height < 1) {
+            return null;
+        }
+
+        $type = (int) ($info[2] ?? 0);
+        $channels = (int) ($info['channels'] ?? 3);
+
+        if ($type === IMAGETYPE_JPEG && ($channels === 3 || $channels === 1)) {
+            $raw = @file_get_contents($path);
+
+            if ($raw !== false && $raw !== '' && !self::isProgressiveJpeg($raw)) {
+                return [
+                    'data'       => $raw,
+                    'width'      => $width,
+                    'height'     => $height,
+                    'filter'     => 'DCTDecode',
+                    'colorspace' => $channels === 1 ? 'DeviceGray' : 'DeviceRGB',
+                ];
+            }
+        }
+
+        // Line art keeps its edges through Flate; photographs are better off as JPEG.
+        $lineArt = in_array($type, [IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_BMP], true);
+
+        return self::rasterise($path, $width, $height, $lineArt);
+    }
+
+    /**
+     * Re-encodes anything GD can open.
+     *
+     * Transparency is flattened onto white, which is not cosmetic: a signature is
+     * dark ink on nothing, and "nothing" in an RGB buffer is black - so an
+     * unflattened signature prints as a solid black rectangle.
+     *
+     * @return array{data:string,width:int,height:int,filter:string,colorspace:string}|null
+     */
+    private static function rasterise(string $path, int $width, int $height, bool $lineArt): ?array
+    {
+        if (!function_exists('imagecreatefromstring')) {
+            return null;
+        }
+
+        $blob = @file_get_contents($path);
+        if ($blob === false || $blob === '') {
+            return null;
+        }
+
+        $source = @imagecreatefromstring($blob);
+        if ($source === false) {
+            return null;
+        }
+
+        // A 12 megapixel photograph is 36 MB of raw samples before compression, and a
+        // report can hold several. Downscaling to print resolution first keeps a print
+        // request from exhausting memory - at A4 these are thumbnails on the page.
+        $maxDimension = $lineArt ? 900 : 1200;
+        $targetWidth = $width;
+        $targetHeight = $height;
+
+        if ($width > $maxDimension || $height > $maxDimension) {
+            $scale = $maxDimension / max($width, $height);
+            $targetWidth = max(1, (int) round($width * $scale));
+            $targetHeight = max(1, (int) round($height * $scale));
+        }
+
+        $canvas = @imagecreatetruecolor($targetWidth, $targetHeight);
+        if ($canvas === false) {
+            imagedestroy($source);
+
+            return null;
+        }
+
+        $white = (int) imagecolorallocate($canvas, 255, 255, 255);
+        imagefilledrectangle($canvas, 0, 0, $targetWidth, $targetHeight, $white);
+        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+        imagedestroy($source);
+
+        if (!$lineArt) {
+            // Straight back out as baseline JPEG, which /DCTDecode carries natively -
+            // far cheaper than walking two million pixels in PHP.
+            ob_start();
+            $ok = imagejpeg($canvas, null, 86);
+            $jpeg = (string) ob_get_clean();
+            imagedestroy($canvas);
+
+            if (!$ok || $jpeg === '') {
+                return null;
+            }
+
+            return [
+                'data'       => $jpeg,
+                'width'      => $targetWidth,
+                'height'     => $targetHeight,
+                'filter'     => 'DCTDecode',
+                'colorspace' => 'DeviceRGB',
+            ];
+        }
+
+        $bytes = '';
+        for ($y = 0; $y < $targetHeight; $y++) {
+            $row = '';
+            for ($x = 0; $x < $targetWidth; $x++) {
+                $rgb = (int) imagecolorat($canvas, $x, $y);
+                $row .= chr(($rgb >> 16) & 0xFF) . chr(($rgb >> 8) & 0xFF) . chr($rgb & 0xFF);
+            }
+            $bytes .= $row;
+        }
+        imagedestroy($canvas);
+
+        $compressed = @gzcompress($bytes, 6);
+        if ($compressed === false) {
+            return null;
+        }
+
+        return [
+            'data'       => $compressed,
+            'width'      => $targetWidth,
+            'height'     => $targetHeight,
+            'filter'     => 'FlateDecode',
+            'colorspace' => 'DeviceRGB',
+        ];
+    }
+
+    /**
+     * Whether a JPEG uses progressive encoding.
+     *
+     * /DCTDecode handles baseline (SOF0) and extended sequential (SOF1) only.
+     * A progressive JPEG (SOF2) embeds without complaint and then renders as a grey
+     * rectangle in most viewers, which is the kind of bug that reaches a printed
+     * report before anyone notices.
+     */
+    private static function isProgressiveJpeg(string $raw): bool
+    {
+        $length = strlen($raw);
+        $offset = 2; // skip SOI
+
+        while ($offset + 3 < $length) {
+            if ($raw[$offset] !== "\xFF") {
+                $offset++;
+
+                continue;
+            }
+
+            $marker = ord($raw[$offset + 1]);
+
+            // Standalone markers carry no length.
+            if ($marker === 0xD8 || $marker === 0x01 || ($marker >= 0xD0 && $marker <= 0xD9)) {
+                $offset += 2;
+
+                continue;
+            }
+
+            // SOF2 progressive, and the arithmetic-coded variants PDF also cannot read.
+            if (in_array($marker, [0xC2, 0xC6, 0xCA, 0xCE], true)) {
+                return true;
+            }
+
+            $segmentLength = (ord($raw[$offset + 2]) << 8) | ord($raw[$offset + 3]);
+            if ($segmentLength < 2) {
+                return false;
+            }
+
+            $offset += 2 + $segmentLength;
+        }
+
+        return false;
     }
 
     public function spacer(float $height = 10.0): void
@@ -452,17 +813,32 @@ final class Pdf
         $objects = [];
 
         $pageCount = count($this->pages);
-        $firstPageObject = 4; // 1 catalog, 2 pages, 3 font F1, then F2, then pages
+        $imageNames = array_keys($this->images);
+        $imageCount = count($imageNames);
 
         // Object numbering:
         //   1 Catalog
         //   2 Pages
         //   3 Font Helvetica
         //   4 Font Helvetica-Bold
-        //   5..            Page objects
-        //   5+pageCount..  Content streams
-        $pageObjectStart = 5;
+        //   5..                       Image XObjects
+        //   5+imageCount..            Page objects
+        //   5+imageCount+pageCount..  Content streams
+        $imageObjectStart = 5;
+        $pageObjectStart = $imageObjectStart + $imageCount;
         $contentObjectStart = $pageObjectStart + $pageCount;
+
+        // Every image is listed in every page's resources rather than tracked per
+        // page. It costs a few bytes of dictionary and removes the failure mode where
+        // an image drawn on page three is only declared on page one - which produces a
+        // file that opens fine and shows nothing where the photograph should be.
+        $xobjectEntries = [];
+        foreach ($imageNames as $index => $name) {
+            $xobjectEntries[] = sprintf('/%s %d 0 R', $name, $imageObjectStart + $index);
+        }
+        $xobjectDict = $xobjectEntries === []
+            ? ''
+            : ' /XObject << ' . implode(' ', $xobjectEntries) . ' >>';
 
         $kids = [];
         for ($i = 0; $i < $pageCount; $i++) {
@@ -478,12 +854,28 @@ final class Pdf
         $objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
         $objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
 
+        foreach ($imageNames as $index => $name) {
+            $image = $this->images[$name];
+
+            $objects[$imageObjectStart + $index] = sprintf(
+                "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s "
+                . "/BitsPerComponent 8 /Filter /%s /Length %d >>\nstream\n%s\nendstream",
+                $image['width'],
+                $image['height'],
+                $image['colorspace'],
+                $image['filter'],
+                strlen($image['data']),
+                $image['data']
+            );
+        }
+
         for ($i = 0; $i < $pageCount; $i++) {
             $objects[$pageObjectStart + $i] = sprintf(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2F %.2F] "
-                . "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents %d 0 R >>",
+                . "/Resources << /Font << /F1 3 0 R /F2 4 0 R >>%s >> /Contents %d 0 R >>",
                 $this->pageWidth,
                 $this->pageHeight,
+                $xobjectDict,
                 $contentObjectStart + $i
             );
         }

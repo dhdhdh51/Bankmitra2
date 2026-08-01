@@ -340,6 +340,16 @@ check('the notice has Hindi text', str_contains((string) ($notice['json']['data'
 check('the notice states the retention period', (int) ($notice['json']['data']['retention_days'] ?? 0) > 0);
 $noticeVersion = (string) ($notice['json']['data']['version'] ?? '');
 
+// The seed acknowledges the notice for every agent, because TrackingService gates
+// every stored coordinate on consent and without it the seeded visits carry no
+// location at all. So withdraw first: this test is about the 412 gate, and a test
+// that only passes when it happens to run against a fresh database is not a test.
+$withdrawFirst = api('POST', '/tracking/consent/withdraw', null, $agentToken);
+check('consent can be withdrawn to reach the un-consented state',
+    $withdrawFirst['status'] === 200, 'HTTP ' . $withdrawFirst['status']);
+check('the notice reports the withdrawal',
+    (api('GET', '/tracking/notice', null, $agentToken)['json']['data']['acknowledged'] ?? true) === false);
+
 // Before consent, posting a point must be refused with 412 and a clear flag.
 $before = api('POST', '/tracking/location', ['points' => [['latitude' => 26.9124, 'longitude' => 75.7873]]], $agentToken);
 check('location is refused before consent', $before['status'] === 412, 'HTTP ' . $before['status']);

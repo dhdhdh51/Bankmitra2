@@ -8,16 +8,28 @@ use App\Core\Auth;
 use App\Core\Pdf;
 use App\Core\Request;
 use App\Core\Response;
+use App\Core\Uploader;
 use App\Models\Branch;
 use App\Models\LoanAccount;
 use App\Models\User;
 use App\Models\VisitReport;
 
 /**
- * Read-only access to submitted field visit reports.
+ * Submitted field visit reports: viewing, printing, approval and correction.
  *
- * There is deliberately no create/update/delete here: reports are filed from the
- * Android app and are append-only, so the panel can view and print them only.
+ * This used to be read-only, on the grounds that reports are append-only. The
+ * append-only rule still holds and is worth stating precisely, because it now needs
+ * to coexist with an approve-and-correct workflow:
+ *
+ *   Nothing is ever deleted, and nothing changes without leaving the previous value
+ *   behind. An approval adds to the row. A correction updates the row AND writes what
+ *   it changed to visit_report_revisions with the before and after, so the submitted
+ *   original is always reconstructible and the printed report says how many times it
+ *   was corrected.
+ *
+ * Refusing corrections outright was the alternative, and it does not work: a
+ * misheard name or a transposed digit still has to be fixed, and forbidding it here
+ * just moves the fix into a phone call where nothing is recorded at all.
  */
 final class VisitController extends Controller
 {
@@ -165,26 +177,169 @@ final class VisitController extends Controller
         $pdf->heading('Remarks');
         $pdf->paragraph(($report['remarks'] ?? '') === '' ? 'No remarks recorded.' : (string) $report['remarks'], 9.0, '#1c2128');
 
-        // Attachment inventory. Images are not embedded: the PDF writer uses core
-        // fonts only and stays dependency-free, so the report references them.
         $signatures = VisitReport::signatures((int) $report['id']);
         $photos = VisitReport::photos((int) $report['id']);
+        $documents = VisitReport::documents((int) $report['id']);
+
+        // ---- Where the report was filed ------------------------------------
+        $pdf->heading('Location Recorded');
+        if ((string) $report['gps_source'] === 'device' && $report['gps_latitude'] !== null) {
+            $pdf->keyValueBlock([
+                'Coordinates' => sprintf('%.6F, %.6F', (float) $report['gps_latitude'], (float) $report['gps_longitude']),
+                'Accuracy'    => $report['gps_accuracy_m'] === null ? 'not reported' : ((int) $report['gps_accuracy_m'] . ' m'),
+                'Captured At' => $report['gps_captured_at'] === null ? '-' : fmt_datetime((string) $report['gps_captured_at']),
+                'Address'     => $report['gps_address'] ?? 'not resolved',
+            ], 2);
+        } else {
+            // "Refused" and "no signal" are different conversations with a
+            // supervisor, so the report says which it was rather than leaving a gap.
+            $pdf->paragraph(
+                (string) $report['gps_source'] === 'denied'
+                    ? 'The agent declined location recording for this report.'
+                    : 'No location fix was available when this report was filed.',
+                9.0,
+                '#1c2128'
+            );
+        }
+
+        // ---- Field photographs, each with the position it was taken at -----
+        if ($photos !== []) {
+            $pdf->heading('Field Photographs');
+
+            // Three to a row: any more and a printed photograph is too small to show
+            // what it was taken to show.
+            foreach (array_chunk($photos, 3) as $chunk) {
+                $pdf->imageStrip(array_map(
+                    fn (array $photo): array => [
+                        'path'    => Uploader::absolutePath((string) $photo['file_path']),
+                        'label'   => ucwords(str_replace('_', ' ', (string) $photo['photo_type'])),
+                        'caption' => $this->photoCaption($photo),
+                    ],
+                    $chunk
+                ), 104.0);
+            }
+        }
+
+        // ---- Signatures, and who signed ------------------------------------
+        $pdf->heading('Signatures');
+
+        $agent = User::find((int) $report['agent_id']);
+        $signatureCells = [];
+
+        $customerSignature = $this->signatureOf($signatures, 'customer');
+        if ($customerSignature !== null) {
+            $signatureCells[] = [
+                'path'    => Uploader::absolutePath((string) $customerSignature['file_path']),
+                'label'   => 'Borrower Signature',
+                'caption' => trim(((string) ($customerSignature['signed_name'] ?? '')) . "\n") !== ''
+                    ? (string) $customerSignature['signed_name']
+                    : (string) $report['customer_name'],
+            ];
+        }
+
+        // The agent's photograph next to their signature. This is the point of
+        // holding both on the user record: a report a borrower signed should show who
+        // was standing there, and a name in a text field does not.
+        if ($agent !== null && ($agent['photo_path'] ?? null) !== null) {
+            $signatureCells[] = [
+                'path'    => Uploader::absolutePath((string) $agent['photo_path']),
+                'label'   => 'BC / DC Agent',
+                'caption' => sprintf(
+                    "%s\n%s",
+                    (string) $report['agent_name'],
+                    (string) ($report['bc_code'] ?? $agent['employee_code'] ?? '')
+                ),
+            ];
+        }
+
+        $agentSignature = $this->signatureOf($signatures, 'agent');
+        if ($agentSignature !== null) {
+            $signatureCells[] = [
+                'path'    => Uploader::absolutePath((string) $agentSignature['file_path']),
+                'label'   => 'Agent Signature',
+                'caption' => (string) ($agentSignature['signed_name'] ?? $report['agent_name']),
+            ];
+        } elseif ($agent !== null && ($agent['signature_path'] ?? null) !== null) {
+            // Falls back to the signature held on the agent's record. An agent who
+            // signed a sheet once should not have to redraw it per report - and the
+            // same mark on every report is what makes two of them comparable.
+            $signatureCells[] = [
+                'path'    => Uploader::absolutePath((string) $agent['signature_path']),
+                'label'   => 'Agent Signature (on file)',
+                'caption' => (string) $report['agent_name'],
+            ];
+        }
+
+        if ($signatureCells === []) {
+            $pdf->paragraph('No signatures were captured for this visit.', 9.0, '#1c2128');
+        } else {
+            $pdf->imageStrip($signatureCells, 84.0);
+        }
+
+        // ---- Approval -------------------------------------------------------
+        $pdf->heading('Approval');
+        $status = (string) ($report['approval_status'] ?? 'pending');
+
+        if ($status === 'pending') {
+            $pdf->paragraph('This report has not yet been reviewed.', 9.0, '#8a5a00');
+        } else {
+            $pdf->keyValueBlock([
+                'Status'      => ucfirst($status),
+                'Approved By' => $report['approver_name'] ?? '-',
+                'Approved At' => $report['approved_at'] === null ? '-' : fmt_datetime((string) $report['approved_at']),
+                'Position'    => $this->approvalPosition($report),
+            ], 2);
+
+            if (($report['approval_remarks'] ?? '') !== '') {
+                $pdf->paragraph('Remarks: ' . (string) $report['approval_remarks'], 8.6, '#1c2128');
+            }
+
+            $approvalCells = [];
+            if (($report['approval_photo_path'] ?? null) !== null) {
+                $approvalCells[] = [
+                    'path'    => Uploader::absolutePath((string) $report['approval_photo_path']),
+                    'label'   => 'Approver Photograph',
+                    'caption' => $this->approvalPosition($report),
+                ];
+            }
+            if (($report['approval_signature_path'] ?? null) !== null) {
+                $approvalCells[] = [
+                    'path'    => Uploader::absolutePath((string) $report['approval_signature_path']),
+                    'label'   => 'Approver Signature',
+                    'caption' => (string) ($report['approver_name'] ?? ''),
+                ];
+            }
+            if ($approvalCells !== []) {
+                $pdf->imageStrip($approvalCells, 84.0);
+            }
+        }
 
         $pdf->heading('Attachments');
         $pdf->keyValueBlock([
-            'Photos'              => (string) count($photos),
-            'Documents'           => (string) count(VisitReport::documents((int) $report['id'])),
-            'Customer Signature'  => $this->hasSignature($signatures, 'customer') ? 'Captured' : 'Not captured',
-            'Agent Signature'     => $this->hasSignature($signatures, 'agent') ? 'Captured' : 'Not captured',
+            'Photos'    => (string) count($photos),
+            'Documents' => (string) count($documents),
         ], 4);
 
         $pdf->spacer(8);
+
+        // Revision history, if there is any. A report that has been corrected must say
+        // so on its face - the alternative is a printed document that looks pristine
+        // while differing from what the agent actually submitted.
+        $revisions = (int) ($report['revision_count'] ?? 0);
+
         $pdf->paragraph(sprintf(
-            'Report #%d submitted from %s%s on %s. This is an append-only record and has not been modified.',
+            'Report #%d submitted from %s%s on %s. %s',
             (int) $report['id'],
             (string) $report['source'],
             $report['app_version'] === null ? '' : ' v' . (string) $report['app_version'],
-            fmt_datetime((string) $report['created_at'])
+            fmt_datetime((string) $report['created_at']),
+            $revisions === 0
+                ? 'The submitted record has not been modified.'
+                : sprintf(
+                    'Corrected %d time(s) after submission; every change is retained with its before and after value. Last change %s.',
+                    $revisions,
+                    $report['updated_at'] === null ? 'unknown' : fmt_datetime((string) $report['updated_at'])
+                )
         ), 8.0);
 
         $this->logExport('Visits', sprintf('Exported visit report #%d to PDF', (int) $report['id']));
@@ -219,6 +374,85 @@ final class VisitController extends Controller
     }
 
     /** @param list<array<string,mixed>> $signatures */
+    /**
+     * The geo caption printed under a field photograph.
+     *
+     * A photograph on a recovery file is only worth something if it says where and
+     * when it was taken. A gallery pick says so explicitly rather than being passed
+     * off as a doorstep photograph - the app never attaches coordinates to one, and a
+     * caption that stayed silent about it would let it be read as though it had.
+     *
+     * @param array<string,mixed> $photo
+     */
+    private function photoCaption(array $photo): string
+    {
+        $source = (string) ($photo['capture_source'] ?? 'unknown');
+
+        $when = ($photo['captured_at'] ?? null) !== null
+            ? fmt_datetime((string) $photo['captured_at'])
+            : null;
+
+        if ($photo['gps_latitude'] === null || $photo['gps_longitude'] === null) {
+            return match ($source) {
+                'gallery' => 'Chosen from the gallery - no location recorded.'
+                    . ($when === null ? '' : ' ' . $when),
+                'camera'  => 'Camera photograph, no location fix.' . ($when === null ? '' : ' ' . $when),
+                default   => $when ?? 'No location recorded.',
+            };
+        }
+
+        return sprintf(
+            '%.6F, %.6F%s%s',
+            (float) $photo['gps_latitude'],
+            (float) $photo['gps_longitude'],
+            $photo['gps_accuracy_m'] === null ? '' : sprintf(' (+/-%d m)', (int) $photo['gps_accuracy_m']),
+            $when === null ? '' : ' - ' . $when
+        );
+    }
+
+    /**
+     * Where the approver was when they approved.
+     *
+     * Printed because "I approved it at the branch" and "I approved forty of them
+     * from home at midnight" are different claims, and only one of them is
+     * verification.
+     *
+     * @param array<string,mixed> $report
+     */
+    private function approvalPosition(array $report): string
+    {
+        if ((string) ($report['approval_gps_source'] ?? '') !== 'device'
+            || ($report['approval_gps_latitude'] ?? null) === null) {
+            return (string) ($report['approval_gps_source'] ?? '') === 'denied'
+                ? 'Location declined by the approver'
+                : 'No location fix at approval';
+        }
+
+        return sprintf(
+            '%.6F, %.6F%s',
+            (float) $report['approval_gps_latitude'],
+            (float) $report['approval_gps_longitude'],
+            ($report['approval_gps_accuracy_m'] ?? null) === null
+                ? ''
+                : sprintf(' (+/-%d m)', (int) $report['approval_gps_accuracy_m'])
+        );
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $signatures
+     * @return array<string,mixed>|null
+     */
+    private function signatureOf(array $signatures, string $type): ?array
+    {
+        foreach ($signatures as $signature) {
+            if ((string) $signature['signature_type'] === $type) {
+                return $signature;
+            }
+        }
+
+        return null;
+    }
+
     private function hasSignature(array $signatures, string $type): bool
     {
         foreach ($signatures as $signature) {

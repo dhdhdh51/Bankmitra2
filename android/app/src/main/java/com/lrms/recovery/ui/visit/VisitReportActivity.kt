@@ -103,6 +103,18 @@ class VisitReportActivity : BaseActivity() {
             data.getStringExtra(key)?.let { form.photoStamps[slot] = it }
         }
 
+        // Rebuilt for the same reason as the stamps: a slot refilled from the gallery
+        // arrives without a camera entry, and a stale one would keep calling it a
+        // doorstep photograph.
+        form.photoSources.clear()
+        mapOf(
+            "customer" to PhotoUploadActivity.RESULT_CUSTOMER_SOURCE,
+            "house" to PhotoUploadActivity.RESULT_HOUSE_SOURCE,
+            "aadhaar" to PhotoUploadActivity.RESULT_AADHAAR_SOURCE,
+        ).forEach { (slot, key) ->
+            data.getStringExtra(key)?.let { form.photoSources[slot] = it }
+        }
+
         renderPhotoState()
     }
 

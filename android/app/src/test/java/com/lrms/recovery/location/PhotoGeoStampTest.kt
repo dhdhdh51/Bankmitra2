@@ -164,6 +164,41 @@ class PhotoGeoStampTest {
     }
 
     @Test
+    fun `the source of every photograph is reported, with or without coordinates`() {
+        val clean = code(photoActivity)
+
+        // Reported separately from the coordinates and never inferred from them. A
+        // camera photograph taken indoors has no fix, and calling that a gallery pick
+        // is an accusation on a recovery file.
+        assertTrue(
+            "a camera capture must be recorded as such",
+            clean.contains("sources[slot] = SOURCE_CAMERA"),
+        )
+        assertTrue(
+            "a gallery pick must be recorded as such",
+            clean.contains("sources[pendingSlot] = SOURCE_GALLERY"),
+        )
+        assertTrue(
+            "removing a photo must drop its source too",
+            Regex("""fun remove\(slot: Slot\)[\s\S]{0,200}sources\.remove\(slot\)""")
+                .containsMatchIn(clean),
+        )
+
+        val formData = code(File("src/main/java/com/lrms/recovery/domain/VisitFormData.kt").readText())
+        assertTrue(
+            "the source must be sent for every attached photograph",
+            formData.contains("_photo_source"),
+        )
+
+        // Rebuilt, not merged: a slot refilled from the gallery arrives with no camera
+        // entry, and a stale one would keep calling it a doorstep photograph.
+        assertTrue(
+            "photo sources must be cleared before being repopulated",
+            code(visitActivity).contains("form.photoSources.clear()"),
+        )
+    }
+
+    @Test
     fun `photo stamps are sent per slot and marked as camera`() {
         val clean = code(formData)
         assertTrue(

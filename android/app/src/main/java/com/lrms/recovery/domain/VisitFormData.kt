@@ -187,6 +187,16 @@ data class VisitFormData(
     /** Slot name (`customer`, `house`, `aadhaar`) to "lat,lng,accuracyOrBlank". */
     var photoStamps: MutableMap<String, String> = mutableMapOf(),
 
+    /**
+     * Slot name to "camera" or "gallery".
+     *
+     * Sent for every attached photograph, independent of whether it has coordinates.
+     * The server stores it as photos.capture_source, which is what lets a printed
+     * report distinguish a doorstep photograph from a gallery pick instead of
+     * labelling every image "unknown".
+     */
+    var photoSources: MutableMap<String, String> = mutableMapOf(),
+
     // ---- Meta --------------------------------------------------------------
     val clientUuid: String = UUID.randomUUID().toString(),
     var appVersion: String = "",
@@ -585,6 +595,12 @@ data class VisitFormData(
             fields["gps_longitude"] = gpsLongitude.toString()
             gpsAccuracyMetres?.let { fields["gps_accuracy_m"] = it.toString() }
             putIfNotBlank(fields, "gps_captured_at", gpsCapturedAt)
+        }
+
+        photoSources.forEach { (slot, source) ->
+            if (source.isNotBlank()) {
+                fields["${slot}_photo_source"] = source
+            }
         }
 
         photoStamps.forEach { (slot, packed) ->
