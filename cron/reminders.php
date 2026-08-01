@@ -27,6 +27,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Core\Database;
 use App\Core\Settings;
+use App\Models\LoanAccount;
 use App\Models\Notification;
 
 $db = Database::instance();
@@ -195,12 +196,24 @@ foreach ($byAgent as $agentId => $leads) {
     $sent['followup']++;
 }
 
+// ---------------------------------------------------------------------------
+// Repair drifted visit counters.
+//
+// Deliberately AFTER the reminders above, not before: if a counter is wrong, the
+// run that discovers it should still have sent whatever the old value implied, so
+// the correction shows up in tomorrow's run rather than changing today's behaviour
+// halfway through. The number is logged because it should always be zero - anything
+// else means something wrote to visit_reports outside VisitService, and the
+// follow-up nudge in this very script reads last_visit_at.
+$repaired = LoanAccount::rebuildVisitCounters();
+
 printf(
-    "[%s] reminders sent - promise: %d, overdue: %d, follow-up: %d\n",
+    "[%s] reminders sent - promise: %d, overdue: %d, follow-up: %d; visit counters repaired: %d\n",
     date('Y-m-d H:i:s'),
     $sent['promise'],
     $sent['overdue'],
-    $sent['followup']
+    $sent['followup'],
+    $repaired
 );
 
 exit(0);

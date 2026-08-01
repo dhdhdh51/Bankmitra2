@@ -21,6 +21,7 @@ use App\Controllers\Api\MediaController;
 use App\Controllers\Api\MetaController;
 use App\Controllers\Api\NotificationController;
 use App\Controllers\Api\ReportController;
+use App\Controllers\Api\SssController;
 use App\Controllers\Api\VisitController;
 use App\Controllers\Api\TrackingController;
 use App\Core\Request;
@@ -71,6 +72,13 @@ return static function (Router $router): void {
     // ---- Promises --------------------------------------------------------
     $router->get($prefix . '/promises', [MetaController::class, 'promises']);
     $router->post($prefix . '/promises/{id}/settle', [MetaController::class, 'settlePromise']);
+
+    // ---- SSS enrolment, filed by the agent -------------------------------
+    // These four scheme figures are measured by the nightly warning check, so an
+    // agent who could not enter them was accruing warnings over a number the app
+    // gave them no way to report.
+    $router->get ($prefix . '/sss', [SssController::class, 'show']);
+    $router->post($prefix . '/sss', [SssController::class, 'store']);
 
     // ---- Location notice, consent and trail -----------------------------
     // The notice and consent endpoints come first deliberately: /tracking/location

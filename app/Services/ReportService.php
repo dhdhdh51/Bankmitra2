@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Services\BcPerformanceService;
 use App\Core\Settings;
 
 /**
@@ -61,6 +62,10 @@ final class ReportService
             'label'       => 'Promise-wise Report',
             'description' => 'Pending, kept and broken promise cases',
         ],
+        'bc-daily' => [
+            'label'       => 'BC Daily Report',
+            'description' => 'Per-agent visits, contacts, PTP and SSS enrolments (APY, PMJJBY, PMSBY, PMJDY) against the day\'s target',
+        ],
     ];
 
     public static function isValidType(string $type): bool
@@ -93,6 +98,7 @@ final class ReportService
             'loan-type' => self::loanTypeWise($filters),
             'agent'     => self::agentWise($filters),
             'promise'   => self::promiseWise($filters),
+            'bc-daily'  => self::bcDaily($filters),
             default     => throw new \InvalidArgumentException('Unknown report type: ' . $type),
         };
     }
@@ -157,6 +163,132 @@ final class ReportService
                 ['label' => 'Agents active',  'value' => (string) count($rows)],
                 ['label' => 'Total visits',   'value' => (string) ($totals['visits'] ?? 0)],
                 ['label' => 'Promises made',  'value' => (string) ($totals['promises'] ?? 0)],
+            ],
+            'landscape' => true,
+        ];
+    }
+
+
+    // =======================================================================
+    // 9. BC DAILY  (visits, contacts, PTP and the four SSS schemes)
+    // =======================================================================
+
+    /**
+     * One row per agent for a single day: what they did, and what they were
+     * supposed to do.
+     *
+     * Built on BcPerformanceService::figures(), which reads source records rather
+     * than the nightly `bc_daily_achievement` cache. That is the whole reason this
+     * report is usable: the cache is written at 23:55, so anything reading it would
+     * show every agent on zero for the entire working day - which reads as "nobody
+     * did anything", not as "come back tomorrow".
+     *
+     * Visits are counted, never entered. There is no field anywhere for an agent to
+     * type how many visits they made; the number is `COUNT(visit_reports)` for that
+     * agent and date, so it cannot be inflated and cannot fall behind. The four
+     * scheme columns are the only figures a human types, and they are entered once
+     * per day per agent under a unique key.
+     *
+     * The target columns come from `bc_targets` for the month, pro-rated the same
+     * way the warning cron pro-rates them, so this report and the warning an agent
+     * receives can never disagree about whether they fell short.
+     *
+     * @param array<string,mixed> $filters
+     */
+    private static function bcDaily(array $filters): array
+    {
+        $date = self::dateOr($filters['date'] ?? null, date('Y-m-d'));
+
+        $branchId = isset($filters['branch_id']) && $filters['branch_id'] !== null
+            ? (int) $filters['branch_id']
+            : null;
+        $agentId = isset($filters['agent_id']) && $filters['agent_id'] !== null
+            ? (int) $filters['agent_id']
+            : null;
+
+        $figures = BcPerformanceService::figures($date, $date, $branchId, $agentId);
+        $isWorkingDay = BcPerformanceService::isWorkingDay($date);
+
+        $rows = [];
+        foreach ($figures as $figure) {
+            $rowAgentId = (int) $figure['agent_id'];
+            $target = BcPerformanceService::targetsFor($rowAgentId, $date);
+
+            // The daily visit target is per working day and is never assessed on a
+            // Sunday, so showing one here would invite a supervisor to ask about a
+            // shortfall the system itself does not count.
+            $visitTarget = $target === null || !$isWorkingDay
+                ? 0
+                : (int) $target['daily_visit_target'];
+
+            $rows[] = [
+                'agent_name'   => (string) $figure['agent_name'],
+                'employee_code' => (string) $figure['employee_code'],
+                'branch_name'  => (string) ($figure['branch_name'] ?? ''),
+                'visits'       => (int) $figure['visits'],
+                'visit_target' => $visitTarget,
+                'contacts'     => (int) $figure['contacts'],
+                'ptp'          => (int) $figure['ptp'],
+                'apy'          => (int) $figure['apy'],
+                'pmjjby'       => (int) $figure['pmjjby'],
+                'pmsby'        => (int) $figure['pmsby'],
+                'pmjdy'        => (int) $figure['pmjdy'],
+                'sss_total'    => (int) $figure['sss_total'],
+                'od2_renewal'  => (int) $figure['od2_renewal'],
+                'npa_recovery' => (float) $figure['npa_recovery'],
+                'reported'     => (int) $figure['report_submitted'] === 1 ? 'Yes' : 'No',
+            ];
+        }
+
+        // Busiest first. An empty row is still shown: "which agent filed nothing
+        // today" is the single most useful thing on this report, and dropping those
+        // rows would hide exactly the people it should surface.
+        usort($rows, static function (array $a, array $b): int {
+            return [$b['visits'], $b['sss_total']] <=> [$a['visits'], $a['sss_total']];
+        });
+
+        $columns = [
+            ['key' => 'agent_name',    'label' => 'Agent',        'type' => 'text',   'width' => 1.5],
+            ['key' => 'employee_code', 'label' => 'Code',         'type' => 'text',   'width' => 0.9],
+            ['key' => 'branch_name',   'label' => 'Branch',       'type' => 'text',   'width' => 1.2],
+            ['key' => 'visits',        'label' => 'Visits',       'type' => 'number', 'width' => 0.7],
+            ['key' => 'visit_target',  'label' => 'Target',       'type' => 'number', 'width' => 0.7],
+            ['key' => 'contacts',      'label' => 'Met',          'type' => 'number', 'width' => 0.6],
+            ['key' => 'ptp',           'label' => 'PTP',          'type' => 'number', 'width' => 0.6],
+            ['key' => 'apy',           'label' => 'APY',          'type' => 'number', 'width' => 0.6],
+            ['key' => 'pmjjby',        'label' => 'PMJJBY',       'type' => 'number', 'width' => 0.8],
+            ['key' => 'pmsby',         'label' => 'PMSBY',        'type' => 'number', 'width' => 0.8],
+            ['key' => 'pmjdy',         'label' => 'PMJDY',        'type' => 'number', 'width' => 0.8],
+            ['key' => 'sss_total',     'label' => 'SSS Total',    'type' => 'number', 'width' => 0.9],
+            ['key' => 'od2_renewal',   'label' => 'OD-2',         'type' => 'number', 'width' => 0.6],
+            ['key' => 'npa_recovery',  'label' => 'Recovery',     'type' => 'money',  'width' => 1.2],
+            ['key' => 'reported',      'label' => 'Reported',     'type' => 'text',   'width' => 0.8],
+        ];
+
+        $rows = self::castRows($rows, $columns);
+        $totals = self::sumTotals($rows, $columns, 'agent_name', 'TOTAL');
+
+        $silent = 0;
+        foreach ($rows as $row) {
+            if ((string) $row['reported'] === 'No') {
+                $silent++;
+            }
+        }
+
+        return [
+            'type'     => 'bc-daily',
+            'title'    => 'BC Daily Report',
+            'subtitle' => self::subtitle($filters, 'For ' . self::humanDate($date)),
+            'columns'  => $columns,
+            'rows'     => $rows,
+            'totals'   => $totals,
+            'summary'  => [
+                ['label' => 'Date',            'value' => self::humanDate($date)
+                    . ($isWorkingDay ? '' : ' (Sunday - not assessed)')],
+                ['label' => 'Agents',          'value' => (string) count($rows)],
+                ['label' => 'Total visits',    'value' => (string) ($totals['visits'] ?? 0)],
+                ['label' => 'SSS enrolments',  'value' => (string) ($totals['sss_total'] ?? 0)],
+                ['label' => 'Filed nothing',   'value' => (string) $silent],
             ],
             'landscape' => true,
         ];
