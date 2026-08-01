@@ -386,6 +386,21 @@ CREATE TABLE `visit_reports` (
   `family_member_name`         VARCHAR(150) DEFAULT NULL,
   `family_member_relationship` VARCHAR(80)  DEFAULT NULL,
 
+  -- ---- Where the visit happened --------------------------------------------
+  -- Captured on the device at the moment the agent's photo is taken, not when the
+  -- form is submitted: submission can happen hours later from a different place,
+  -- and a coordinate recorded then would be a lie told precisely.
+  --
+  -- Nullable because a visit recorded before this module existed has no fix, and
+  -- because a genuine GPS failure inside a building must not cost the agent the
+  -- whole report. gps_source records which of those it was.
+  `gps_latitude`      DECIMAL(10,7) DEFAULT NULL,
+  `gps_longitude`     DECIMAL(10,7) DEFAULT NULL,
+  `gps_accuracy_m`    SMALLINT UNSIGNED DEFAULT NULL,
+  `gps_captured_at`   DATETIME      DEFAULT NULL,
+  `gps_address`       VARCHAR(400)  DEFAULT NULL COMMENT 'reverse-geocoded, best effort',
+  `gps_source`        ENUM('device','unavailable','denied') DEFAULT NULL,
+
   -- ---- Physical verification ---------------------------------------------
   `borrower_alive` TINYINT(1) NOT NULL DEFAULT 1,
   `same_address`   TINYINT(1) NOT NULL DEFAULT 1,
@@ -694,6 +709,17 @@ CREATE TABLE `photos` (
   `width`           SMALLINT UNSIGNED DEFAULT NULL,
   `height`          SMALLINT UNSIGNED DEFAULT NULL,
   `uploaded_by`     INT UNSIGNED NOT NULL,
+
+  -- Fix taken at the moment of capture. capture_source = 'camera' is what makes a
+  -- coordinate mean anything: a gallery image could have been taken anywhere, on
+  -- any day, by anyone, so the app blocks the picker for visit photos and the
+  -- server records which path a file arrived by.
+  `gps_latitude`    DECIMAL(10,7) DEFAULT NULL,
+  `gps_longitude`   DECIMAL(10,7) DEFAULT NULL,
+  `gps_accuracy_m`  SMALLINT UNSIGNED DEFAULT NULL,
+  `captured_at`     DATETIME     DEFAULT NULL COMMENT 'device clock at capture',
+  `capture_source`  ENUM('camera','gallery','unknown') NOT NULL DEFAULT 'unknown',
+
   `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_photos_visit` (`visit_report_id`),
@@ -798,7 +824,13 @@ CREATE TABLE `audit_logs` (
   `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`     INT UNSIGNED DEFAULT NULL,
   `user_name`   VARCHAR(150) DEFAULT NULL COMMENT 'snapshot',
-  `action`      ENUM('create','update','delete','import','assign','reassign','transfer','restore','backup','login_reset') NOT NULL,
+  -- Extend this list rather than reusing a near-enough value. Logger::audit()
+  -- deliberately swallows its own failures so a logging problem cannot break the
+  -- action being logged - which means an action name missing from this ENUM does
+  -- not raise anything, it just silently never records. The customer-sheet export
+  -- was audited that way for a while: the code called it, the row never appeared.
+  `action`      ENUM('create','update','delete','import','assign','reassign','transfer',
+                     'restore','backup','login_reset','export','consent','view_location','purge') NOT NULL,
   `entity_type` VARCHAR(60)  NOT NULL COMMENT 'e.g. loan_account, user, branch',
   `entity_id`   VARCHAR(60)  DEFAULT NULL,
   `old_values`  JSON         DEFAULT NULL,
@@ -858,7 +890,69 @@ CREATE TABLE `settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- 14. BC PERFORMANCE: targets, daily achievement, warnings, SSS enrolment
+-- 14. LOCATION CAPTURE AND STAFF TRACKING
+--
+-- This system tracks where its agents are. That was a deliberate decision taken
+-- by the operator, reversing an earlier design that captured no location at all,
+-- and it carries obligations that are implemented here rather than left to
+-- policy:
+--
+--   * An agent cannot be tracked until they have been shown a written notice and
+--     acknowledged it. `tracking_consents` records which version of the notice,
+--     when, and from which device. The API refuses location writes without it, so
+--     the obligation is enforced by the schema and the code rather than by a
+--     promise in a handbook.
+--   * Location is retained for a bounded period and then purged
+--     (cron/purge-location-logs.php). An unbounded trail of somebody's movements
+--     is a liability, not an asset.
+--   * Reading another person's location trail is audited like any other PII
+--     access, because that is what it is.
+--
+-- The agent-facing app states plainly that location is recorded while on duty.
+-- Any change here has to keep that statement true.
+-- ============================================================================
+
+-- The notice text is versioned so that a change forces a fresh acknowledgement
+-- rather than silently applying old consent to new collection.
+DROP TABLE IF EXISTS `tracking_consents`;
+CREATE TABLE `tracking_consents` (
+  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`         INT UNSIGNED NOT NULL,
+  `notice_version`  VARCHAR(20)  NOT NULL COMMENT 'e.g. 2026-08-01; bump to force re-consent',
+  `acknowledged_at` DATETIME     NOT NULL,
+  `device_info`     VARCHAR(255) DEFAULT NULL,
+  `ip_address`      VARCHAR(45)  DEFAULT NULL,
+  `withdrawn_at`    DATETIME     DEFAULT NULL COMMENT 'set when an agent revokes; stops collection',
+  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tracking_consent` (`user_id`, `notice_version`),
+  KEY `idx_tracking_consent_user` (`user_id`, `withdrawn_at`),
+  CONSTRAINT `fk_tracking_consent_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Continuous location trail while an agent is on duty.
+--
+-- Deliberately NOT indexed for open-ended history queries: the only supported
+-- reads are "this agent, this day" and the purge. Making a year of somebody's
+-- movements cheap to scan is a design choice, and not one worth making.
+DROP TABLE IF EXISTS `bc_location_logs`;
+CREATE TABLE `bc_location_logs` (
+  `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `agent_id`     INT UNSIGNED NOT NULL,
+  `latitude`     DECIMAL(10,7) NOT NULL,
+  `longitude`    DECIMAL(10,7) NOT NULL,
+  `accuracy_m`   SMALLINT UNSIGNED DEFAULT NULL COMMENT 'reported accuracy radius in metres',
+  `logged_at`    DATETIME     NOT NULL COMMENT 'device clock at the fix',
+  `received_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'server clock; the trustworthy one',
+  `on_duty`      TINYINT(1)   NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `idx_location_agent_day` (`agent_id`, `logged_at`),
+  KEY `idx_location_purge` (`logged_at`),
+  CONSTRAINT `fk_location_agent` FOREIGN KEY (`agent_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 15. BC PERFORMANCE: targets, daily achievement, warnings, SSS enrolment
 --
 -- The four tables below are the only genuinely new storage this module needs.
 -- Everything else the module specification asked for already exists and is
