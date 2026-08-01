@@ -341,10 +341,10 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 112 files |
-| Core unit tests | `php tools/selftest-core.php` | **97** |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 113 files |
+| Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
 | Schema | `sh tools/verify-schema.sh` | **24** — 23 tables, 43 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **330** |
+| Integration | `sh tools/integration-test.sh` | **383** |
 | Cron jobs | `sh tools/verify-cron.sh` | **20** — backup restores, reminders are idempotent |
 | Panel smoke | `sh tools/smoke-panel.sh` | **138** panel + **162** API |
 | Android | `sh tools/verify-android.sh` | **136** unit tests + both APKs + adaptive-icon safe zone |
@@ -359,7 +359,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,021 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
+**1,154 assertions total.** Release APK is 2.9 MB after R8; debug APK is 8.4 MB
 (measured with `du --apparent-size` — a signed, zipaligned APK is block-padded on
 disk, so plain `du -h` overstates it as 6.7 MB).
 
@@ -556,6 +556,40 @@ Kept here because they are the reason the tests exist:
     within a frame. The system splash is now released as soon as the lockup is drawn,
     and routing waits out a minimum instead, which is the only reason the artwork is
     reliably seen at all.
+36. **The importer turned rupees into dates.** A date in a spreadsheet is a number
+    wearing a date format, and the reader decided which was which by guessing from
+    the value: "an integer in the Excel epoch window is a date". Every whole-rupee
+    figure between 32,874 and 65,380 therefore became a date — and `parseAmount()`
+    then read that date's *year* as the amount, so **a ₹45,000 outstanding balance
+    was imported as ₹2,023**. That band is the bread and butter of BC/DC lending.
+    Reproduced end to end before the fix. The reader now parses `xl/styles.xml` and
+    converts only cells whose format actually says date, which also fixed dates
+    outside the guessed band and dates carrying a time fraction. The file's own
+    comment had claimed the band "avoids mangling ordinary amounts".
+37. **The header row was found by shape, not by meaning.** "First row with two or
+    more filled cells" survives a merged title row and nothing else: the
+    `Branch: BR001 | As on: 31.03.2024` line that core-banking exports put under
+    the title satisfies it perfectly, and then every column maps to the wrong
+    field. Candidate rows are now scored on how many cells are recognisable column
+    headings.
+38. **Only the first worksheet was ever read.** Bank workbooks lead with a cover
+    sheet or a summary pivot and put the accounts on sheet 2 or 3, which produced
+    "missing required column(s)" against a file that plainly contained them —
+    impossible to explain to the person holding the file. Every sheet is now
+    scored and the best one used.
+39. **Every row number in the error log was wrong.** They were computed as
+    `index + 2`, which assumes the header is physically row 1; with a title block
+    above it every number was off by however many rows were skipped. Those numbers
+    are precisely what someone uses to find the bad row in Excel.
+40. **A CSV dry run could never succeed.** `preview()` read `$_FILES['tmp_name']`,
+    which is `/tmp/phpXXXXXX` with no extension, so the reader could not take its
+    CSV branch and fell through to a ZIP-magic check. XLSX previews worked, so the
+    fault looked like "CSV is not supported" when the same file imported fine.
+41. **An unknown branch silently dropped the row.** Importing a new area meant
+    typing every branch in by hand first, and one differently-spelled name meant
+    rows vanished into the skipped count. Branches are now taken from the sheet and
+    created when new, reported by name so a typo is visible — and only for an
+    uploader who is not scoped to a single branch.
 
 ---
 

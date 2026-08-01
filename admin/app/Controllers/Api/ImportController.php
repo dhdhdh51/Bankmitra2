@@ -41,7 +41,9 @@ final class ImportController extends Controller
                 $branchId,
                 $agentId,
                 (int) $user['id'],
-                (string) $user['name']
+                (string) $user['name'],
+                [],
+                Auth::scopedBranchId() === null,
             );
         } catch (\Throwable $e) {
             Response::error('Import failed: ' . $e->getMessage(), 422);
@@ -49,6 +51,9 @@ final class ImportController extends Controller
 
         Response::json(true, [
             'import_id'          => $result['import_id'],
+            'created_branches'   => $result['created_branches'] ?? [],
+            'sheet'              => $result['sheet'] ?? '',
+            'mapping'            => $result['mapping'] ?? [],
             'total_rows'         => $result['total'],
             'inserted'           => $result['inserted'],
             'updated'            => $result['updated'],

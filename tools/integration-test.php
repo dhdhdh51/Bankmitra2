@@ -307,6 +307,214 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+section("Any bank's file: detection, branches from the sheet, money intact");
+// ---------------------------------------------------------------------------
+// The point of this section is a file nobody prepared for us: a core-banking
+// export with a title block, shouty abbreviated headings in a different order,
+// branches the database has never heard of, and whole-rupee amounts in the range
+// that used to be silently converted into dates.
+
+$messyCsv = $workDir . '/messy-export.csv';
+file_put_contents($messyCsv, implode("\n", [
+    'NPA STATEMENT AS ON 31.03.2024,,,,,,,',
+    'Branch: ALL,As on: 31.03.2024,,,,,,',
+    ',,,,,,,',
+    'Sr,SOL_ID,ACCT_NO,ACCT_NAME,MOB_NO,PRINCIPAL_OUTSTANDING,OVERDUE_AMT,NPA_DT',
+    '1,Rampur Rural,LNMESS001,Kailash Yadav,9812345601,45000,5000,31/03/2024',
+    '2,Rampur Rural,LNMESS002,Pushpa Devi,9812345602,33000,1200,15-01-2024',
+    '3,Devgarh,LNMESS003,Anil Kumar,9812345603,"1,25,000.50",0,',
+]) . "\n");
+
+$messyFile = ['name' => 'messy-export.csv', 'tmp_name' => $messyCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($messyCsv)];
+
+$messyPreview = ImportService::preview($messyFile, null);
+check('detects the header under a title block', ($messyPreview['header_row'] ?? -1) === 3, 'header_row=' . var_export($messyPreview['header_row'] ?? null, true));
+check('finds the account column named ACCT_NO', ($messyPreview['detection']['loan_account_number']['column'] ?? '') === 'ACCT_NO');
+check('finds the name column named ACCT_NAME', ($messyPreview['detection']['customer_name']['column'] ?? '') === 'ACCT_NAME');
+check('finds outstanding despite the odd heading', ($messyPreview['detection']['outstanding_amount']['column'] ?? '') === 'PRINCIPAL_OUTSTANDING');
+check('nothing required is missing', $messyPreview['missing_required'] === [], json_encode($messyPreview['missing_required']));
+check('lists the branches it will create', count($messyPreview['branches_to_create'] ?? []) === 2, json_encode($messyPreview['branches_to_create'] ?? []));
+check('row numbers count from the real header row', ($messyPreview['sample'][0]['row'] ?? '') === '5', var_export($messyPreview['sample'][0]['row'] ?? null, true));
+
+$branchesBefore = (int) $db->scalar('SELECT COUNT(*) FROM branches');
+$messyResult = ImportService::run($messyFile, null, null, 1, 'System Administrator', [], true);
+
+check('messy export imported all 3 rows', $messyResult['inserted'] === 3, json_encode($messyResult));
+check('no rows skipped for an unknown branch', $messyResult['skipped'] === 0);
+check('two branches created from the sheet', count($messyResult['created_branches']) === 2, json_encode($messyResult['created_branches']));
+check('branches table grew by two', (int) $db->scalar('SELECT COUNT(*) FROM branches') === $branchesBefore + 2);
+
+$rampur = $db->first("SELECT id, branch_code, name FROM branches WHERE name = 'Rampur Rural' LIMIT 1");
+check('created branch keeps the name from the file', $rampur !== null);
+check('created branch got a usable code', $rampur !== null && (string) $rampur['branch_code'] === 'RAMPURRURAL', (string) ($rampur['branch_code'] ?? ''));
+
+// The money assertions: these are the figures the old reader destroyed.
+$m1 = $db->first("SELECT outstanding_amount, overdue_amount, npa_date, is_npa, branch_id FROM loan_accounts WHERE loan_account_number = 'LNMESS001'");
+check('Rs 45,000 imported as 45000.00', $m1 !== null && (float) $m1['outstanding_amount'] === 45000.0, var_export($m1['outstanding_amount'] ?? null, true));
+check('Rs 5,000 overdue imported intact', $m1 !== null && (float) $m1['overdue_amount'] === 5000.0);
+check('day-first NPA date parsed', $m1 !== null && (string) $m1['npa_date'] === '2024-03-31', (string) ($m1['npa_date'] ?? ''));
+check('is_npa derived from the date', $m1 !== null && (int) $m1['is_npa'] === 1);
+check('row landed in the branch named in its own row', $m1 !== null && $rampur !== null && (int) $m1['branch_id'] === (int) $rampur['id']);
+
+$m2 = $db->first("SELECT outstanding_amount FROM loan_accounts WHERE loan_account_number = 'LNMESS002'");
+check('Rs 33,000 imported as 33000.00', $m2 !== null && (float) $m2['outstanding_amount'] === 33000.0, var_export($m2['outstanding_amount'] ?? null, true));
+
+$m3 = $db->first("SELECT outstanding_amount, npa_date, is_npa FROM loan_accounts WHERE loan_account_number = 'LNMESS003'");
+check('Indian-format amount parsed', $m3 !== null && (float) $m3['outstanding_amount'] === 125000.5);
+check('blank NPA date stays null', $m3 !== null && $m3['npa_date'] === null);
+check('is_npa 0 without a date', $m3 !== null && (int) $m3['is_npa'] === 0);
+
+check('mapping recorded for provenance', ($messyResult['mapping']['outstanding_amount']['column'] ?? '') === 'PRINCIPAL_OUTSTANDING');
+
+// A second run must reuse the branches rather than creating near-duplicates.
+$messyResult2 = ImportService::run($messyFile, null, null, 1, 'System Administrator', [], true);
+check('re-import creates no further branches', $messyResult2['created_branches'] === [], json_encode($messyResult2['created_branches']));
+check('re-import updates instead of inserting', $messyResult2['updated'] === 3 && $messyResult2['inserted'] === 0);
+check('branch count unchanged on re-import', (int) $db->scalar('SELECT COUNT(*) FROM branches') === $branchesBefore + 2);
+
+// A branch-scoped uploader must not be able to create branches from a sheet.
+$scopedResult = ImportService::run(
+    ['name' => 'messy-export.csv', 'tmp_name' => $messyCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($messyCsv)],
+    null,
+    null,
+    1,
+    'System Administrator',
+    [],
+    false,
+);
+check('without permission no branch is created', $scopedResult['created_branches'] === []);
+
+// ---- The operator corrects a wrong guess ----------------------------------
+// Two columns that both look like amounts, headed ambiguously. Detection will
+// take one; the override must win.
+$ambiguousCsv = $workDir . '/ambiguous.csv';
+file_put_contents($ambiguousCsv, implode("\n", [
+    'Account No,Name,Amount 1,Amount 2,Branch',
+    'LNAMB001,Ravi Shankar,11111,22222,Rampur Rural',
+]) . "\n");
+$ambiguousFile = ['name' => 'ambiguous.csv', 'tmp_name' => $ambiguousCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($ambiguousCsv)];
+
+$ambPreview = ImportService::preview($ambiguousFile, null);
+check('an ambiguous amount column is not guessed', !isset($ambPreview['detection']['outstanding_amount']), json_encode(array_keys($ambPreview['detection'] ?? [])));
+
+ImportService::run($ambiguousFile, null, null, 1, 'System Administrator', ['outstanding_amount' => 3], true);
+$amb = $db->first("SELECT outstanding_amount FROM loan_accounts WHERE loan_account_number = 'LNAMB001'");
+check('the chosen column is the one imported', $amb !== null && (float) $amb['outstanding_amount'] === 22222.0, var_export($amb['outstanding_amount'] ?? null, true));
+
+// ---- CKCC columns, which nothing could fill before ------------------------
+$ckccCsv = $workDir . '/ckcc.csv';
+file_put_contents($ckccCsv, implode("\n", [
+    'Loan A/C No,Borrower Name,CIF No,Sanction Limit,Drawing Power,Interest Overdue,Sanction Date,Renewal Due Date,Branch',
+    'LNCKCC001,Gopal Singh,CIF778899,200000,180000,3400,01/04/2023,31/03/2024,Rampur Rural',
+]) . "\n");
+ImportService::run(
+    ['name' => 'ckcc.csv', 'tmp_name' => $ckccCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($ckccCsv)],
+    null,
+    null,
+    1,
+    'System Administrator',
+    [],
+    true,
+);
+$ckcc = $db->first(
+    "SELECT cif_number, sanction_limit, drawing_power, interest_overdue, sanction_date, ckcc_renewal_due_date
+       FROM loan_accounts WHERE loan_account_number = 'LNCKCC001'"
+);
+check('CIF number imported', $ckcc !== null && (string) $ckcc['cif_number'] === 'CIF778899');
+check('sanction limit imported', $ckcc !== null && (float) $ckcc['sanction_limit'] === 200000.0);
+check('drawing power imported', $ckcc !== null && (float) $ckcc['drawing_power'] === 180000.0);
+check('interest overdue imported', $ckcc !== null && (float) $ckcc['interest_overdue'] === 3400.0);
+check('sanction date imported day-first', $ckcc !== null && (string) $ckcc['sanction_date'] === '2023-04-01', (string) ($ckcc['sanction_date'] ?? ''));
+check('CKCC renewal due date imported', $ckcc !== null && (string) $ckcc['ckcc_renewal_due_date'] === '2024-03-31');
+
+// ---- The branch's settlement position, carried in the file ---------------
+// OTS/KRM eligibility and the branch's own figures arrive with the lead, so the
+// agent knows the position before visiting. A blank cell must stay NULL: "not
+// stated" and "refused" are different answers.
+$otsCsv = $workDir . '/ots-position.csv';
+file_put_contents($otsCsv, implode("\n", [
+    'Loan A/C No,Borrower Name,Branch,Outstanding Amount,OTS Eligible (Yes/No),KRM Eligible (Yes/No),OTS Amount (₹),Deposit Amount (₹)',
+    'LNOTS001,Shivam Verma,Rampur Rural,250000,Yes,Yes,"56,250.00","5,625.00"',
+    'LNOTS002,Rekha Bai,Rampur Rural,90000,No,No,,',
+    'LNOTS003,Sunil Das,Rampur Rural,45000,,,,',
+]) . "\n");
+
+$otsPreview = ImportService::preview(
+    ['name' => 'ots-position.csv', 'tmp_name' => $otsCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($otsCsv)],
+    null
+);
+check('OTS eligible column detected', ($otsPreview['detection']['ots_eligible']['column'] ?? '') === 'OTS Eligible (Yes/No)');
+check('KRM eligible column detected', ($otsPreview['detection']['krm_eligible']['column'] ?? '') === 'KRM Eligible (Yes/No)');
+check('OTS amount column detected, not confused with the flag', ($otsPreview['detection']['ots_amount']['column'] ?? '') === 'OTS Amount (₹)');
+check('deposit amount column detected', ($otsPreview['detection']['deposit_amount']['column'] ?? '') === 'Deposit Amount (₹)');
+check('branch column detected from the file', ($otsPreview['detection']['branch']['column'] ?? '') === 'Branch');
+
+ImportService::run(
+    ['name' => 'ots-position.csv', 'tmp_name' => $otsCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($otsCsv)],
+    null,
+    null,
+    1,
+    'System Administrator',
+    [],
+    true,
+);
+
+$ots1 = $db->first("SELECT ots_eligible, krm_eligible, ots_amount, deposit_amount, branch_id FROM loan_accounts WHERE loan_account_number = 'LNOTS001'");
+check('Yes becomes 1 for OTS', $ots1 !== null && (int) $ots1['ots_eligible'] === 1, var_export($ots1['ots_eligible'] ?? null, true));
+check('Yes becomes 1 for KRM', $ots1 !== null && (int) $ots1['krm_eligible'] === 1);
+check('OTS amount with separators parsed', $ots1 !== null && (float) $ots1['ots_amount'] === 56250.0, var_export($ots1['ots_amount'] ?? null, true));
+check('deposit amount parsed', $ots1 !== null && (float) $ots1['deposit_amount'] === 5625.0);
+check('branch taken from the row, not a default', $ots1 !== null && $rampur !== null && (int) $ots1['branch_id'] === (int) $rampur['id']);
+
+$ots2 = $db->first("SELECT ots_eligible, krm_eligible, ots_amount FROM loan_accounts WHERE loan_account_number = 'LNOTS002'");
+check('No becomes 0, not null', $ots2 !== null && (int) $ots2['ots_eligible'] === 0, var_export($ots2['ots_eligible'] ?? null, true));
+check('blank amount alongside a No stays null', $ots2 !== null && $ots2['ots_amount'] === null);
+
+$ots3 = $db->first("SELECT ots_eligible, krm_eligible, ots_amount, deposit_amount FROM loan_accounts WHERE loan_account_number = 'LNOTS003'");
+check('a blank flag stays NULL, not 0', $ots3 !== null && $ots3['ots_eligible'] === null, var_export($ots3['ots_eligible'] ?? null, true));
+check('a blank KRM flag stays NULL', $ots3 !== null && $ots3['krm_eligible'] === null);
+
+// The importer must not wipe a stated position when a later file omits the column.
+$noOtsCsv = $workDir . '/no-ots-columns.csv';
+file_put_contents($noOtsCsv, implode("\n", [
+    'Loan A/C No,Borrower Name,Branch,Outstanding Amount',
+    'LNOTS001,Shivam Verma,Rampur Rural,240000',
+]) . "\n");
+ImportService::run(
+    ['name' => 'no-ots-columns.csv', 'tmp_name' => $noOtsCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($noOtsCsv)],
+    null,
+    null,
+    1,
+    'System Administrator',
+    [],
+    true,
+);
+$otsKept = $db->first("SELECT ots_eligible, ots_amount, outstanding_amount FROM loan_accounts WHERE loan_account_number = 'LNOTS001'");
+check('a file without the OTS columns leaves the position intact', $otsKept !== null && (int) $otsKept['ots_eligible'] === 1);
+check('and the OTS figure survives too', $otsKept !== null && (float) $otsKept['ots_amount'] === 56250.0);
+check('while the outstanding still updates', $otsKept !== null && (float) $otsKept['outstanding_amount'] === 240000.0);
+
+// ---- Error-log line numbers must match the spreadsheet -------------------
+$badRowsCsv = $workDir . '/badrows.csv';
+file_put_contents($badRowsCsv, implode("\n", [
+    'NPA STATEMENT,,,',
+    ',,,',
+    'Loan Account Number,Customer Name,Outstanding Amount,Branch',
+    'LNROW001,Fine Row,1000,Rampur Rural',
+    ',Blank Account,1000,Rampur Rural',
+]) . "\n");
+$badRowsResult = ImportService::run(
+    ['name' => 'badrows.csv', 'tmp_name' => $badRowsCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($badRowsCsv)],
+    null,
+    null,
+    1,
+    'System Administrator',
+    [],
+    true,
+);
+check('bad row reported at its real spreadsheet line', ($badRowsResult['errors'][0]['row'] ?? 0) === 5, json_encode($badRowsResult['errors']));
+
+// ---------------------------------------------------------------------------
 section('Search (including encrypted columns)');
 
 $byAccount = LoanAccount::paginate(['search' => 'LN1001'], 'created_at', 'DESC', 1, 25);

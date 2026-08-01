@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Core\ColumnDetector;
 use App\Core\Config;
 use App\Core\Crypto;
 use App\Core\Database;
@@ -32,34 +33,10 @@ final class ImportService
      *
      * @var array<string,list<string>>
      */
-    private const COLUMN_ALIASES = [
-        'branch' => ['branch', 'branchname', 'branchcode', 'brcode', 'br', 'branchcd'],
-        'bc_code' => ['bccode', 'bc', 'dccode', 'bcdccode', 'bcid', 'agentcode'],
-        'loan_account_number' => [
-            'loanaccountnumber', 'loanaccountno', 'loanacno', 'accountnumber', 'accountno',
-            'acno', 'loanac', 'loanno', 'accno', 'loanaccount',
-        ],
-        'customer_name' => ['customername', 'name', 'borrowername', 'customer', 'borrower'],
-        'father_husband_name' => [
-            'fatherhusbandname', 'fathername', 'husbandname', 'fatherhusband',
-            'fathersname', 'guardianname', 'fatherorhusbandname',
-        ],
-        'mobile' => ['mobile', 'mobileno', 'mobilenumber', 'phone', 'phoneno', 'contact', 'contactno', 'cellno'],
-        'aadhaar' => ['aadhaar', 'aadhar', 'aadhaarno', 'aadharno', 'aadhaarnumber', 'uid', 'uidno'],
-        'village' => ['village', 'villagename', 'place', 'city', 'town'],
-        'address' => ['address', 'fulladdress', 'residentialaddress', 'addressline'],
-        'loan_type' => ['loantype', 'producttype', 'product', 'schemename', 'scheme', 'facilitytype'],
-        'outstanding_amount' => [
-            'outstandingamount', 'outstanding', 'principaloutstanding', 'balance',
-            'outstandingbalance', 'osamount', 'os', 'totaloutstanding',
-        ],
-        'overdue_amount' => ['overdueamount', 'overdue', 'odamount', 'arrears', 'overdueamt', 'dueamount'],
-        'npa_date' => ['npadate', 'npadt', 'dateofnpa', 'npasince', 'npaclassificationdate'],
-        'remarks' => ['remarks', 'remark', 'comments', 'notes', 'observation'],
-    ];
-
-    /** Columns without which a row cannot be imported. */
-    private const REQUIRED = ['loan_account_number', 'customer_name'];
+    // The vocabulary and the matching live in App\Core\ColumnDetector, which is
+    // also what the reader uses to find the header row and the right worksheet.
+    // Keeping one copy means the guide on the import screen, the generated
+    // template and the actual mapping can never disagree.
 
     /**
      * Runs a full import.
@@ -77,25 +54,38 @@ final class ImportService
         ?int $defaultBranchId,
         ?int $defaultAgentId,
         int $actorId,
-        string $actorName
+        string $actorName,
+        array $overrides = [],
+        bool $mayCreateBranches = false,
+        ?string $storedPath = null,
     ): array {
         $db = Database::instance();
 
-        $storedPath = self::persistUpload($file);
+        // A dry run has already stored the file; re-use it so the mapping the
+        // operator confirmed is applied to the upload they looked at.
+        if ($storedPath === null || !is_file($storedPath)) {
+            $storedPath = self::persistUpload($file);
+        }
 
         $parsed = XlsxReader::read($storedPath);
         $headings = $parsed['headings'];
         $rows = $parsed['rows'];
 
-        $map = self::mapHeadings($headings);
+        // Spreadsheet line number of the first data row. Reporting $index + 2
+        // assumed the header was physically row 1, so every row number in the
+        // error CSV was wrong by however many title rows had been skipped - and
+        // those numbers are what someone uses to find the bad row in Excel.
+        $firstDataLine = ($parsed['header_row'] ?? 0) + 2;
+
+        $detection = ColumnDetector::detect($headings, $rows, $overrides);
+        $map = $detection['map'];
 
         // Fail fast with a precise message rather than importing nonsense.
-        $missing = array_diff(self::REQUIRED, array_keys($map));
-        if ($missing !== []) {
+        if ($detection['missing_required'] !== []) {
             throw new \RuntimeException(
                 'The file is missing required column(s): ' . implode(', ', array_map(
                     static fn (string $c): string => str_replace('_', ' ', $c),
-                    $missing
+                    $detection['missing_required']
                 )) . '. Found headers: ' . (
                     $headings === [] ? '(none)' : implode(', ', array_slice($headings, 0, 20))
                 )
@@ -125,6 +115,7 @@ final class ImportService
         $skipped = 0;
         $errors = [];
         $unmatchedBranches = [];
+        $createdBranches = [];
         $assignedLeadIds = [];
 
         try {
@@ -138,17 +129,19 @@ final class ImportService
                 $agentBranchId,
                 $actorId,
                 $actorName,
+                $firstDataLine,
+                $mayCreateBranches,
                 &$branchCache,
                 &$inserted,
                 &$updated,
                 &$skipped,
                 &$errors,
                 &$unmatchedBranches,
+                &$createdBranches,
                 &$assignedLeadIds
             ): void {
                 foreach ($rows as $index => $row) {
-                    // +2: 1-based, plus the header row.
-                    $lineNumber = $index + 2;
+                    $lineNumber = $firstDataLine + $index;
 
                     try {
                         $values = self::extract($row, $map);
@@ -166,8 +159,14 @@ final class ImportService
                             continue;
                         }
 
-                        // ---- Branch resolution (auto mapping) --------------
-                        $branchId = self::resolveBranch($values['branch'], $branchCache, $defaultBranchId);
+                        // ---- Branch comes from the sheet -------------------
+                        $branchId = self::resolveBranch(
+                            $values['branch'],
+                            $branchCache,
+                            $defaultBranchId,
+                            $mayCreateBranches,
+                            $createdBranches,
+                        );
                         if ($branchId === null) {
                             $skipped++;
                             $label = trim($values['branch']);
@@ -179,7 +178,11 @@ final class ImportService
                                 'account' => $account,
                                 'message' => $label === ''
                                     ? 'No branch in the row and no default branch selected.'
-                                    : sprintf('Branch "%s" does not exist. Create it or pick a default branch.', $label),
+                                    : sprintf(
+                                        'Branch "%s" does not exist and could not be created from this upload. '
+                                        . 'Pick a default branch, or ask a super admin to run the import.',
+                                        $label
+                                    ),
                             ];
                             continue;
                         }
@@ -200,6 +203,32 @@ final class ImportService
                         $npaDate = self::parseDate($values['npa_date']);
                         $outstanding = self::parseAmount($values['outstanding_amount']);
                         $overdue = self::parseAmount($values['overdue_amount']);
+
+                        // CKCC / sanction columns. These exist on loan_accounts and
+                        // the CKCC renewal report needs them, but nothing could fill
+                        // them before: they are only written when the file has them,
+                        // so a plain NPA statement leaves them untouched.
+                        $ckcc = array_filter([
+                            'cif_number'            => self::nullable($values['cif_number'], 40),
+                            'sanction_date'         => self::parseDate($values['sanction_date']),
+                            'ckcc_renewal_due_date' => self::parseDate($values['ckcc_renewal_due_date']),
+                            'sanction_limit'        => trim($values['sanction_limit']) === ''
+                                ? null : self::parseAmount($values['sanction_limit']),
+                            'drawing_power'         => trim($values['drawing_power']) === ''
+                                ? null : self::parseAmount($values['drawing_power']),
+                            'interest_overdue'      => trim($values['interest_overdue']) === ''
+                                ? null : self::parseAmount($values['interest_overdue']),
+                            // The branch's settlement position. A blank cell stays
+                            // NULL rather than becoming "No": not stated and refused
+                            // are different answers, and only one of them should
+                            // stop an agent offering a settlement.
+                            'ots_eligible'          => self::parseBoolean($values['ots_eligible']),
+                            'krm_eligible'          => self::parseBoolean($values['krm_eligible']),
+                            'ots_amount'            => trim($values['ots_amount']) === ''
+                                ? null : self::parseAmount($values['ots_amount']),
+                            'deposit_amount'        => trim($values['deposit_amount']) === ''
+                                ? null : self::parseAmount($values['deposit_amount']),
+                        ], static fn ($value): bool => $value !== null);
 
                         $existing = $db->first(
                             'SELECT id, customer_id, branch_id, assigned_agent_id, current_status,
@@ -244,7 +273,7 @@ final class ImportService
                                 'is_npa'             => $npaDate === null ? 0 : 1,
                                 'remarks'            => self::nullable($values['remarks'], 1000),
                                 'import_id'          => $importId,
-                            ];
+                            ] + $ckcc;
 
                             // Never steal a lead that is already being worked.
                             if ($agentForRow !== null && $existing['assigned_agent_id'] === null) {
@@ -303,7 +332,7 @@ final class ImportService
                             'assigned_by'         => $agentForRow === null ? null : $actorId,
                             'remarks'             => self::nullable($values['remarks'], 1000),
                             'import_id'           => $importId,
-                        ]);
+                        ] + $ckcc);
 
                         Timeline::record(
                             $loanId,
@@ -374,11 +403,16 @@ final class ImportService
             $importId,
             null,
             [
-                'file'     => (string) ($file['name'] ?? ''),
-                'total'    => count($rows),
-                'inserted' => $inserted,
-                'updated'  => $updated,
-                'skipped'  => $skipped,
+                'file'             => (string) ($file['name'] ?? ''),
+                'sheet'            => (string) ($parsed['sheet'] ?? ''),
+                'total'            => count($rows),
+                'inserted'         => $inserted,
+                'updated'          => $updated,
+                'skipped'          => $skipped,
+                // Branches created from the sheet are a side effect of the import,
+                // so they belong in the audit trail of the import itself.
+                'created_branches' => array_column($createdBranches, 'code'),
+                'mapping'          => self::describeMapping($headings, $detection),
             ],
             sprintf('Imported %s: %d new, %d updated, %d skipped', (string) ($file['name'] ?? ''), $inserted, $updated, $skipped)
         );
@@ -392,7 +426,36 @@ final class ImportService
             'errors'             => $errors,
             'error_log'          => $errorLogPath,
             'unmatched_branches' => $unmatchedBranches,
+            'created_branches'   => $createdBranches,
+            'sheet'              => (string) ($parsed['sheet'] ?? ''),
+            'mapping'            => self::describeMapping($headings, $detection),
         ];
+    }
+
+    /**
+     * Human-readable record of which column fed which field.
+     *
+     * Stored on the import and shown in the summary. With detection doing the
+     * mapping, "where did this outstanding figure come from?" has to be answerable
+     * months later from the import record alone.
+     *
+     * @param list<string> $headings
+     * @param array{map:array<string,int>,confidence:array<string,int>,source:array<string,string>} $detection
+     *
+     * @return array<string,array{column:string,index:int,confidence:int,source:string}>
+     */
+    private static function describeMapping(array $headings, array $detection): array
+    {
+        $described = [];
+        foreach ($detection['map'] as $field => $index) {
+            $described[$field] = [
+                'column'     => trim((string) ($headings[$index] ?? '')),
+                'index'      => $index,
+                'confidence' => $detection['confidence'][$field] ?? 0,
+                'source'     => $detection['source'][$field] ?? 'header',
+            ];
+        }
+        return $described;
     }
 
     /**
@@ -408,27 +471,36 @@ final class ImportService
      *   sample:list<array<string,string>>
      * }
      */
-    public static function preview(array $file, ?int $defaultBranchId): array
+    public static function preview(array $file, ?int $defaultBranchId, array $overrides = []): array
     {
         $path = (string) ($file['tmp_name'] ?? '');
         if ($path === '' || !is_file($path)) {
             throw new \RuntimeException('Uploaded file could not be read.');
         }
 
-        $parsed = XlsxReader::read($path);
+        // Store the upload before reading it, for two reasons.
+        //
+        // First, correctness: a real HTTP upload lands at /tmp/phpXXXXXX with NO
+        // extension, so the reader could not take its CSV branch and fell through
+        // to the ZIP magic check - every CSV dry run from the panel failed with
+        // "Unsupported file type" while the same file imported fine. persistUpload
+        // gives the file its real extension.
+        //
+        // Second, the mapping screen: the operator confirms the detected columns
+        // and then imports. A browser cannot re-populate a file input, so without
+        // the file already on disk they would have to choose it a second time and
+        // the mapping would be applied to a possibly different upload.
+        $storedPath = self::persistUpload($file);
+        $parsed = XlsxReader::read($storedPath);
+
         $headings = $parsed['headings'];
         $rows = $parsed['rows'];
-        $map = self::mapHeadings($headings);
+        $firstDataLine = ($parsed['header_row'] ?? 0) + 2;
 
-        $mappedHeaderIndexes = array_values($map);
-        $unmapped = [];
-        foreach ($headings as $index => $heading) {
-            if (trim($heading) !== '' && !in_array($index, $mappedHeaderIndexes, true)) {
-                $unmapped[] = $heading;
-            }
-        }
-
-        $missingRequired = array_values(array_diff(self::REQUIRED, array_keys($map)));
+        $detection = ColumnDetector::detect($headings, $rows, $overrides);
+        $map = $detection['map'];
+        $unmapped = array_values($detection['unmapped']);
+        $missingRequired = $detection['missing_required'];
 
         $db = Database::instance();
         $branchCache = self::loadBranchCache();
@@ -437,10 +509,11 @@ final class ImportService
         $updateCount = 0;
         $issues = [];
         $sample = [];
+        $branchesToCreate = [];
 
         if ($missingRequired === []) {
             foreach ($rows as $index => $row) {
-                $lineNumber = $index + 2;
+                $lineNumber = $firstDataLine + $index;
                 $values = self::extract($row, $map);
                 $account = trim($values['loan_account_number']);
 
@@ -453,17 +526,25 @@ final class ImportService
                     continue;
                 }
 
+                // A dry run must not create anything, so branches are resolved
+                // read-only and an unknown one is merely listed as "will be
+                // created". The row is still counted and still appears in the
+                // sample: it is going to import fine, and reporting it as an issue
+                // would tell the operator the opposite.
                 $branchId = self::resolveBranch($values['branch'], $branchCache, $defaultBranchId);
                 if ($branchId === null) {
                     $label = trim($values['branch']);
-                    $issues[] = [
-                        'row'     => $lineNumber,
-                        'account' => $account,
-                        'message' => $label === ''
-                            ? 'No branch in the row and no default branch selected.'
-                            : sprintf('Branch "%s" does not exist.', $label),
-                    ];
-                    continue;
+                    if ($label === '' || !self::plausibleBranchLabel($label)) {
+                        $issues[] = [
+                            'row'     => $lineNumber,
+                            'account' => $account,
+                            'message' => 'No branch in the row and no default branch selected.',
+                        ];
+                        continue;
+                    }
+                    if (!in_array($label, $branchesToCreate, true)) {
+                        $branchesToCreate[] = $label;
+                    }
                 }
 
                 $exists = $db->scalar('SELECT 1 FROM loan_accounts WHERE loan_account_number = ? LIMIT 1', [$account]) !== null;
@@ -496,7 +577,36 @@ final class ImportService
             'update_count'     => $updateCount,
             'issues'           => $issues,
             'sample'           => $sample,
+            // What the mapping screen needs to show and let the operator correct.
+            'detection'        => self::describeMapping($headings, $detection),
+            'samples_by_column' => self::previewColumnSamples($headings, $rows),
+            'branches_to_create' => $branchesToCreate,
+            'sheet'            => (string) ($parsed['sheet'] ?? ''),
+            'header_row'       => (int) ($parsed['header_row'] ?? 0),
+            // Held so the confirmed mapping can be applied to this exact upload.
+            // Kept server-side only: a path from the client would be a traversal
+            // waiting to happen.
+            'stored_path'      => $storedPath,
         ];
+    }
+
+    /**
+     * A few example values per column, so the mapping screen can show what is
+     * actually in a column rather than only its heading. Seeing "9876543210"
+     * under "Column C" is what makes a wrong guess obvious.
+     *
+     * @param list<string>       $headings
+     * @param list<list<string>> $rows
+     *
+     * @return array<int,list<string>>
+     */
+    private static function previewColumnSamples(array $headings, array $rows): array
+    {
+        $samples = [];
+        foreach (ColumnDetector::columnSamples($headings, $rows) as $index => $values) {
+            $samples[$index] = array_slice(array_values(array_unique($values)), 0, 3);
+        }
+        return $samples;
     }
 
     // -----------------------------------------------------------------------
@@ -506,53 +616,16 @@ final class ImportService
     /**
      * Maps canonical field => column index in the sheet.
      *
-     * @param list<string> $headings
+     * @param list<string>       $headings
+     * @param list<list<string>> $rows      sample rows, so a column with no usable
+     *                                      heading can still be identified by shape
+     * @param array<string,int>  $overrides field => column index chosen by the user
+     *
      * @return array<string,int>
      */
-    public static function mapHeadings(array $headings): array
+    public static function mapHeadings(array $headings, array $rows = [], array $overrides = []): array
     {
-        $normalised = [];
-        foreach ($headings as $index => $heading) {
-            $normalised[$index] = self::normaliseHeader($heading);
-        }
-
-        $map = [];
-
-        // Exact alias match first, so "Loan Account Number" never loses to a
-        // fuzzy hit on some other column.
-        foreach (self::COLUMN_ALIASES as $field => $aliases) {
-            foreach ($normalised as $index => $candidate) {
-                if ($candidate !== '' && in_array($candidate, $aliases, true) && !in_array($index, $map, true)) {
-                    $map[$field] = $index;
-                    continue 2;
-                }
-            }
-        }
-
-        // Then a contains-based pass for the fields still unmapped.
-        foreach (self::COLUMN_ALIASES as $field => $aliases) {
-            if (isset($map[$field])) {
-                continue;
-            }
-            foreach ($normalised as $index => $candidate) {
-                if ($candidate === '' || in_array($index, $map, true)) {
-                    continue;
-                }
-                foreach ($aliases as $alias) {
-                    if (strlen($alias) >= 5 && str_contains($candidate, $alias)) {
-                        $map[$field] = $index;
-                        continue 3;
-                    }
-                }
-            }
-        }
-
-        return $map;
-    }
-
-    private static function normaliseHeader(string $heading): string
-    {
-        return strtolower(preg_replace('/[^a-z0-9]/i', '', $heading) ?? '');
+        return ColumnDetector::detect($headings, $rows, $overrides)['map'];
     }
 
     /**
@@ -563,7 +636,7 @@ final class ImportService
     private static function extract(array $row, array $map): array
     {
         $values = [];
-        foreach (array_keys(self::COLUMN_ALIASES) as $field) {
+        foreach (array_keys(ColumnDetector::fields()) as $field) {
             $index = $map[$field] ?? null;
             $values[$field] = $index === null ? '' : trim((string) ($row[$index] ?? ''));
         }
@@ -585,8 +658,8 @@ final class ImportService
         $cache = [];
         foreach (Database::instance()->all('SELECT id, branch_code, name FROM branches') as $branch) {
             $id = (int) $branch['id'];
-            $code = self::normaliseHeader((string) $branch['branch_code']);
-            $name = self::normaliseHeader((string) $branch['name']);
+            $code = ColumnDetector::normalise((string) $branch['branch_code']);
+            $name = ColumnDetector::normalise((string) $branch['name']);
             if ($code !== '') {
                 $cache[$code] = $id;
             }
@@ -597,14 +670,121 @@ final class ImportService
         return $cache;
     }
 
-    /** @param array<string,int> $cache */
-    private static function resolveBranch(string $raw, array $cache, ?int $fallback): ?int
-    {
-        $key = self::normaliseHeader($raw);
+    /**
+     * Resolves the branch for a row, creating it from the sheet when it is new.
+     *
+     * The branch is taken from the file itself. Previously a branch the database
+     * had never heard of meant the row was rejected, so importing a new area's
+     * accounts meant typing every branch in by hand first and rows were quietly
+     * dropped when a name was spelled differently. Now an unknown branch is
+     * created and reported, so the import completes and the operator can see
+     * exactly what was added.
+     *
+     * Creation is limited to uploaders who are not tied to one branch: a branch
+     * manager importing a file must not be able to conjure branches outside their
+     * own scope, so for them an unknown branch still falls back or is skipped.
+     *
+     * @param array<string,int>                    $cache   normalised label => branch id
+     * @param list<array{code:string,name:string}> $created appended to for the summary
+     */
+    private static function resolveBranch(
+        string $raw,
+        array &$cache,
+        ?int $fallback,
+        bool $mayCreate = false,
+        array &$created = [],
+    ): ?int {
+        $label = trim($raw);
+        $key = ColumnDetector::normalise($label);
+
         if ($key !== '' && isset($cache[$key])) {
             return $cache[$key];
         }
-        return $fallback;
+
+        if ($key === '' || !$mayCreate || !self::plausibleBranchLabel($label)) {
+            return $fallback;
+        }
+
+        $db = Database::instance();
+        $code = self::deriveBranchCode($label);
+        $name = mb_substr($label, 0, 150);
+
+        // The unique key is on branch_code; a concurrent import could have just
+        // created it, so treat a duplicate as "already there" rather than failing
+        // the whole file.
+        try {
+            $id = $db->insert('branches', [
+                'branch_code' => $code,
+                'name'        => $name,
+                'status'      => 'active',
+            ]);
+        } catch (\Throwable) {
+            $existing = $db->first('SELECT id FROM branches WHERE branch_code = ? LIMIT 1', [$code]);
+            if ($existing === null) {
+                return $fallback;
+            }
+            $id = (int) $existing['id'];
+        }
+
+        $cache[$key] = $id;
+        $cache[ColumnDetector::normalise($code)] = $id;
+        $created[] = ['code' => $code, 'name' => $name];
+
+        return $id;
+    }
+
+    /**
+     * Whether a cell is worth creating a branch from.
+     *
+     * A guard against turning junk into permanent records: a footer like
+     * "Total" or "-", or a stray number, must not become a branch.
+     */
+    private static function plausibleBranchLabel(string $label): bool
+    {
+        $length = mb_strlen($label);
+        if ($length < 2 || $length > 150) {
+            return false;
+        }
+        // Must contain a letter or digit beyond punctuation, and not be a pure
+        // total/summary marker.
+        if (ColumnDetector::normalise($label) === '') {
+            return false;
+        }
+        $lower = mb_strtolower($label, 'UTF-8');
+        return !in_array($lower, ['total', 'grand total', 'sub total', 'subtotal', 'n/a', 'na', 'nil', '-', '--'], true);
+    }
+
+    /**
+     * A unique branch_code for a branch created from a sheet.
+     *
+     * If the cell already looks like a code ("BR001", "HO-12") it is used as-is;
+     * otherwise one is derived from the name. branch_code is UNIQUE and only 30
+     * characters, so collisions get a numeric suffix.
+     */
+    private static function deriveBranchCode(string $label): string
+    {
+        $compact = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $label));
+
+        if ($compact === '') {
+            // Non-Latin name, e.g. Devanagari: derive a stable code from a hash so
+            // re-importing the same file does not create a second branch.
+            $compact = 'BR' . strtoupper(substr(md5(ColumnDetector::normalise($label)), 0, 8));
+        }
+
+        $base = mb_substr($compact, 0, 26);
+        $db = Database::instance();
+        $candidate = $base;
+        $suffix = 1;
+
+        while ($db->first('SELECT id FROM branches WHERE branch_code = ? LIMIT 1', [$candidate]) !== null) {
+            $candidate = mb_substr($base, 0, 26) . '-' . $suffix;
+            $suffix++;
+            if ($suffix > 999) {
+                return mb_substr($base, 0, 22) . '-' . strtoupper(substr(md5(uniqid('', true)), 0, 6));
+            }
+        }
+
+        return $candidate;
     }
 
     // -----------------------------------------------------------------------
@@ -615,6 +795,38 @@ final class ImportService
     {
         $trimmed = trim($value);
         return $trimmed === '' ? null : mb_substr($trimmed, 0, $maxLength);
+    }
+
+    /**
+     * Reads a Yes/No cell as 1, 0 or null.
+     *
+     * Returns null for anything it does not recognise, blanks included, because
+     * the alternative - defaulting to 0 - would silently record that the branch
+     * had refused a settlement it simply had not commented on.
+     */
+    private static function parseBoolean(string $raw): ?int
+    {
+        $value = mb_strtolower(trim($raw), 'UTF-8');
+        if ($value === '') {
+            return null;
+        }
+
+        // Tick marks appear in files exported from forms with checkbox columns.
+        if (in_array($value, [
+            'yes', 'y', '1', 'true', 't', 'eligible', 'ok', 'approved', 'applicable',
+            'haan', 'ha', 'हाँ', 'हां', 'पात्र', 'yes ', '✓', '✔', 'x',
+        ], true)) {
+            return 1;
+        }
+
+        if (in_array($value, [
+            'no', 'n', '0', 'false', 'f', 'not eligible', 'ineligible', 'na', 'n/a', '-',
+            'nahi', 'nahin', 'नहीं', 'अपात्र', 'not applicable',
+        ], true)) {
+            return 0;
+        }
+
+        return null;
     }
 
     /** Keeps digits only and enforces a plausible length, else returns null. */

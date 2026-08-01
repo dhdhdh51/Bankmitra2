@@ -26,6 +26,7 @@ spl_autoload_register(static function (string $class) use ($root): void {
     }
 });
 
+use App\Core\ColumnDetector;
 use App\Core\Config;
 use App\Core\Crypto;
 use App\Core\Jwt;
@@ -260,6 +261,297 @@ check('ragged row padded to header width', count($ragged['rows'][0] ?? []) === 4
 unlink($raggedPath);
 
 check('excel serial to date', XlsxReader::excelSerialToDate(45382.0) === '2024-03-31', (string) XlsxReader::excelSerialToDate(45382.0));
+
+// ---------------------------------------------------------------------------
+section('Date-or-amount: cell formats, not guesswork');
+// ---------------------------------------------------------------------------
+// A date in a spreadsheet is a number wearing a date format. The reader used to
+// guess from the value instead - "an integer in the Excel epoch window is a date"
+// - which silently turned every whole-rupee balance between 32,874 and 65,380
+// into a date. parseAmount() then read that date's YEAR as the amount, so a
+// Rs 45,000 outstanding balance was imported as Rs 2,023. These assertions pin
+// the fix from both directions: amounts must survive, dates must still convert.
+
+/**
+ * Builds a minimal workbook by hand with real number formats. The project's own
+ * Xlsx writer never emits a date format, so this cannot be exercised with it.
+ *
+ * @param list<list<array{value:string,style:int}>> $rows
+ */
+$buildStyledWorkbook = static function (array $rows, string $customDateFormat): string {
+    // cellXfs: 0 General, 1 built-in 14 (m/d/yyyy), 2 custom date, 3 custom currency.
+    $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        . '<numFmts count="2">'
+        . '<numFmt numFmtId="164" formatCode="' . htmlspecialchars($customDateFormat, ENT_QUOTES) . '"/>'
+        . '<numFmt numFmtId="165" formatCode="&quot;Rs.&quot;#,##0.00"/>'
+        . '</numFmts>'
+        . '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+        . '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+        . '<borders count="1"><border/></borders>'
+        . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        . '<cellXfs count="4">'
+        . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        . '<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        . '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        . '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+        . '</cellXfs></styleSheet>';
+
+    $sheetRows = '';
+    foreach ($rows as $rowIndex => $cells) {
+        $sheetRows .= '<row r="' . ($rowIndex + 1) . '">';
+        $column = 'A';
+        foreach ($cells as $cell) {
+            $ref = $column . ($rowIndex + 1);
+            $styleAttr = $cell['style'] > 0 ? ' s="' . $cell['style'] . '"' : '';
+            $sheetRows .= is_numeric($cell['value'])
+                ? '<c r="' . $ref . '"' . $styleAttr . '><v>' . $cell['value'] . '</v></c>'
+                : '<c r="' . $ref . '"' . $styleAttr . ' t="inlineStr"><is><t>'
+                    . htmlspecialchars($cell['value'], ENT_QUOTES) . '</t></is></c>';
+            $column++;
+        }
+        $sheetRows .= '</row>';
+    }
+
+    $path = tempnam(sys_get_temp_dir(), 'lrms_ds_') . '.xlsx';
+    $zip = new ZipArchive();
+    $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    $zip->addFromString('[Content_Types].xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        . '<Default Extension="xml" ContentType="application/xml"/>'
+        . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        . '</Types>');
+    $zip->addFromString('_rels/.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        . '</Relationships>');
+    $zip->addFromString('xl/workbook.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        . 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheets><sheet name="Leads" sheetId="1" r:id="rId1"/></sheets></workbook>');
+    $zip->addFromString('xl/_rels/workbook.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        . '</Relationships>');
+    $zip->addFromString('xl/styles.xml', $styles);
+    $zip->addFromString('xl/worksheets/sheet1.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        . '<sheetData>' . $sheetRows . '</sheetData></worksheet>');
+    $zip->close();
+
+    return $path;
+};
+
+$cell = static fn (string $value, int $style = 0): array => ['value' => $value, 'style' => $style];
+
+$styledPath = $buildStyledWorkbook([
+    [
+        $cell('Account'), $cell('Outstanding'), $cell('Overdue'),
+        $cell('NPA Date'), $cell('Sanction Date'), $cell('Updated At'),
+    ],
+    [
+        $cell('LN001'),
+        $cell('45000'),          // General: an amount, and squarely in the old danger band
+        $cell('33000', 3),       // "Rs."#,##0.00 - quoted literal must not read as a date
+        $cell('45382', 1),       // built-in numFmtId 14
+        $cell('45382', 2),       // custom dd-mm-yyyy
+        $cell('45382.625', 1),   // a date carrying a time fraction
+    ],
+], 'dd-mm-yyyy');
+
+$styled = XlsxReader::read($styledPath);
+$styledRow = $styled['rows'][0] ?? [];
+unlink($styledPath);
+
+check('unstyled integer amount stays an amount', ($styledRow[1] ?? '') === '45000', var_export($styledRow[1] ?? null, true));
+check('currency-formatted amount stays an amount', ($styledRow[2] ?? '') === '33000', var_export($styledRow[2] ?? null, true));
+check('built-in date format becomes a date', ($styledRow[3] ?? '') === '2024-03-31', var_export($styledRow[3] ?? null, true));
+check('custom dd-mm-yyyy becomes a date', ($styledRow[4] ?? '') === '2024-03-31', var_export($styledRow[4] ?? null, true));
+check('date with a time fraction becomes a date', ($styledRow[5] ?? '') === '2024-03-31', var_export($styledRow[5] ?? null, true));
+
+// The whole point: the corrupted figure must reach parseAmount intact.
+$parseAmount = new ReflectionMethod(App\Services\ImportService::class, 'parseAmount');
+$parseAmount->setAccessible(true);
+check(
+    'Rs 45,000 imports as 45000.00, not as the year 2023',
+    $parseAmount->invoke(null, (string) ($styledRow[1] ?? '')) === 45000.0,
+    var_export($parseAmount->invoke(null, (string) ($styledRow[1] ?? '')), true),
+);
+
+// A format code made only of literal text and digits is not a date.
+$formatCodeIsDate = new ReflectionMethod(XlsxReader::class, 'formatCodeIsDate');
+$formatCodeIsDate->setAccessible(true);
+foreach ([
+    '#,##0.00' => false,
+    '0.00%' => false,
+    '"Rs."#,##0.00' => false,
+    '[$-4009]#,##0.00' => false,
+    '\R\s#,##0' => false,
+    'dd-mm-yyyy' => true,
+    'd mmm yyyy' => true,
+    '[$-409]m/d/yy h:mm AM/PM' => true,
+    '[h]:mm:ss' => true,
+] as $code => $expected) {
+    check(
+        sprintf('format %s is %s a date', var_export($code, true), $expected ? '' : 'not'),
+        $formatCodeIsDate->invoke(null, $code) === $expected,
+    );
+}
+
+// ---------------------------------------------------------------------------
+section('Column detection: any bank\'s spreadsheet');
+// ---------------------------------------------------------------------------
+// The importer no longer requires the file to be reformatted into our template,
+// so these assertions stand in for "a real bank export lands and maps itself".
+
+$detect = static function (array $headings, array $rows = [], array $overrides = []): array {
+    $result = ColumnDetector::detect($headings, $rows, $overrides);
+    $named = [];
+    foreach ($result['map'] as $field => $index) {
+        $named[$field] = $headings[$index] ?? '';
+    }
+    return [$named, $result];
+};
+
+// Our own template, which must of course still be perfect.
+[$named] = $detect([
+    'Branch', 'BC Code', 'Loan Account Number', 'Customer Name', 'Father/Husband Name',
+    'Mobile', 'Aadhaar', 'Village', 'Address', 'Loan Type', 'Outstanding Amount',
+    'Overdue Amount', 'NPA Date', 'Remarks',
+]);
+check('template maps all 14 of its own columns', count($named) === 14, (string) count($named));
+
+// A core-banking export: shouted, abbreviated, underscored, reordered.
+[$named] = $detect(
+    ['SOL_ID', 'ACCT_NO', 'ACCT_NAME', 'CUST_ID', 'SANC_AMT', 'PRINCIPAL_OUTSTANDING',
+     'OVERDUE_AMT', 'INT_OVERDUE', 'DP', 'NPA_DT', 'MOB_NO'],
+    [['1234', '0123456789012', 'SITA DEVI', 'C0099', '200000', '145000.50', '12000', '3400', '150000', '2023-06-30', '9812345678']],
+);
+check('ACCT_NO is the account column', ($named['loan_account_number'] ?? '') === 'ACCT_NO');
+check('ACCT_NAME is the customer name', ($named['customer_name'] ?? '') === 'ACCT_NAME');
+check('PRINCIPAL_OUTSTANDING is outstanding', ($named['outstanding_amount'] ?? '') === 'PRINCIPAL_OUTSTANDING');
+check('OVERDUE_AMT is overdue', ($named['overdue_amount'] ?? '') === 'OVERDUE_AMT');
+check('INT_OVERDUE is interest overdue', ($named['interest_overdue'] ?? '') === 'INT_OVERDUE');
+check('SANC_AMT is the sanction limit', ($named['sanction_limit'] ?? '') === 'SANC_AMT');
+check('DP is drawing power', ($named['drawing_power'] ?? '') === 'DP');
+check('NPA_DT is the NPA date', ($named['npa_date'] ?? '') === 'NPA_DT');
+check('MOB_NO is the mobile', ($named['mobile'] ?? '') === 'MOB_NO');
+check('CUST_ID is the CIF number', ($named['cif_number'] ?? '') === 'CUST_ID');
+check('SOL_ID is the branch', ($named['branch'] ?? '') === 'SOL_ID');
+
+// Five money columns side by side. Every one must come from its heading; a wrong
+// balance in front of an agent is worse than a missing one.
+[$named] = $detect(
+    ['A/C No', 'Name', 'Sanction Limit', 'Drawing Power', 'Outstanding', 'Overdue', 'Interest Overdue'],
+    [['LN1', 'Ramesh Kumar', '200000', '180000', '145000', '12000', '3400']],
+);
+check('sanction limit not confused with outstanding', ($named['sanction_limit'] ?? '') === 'Sanction Limit');
+check('outstanding not confused with overdue', ($named['outstanding_amount'] ?? '') === 'Outstanding');
+check('overdue not confused with interest', ($named['overdue_amount'] ?? '') === 'Overdue');
+check('interest overdue kept separate', ($named['interest_overdue'] ?? '') === 'Interest Overdue');
+
+// Two columns of indistinguishable numbers with useless headings: refuse to guess.
+[$named] = $detect(['Account No', 'Name', 'Amount 1', 'Amount 2'], [['LN1', 'Ravi', '11111', '22222']]);
+check('an ambiguous amount column is left unmapped', !isset($named['outstanding_amount']));
+check('but the account and name are still found', isset($named['loan_account_number'], $named['customer_name']));
+
+// The operator corrects it. -1 means "not in this file".
+[$named] = $detect(['Account No', 'Name', 'Amount 1', 'Amount 2'], [['LN1', 'Ravi', '11111', '22222']], ['outstanding_amount' => 3]);
+check('an override is obeyed', ($named['outstanding_amount'] ?? '') === 'Amount 2');
+[$named] = $detect(['Loan Account Number', 'Customer Name', 'Mobile'], [], ['mobile' => -1]);
+check('override -1 removes a field', !isset($named['mobile']));
+
+// Hindi headings. The old normaliser stripped every non-ASCII character, which
+// reduced these to empty strings.
+[$named] = $detect(
+    ['शाखा', 'खाता संख्या', 'नाम', 'पिता का नाम', 'मोबाइल', 'ग्राम', 'बकाया राशि'],
+    [['कोटरी', 'LN551', 'सीता देवी', 'राम लाल', '9812345678', 'कोटरी', '45000']],
+);
+check('Hindi account heading maps', ($named['loan_account_number'] ?? '') === 'खाता संख्या');
+check('Hindi name heading maps', ($named['customer_name'] ?? '') === 'नाम');
+check('Hindi outstanding heading maps', ($named['outstanding_amount'] ?? '') === 'बकाया राशि');
+
+// Typos and transpositions.
+[$named] = $detect(['Brnach', 'Loan Acount Number', 'Custmer Name', 'Mobil No'], [['BR001', 'LN1', 'Ramesh', '9876543210']]);
+check('transposed "Brnach" still maps', ($named['branch'] ?? '') === 'Brnach');
+check('misspelled account heading maps', ($named['loan_account_number'] ?? '') === 'Loan Acount Number');
+check('misspelled name heading maps', ($named['customer_name'] ?? '') === 'Custmer Name');
+
+// No usable headings at all: the shape of the values has to carry it.
+[$named, $result] = $detect(
+    ['Column1', 'Column2', 'Column3', 'Column4'],
+    [
+        ['LN0000001', 'Ramesh Kumar', '9876543210', '234567890123'],
+        ['LN0000002', 'Sita Devi', '9812345670', '345678901234'],
+        ['LN0000003', 'Mohan Lal', '9812345671', '456789012345'],
+    ],
+);
+check('account inferred from its shape', ($named['loan_account_number'] ?? '') === 'Column1');
+check('name inferred from its shape', ($named['customer_name'] ?? '') === 'Column2');
+check('mobile inferred from 10 digits starting 6-9', ($named['mobile'] ?? '') === 'Column3');
+check('aadhaar inferred from 12 digits', ($named['aadhaar'] ?? '') === 'Column4');
+check('inference is reported as weaker evidence', ($result['source']['mobile'] ?? '') === 'values');
+check('inferred confidence stays below a header match', ($result['confidence']['mobile'] ?? 100) < 80);
+
+// A repeated value is not an identifier, however account-shaped it looks.
+[$named] = $detect(
+    ['Column1', 'Column2'],
+    array_fill(0, 6, ['KCC-2024', 'Ramesh Kumar']),
+);
+check('a repeating column is not taken for an account number', !isset($named['loan_account_number']));
+
+// Header-row scoring, which is what finds the header under a title block.
+check('a title row scores nothing', ColumnDetector::headerScore(['NPA STATEMENT AS ON 31.03.2024', '', '', '']) === 0);
+check('a two-cell subtitle row scores nothing', ColumnDetector::headerScore(['Branch: BR001', 'As on: 31.03.2024', '', '']) === 0);
+check('a data row scores nothing', ColumnDetector::headerScore(['HO001', 'LN7', 'Ramesh', '9876543210']) === 0);
+check(
+    'the real header row scores highest',
+    ColumnDetector::headerScore(['Branch', 'Loan Account Number', 'Customer Name', 'Mobile']) > 0,
+);
+
+check('required fields are account number and customer name', ColumnDetector::required() === ['loan_account_number', 'customer_name']);
+
+// The template we hand out must survive our own importer. This catches a new
+// field whose label does not match its own vocabulary, and a sample row that has
+// drifted out of step with the headings - which is what happened when the sample
+// was a literal list and the field count grew.
+$templateHeadings = [];
+$templateRow = [];
+foreach (ColumnDetector::fields() as $meta) {
+    check('field "' . $meta['label'] . '" has a sample value', ($meta['example'] ?? '') !== '');
+    $templateHeadings[] = $meta['label'];
+    $templateRow[] = $meta['example'];
+}
+
+$templatePath = tempnam(sys_get_temp_dir(), 'lrms_tpl_') . '.xlsx';
+file_put_contents($templatePath, Xlsx::build(
+    'Lead Template',
+    $templateHeadings,
+    [$templateRow],
+    'D2 Recovery Lead Import Template',
+    'sample'
+));
+$templateRead = XlsxReader::read($templatePath);
+unlink($templatePath);
+
+check('template reads back with every column', count($templateRead['headings']) === count($templateHeadings), (string) count($templateRead['headings']));
+$templateDetected = ColumnDetector::detect($templateRead['headings'], $templateRead['rows']);
+check(
+    'our own template maps every column back to its field',
+    count($templateDetected['map']) === count($templateHeadings),
+    'mapped ' . count($templateDetected['map']) . ' of ' . count($templateHeadings)
+        . '; unmapped: ' . json_encode(array_values($templateDetected['unmapped']))
+);
+check('and nothing required is missing from it', $templateDetected['missing_required'] === []);
 
 // ---------------------------------------------------------------------------
 section('PDF writer');

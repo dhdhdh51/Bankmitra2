@@ -292,6 +292,47 @@ reset by an administrator from **Managers & Agents → Reset password**.
 
 ---
 
+## 4a. Importing leads from any bank export
+
+**You do not have to reformat the file.** Upload the bank's own `.xlsx` or `.csv`
+and the columns are detected. The template under *Import → Download template* is a
+convenience, not a requirement.
+
+What is handled without intervention:
+
+| In the file | What happens |
+|---|---|
+| A title block, a `Branch: … / As on: …` line, a blank spacer above the headings | Candidate rows are scored on how many cells are recognisable headings; the real header row wins |
+| A cover sheet or summary pivot before the data | Every worksheet is scored; the one that looks like a lead list is used. Hidden sheets are ignored |
+| Columns in any order, with extra columns you do not need | Mapping is by name, not position. Unrecognised columns are listed as ignored |
+| `ACCT_NO`, `Loan A/C No.`, `LOAN_ACCOUNT_NUMBER`, `खाता संख्या` | All map to Loan Account Number. Matching is case-, punctuation- and language-insensitive, and tolerates a typo |
+| A column with a useless heading like `Column3` | Identity columns are recognised by shape: 12 digits is an Aadhaar, 10 digits starting 6-9 is a mobile, mostly-unique alphanumerics are an account number |
+| A branch the database has never heard of | The branch is created from the sheet and reported by name |
+
+**Only two columns are required:** Loan Account Number and Customer Name.
+Duplicates are matched on Loan Account Number, so re-uploading a refreshed
+statement updates rather than duplicates.
+
+**Money and dates are never guessed from their contents** — only from their
+headings. A bank export routinely carries outstanding, overdue, interest,
+sanction limit and drawing power side by side: five columns of indistinguishable
+decimals. A wrong balance in front of an agent is worse than a missing one, so if
+a heading is ambiguous the field is left unmapped for you to choose.
+
+**Always use "Validate only (dry run)" first.** It writes nothing and shows the
+detected mapping, the example values behind each column, a confidence figure, the
+branches it will create, and any problem rows. Anything detected from shape rather
+than from a heading is flagged for confirmation. Correct any column from the
+dropdowns and press *Import with this mapping* — the mapping applies to that same
+upload, and is recorded on the import so "where did this figure come from?" is
+answerable months later.
+
+Branch resolution, in order: the branch named in the row (matched on code or
+name), else a branch created from that name, else the default branch chosen on the
+form. Creating branches is restricted to uploaders who are not tied to a single
+branch — a branch manager cannot conjure branches outside their own scope through
+a spreadsheet.
+
 ## 5. Scheduled jobs (cron)
 
 cPanel → **Cron Jobs**. Use the absolute path to your PHP binary
@@ -799,6 +840,26 @@ php ~/public_html/cron/backup.php
 > **Do not re-import `schema.sql` as part of an upgrade.** It begins each table
 > with `DROP TABLE IF EXISTS` and would delete every record you have. Only ever
 > run it on a fresh, empty database.
+
+### Adding the settlement-position columns to an existing install
+
+The importer can now carry the branch's own settlement decision with each lead.
+Four columns were added to `loan_accounts`; on a database created before this
+release, add them once:
+
+```sql
+ALTER TABLE `loan_accounts`
+  ADD COLUMN `ots_eligible`   TINYINT(1)    DEFAULT NULL COMMENT 'bank flag from the import; NULL = not stated' AFTER `ckcc_renewal_due_date`,
+  ADD COLUMN `krm_eligible`   TINYINT(1)    DEFAULT NULL COMMENT 'eligible under the KRM scheme specifically'   AFTER `ots_eligible`,
+  ADD COLUMN `ots_amount`     DECIMAL(15,2) DEFAULT NULL COMMENT 'settlement figure proposed by the branch'     AFTER `krm_eligible`,
+  ADD COLUMN `deposit_amount` DECIMAL(15,2) DEFAULT NULL COMMENT 'initial deposit expected alongside the OTS'   AFTER `ots_amount`,
+  ADD KEY `idx_loan_ots_eligible` (`ots_eligible`);
+```
+
+They are nullable on purpose: `NULL` means the file did not say, which is a
+different answer from an explicit No, and only one of those should stop an agent
+offering a settlement. A later import that omits the columns leaves whatever was
+already recorded untouched.
 
 ### Renaming to D2 Recovery on an existing install
 
