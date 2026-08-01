@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Api;
 
 use App\Core\Auth;
+use App\Core\Logger;
 use App\Core\Request;
 use App\Core\Response;
 use App\Models\Customer;
@@ -13,6 +14,7 @@ use App\Models\Promise;
 use App\Models\Timeline;
 use App\Models\VisitReport;
 use App\Services\AssignmentService;
+use App\Services\CustomerSheetService;
 
 final class LeadController extends Controller
 {
@@ -242,6 +244,54 @@ final class LeadController extends Controller
         }
 
         return $filters;
+    }
+
+    /**
+     * Streams the customer data sheet as a PDF.
+     *
+     * Scoped harder than the rest of the lead API on purpose. Everything else an
+     * agent reads stays inside the app; this leaves the device as a file that can
+     * be printed, mailed or forwarded, so an agent may only take the sheet for a
+     * lead actually assigned to them - not for any lead that merely happens to sit
+     * in their branch. It is also audited, because the sheet carries a borrower's
+     * contact details and the branch's settlement figures.
+     */
+    public function sheet(Request $request): void
+    {
+        $user = $this->auth($request, 'customers.view');
+
+        $id = $request->paramInt('id');
+        $lead = LoanAccount::findWithPii($id);
+
+        if ($lead === null) {
+            Response::notFound('That loan account could not be found.');
+        }
+
+        if (Auth::isAgent()) {
+            $assigned = $lead['assigned_agent_id'] === null ? null : (int) $lead['assigned_agent_id'];
+            if ($assigned !== (int) $user['id']) {
+                Response::forbidden('You can only download the data sheet for a lead assigned to you.');
+            }
+        } else {
+            Auth::assertBranchAccess((int) $lead['branch_id']);
+        }
+
+        try {
+            $sheet = CustomerSheetService::render($id);
+        } catch (\Throwable $e) {
+            Response::error('The data sheet could not be produced: ' . $e->getMessage(), 500);
+        }
+
+        Logger::audit(
+            'export',
+            'loan_account',
+            $id,
+            null,
+            ['document' => 'customer_sheet', 'account' => $sheet['account']],
+            sprintf('Downloaded the customer data sheet for %s', $sheet['account'])
+        );
+
+        Response::download($sheet['bytes'], $sheet['filename'], 'application/pdf');
     }
 
     /**

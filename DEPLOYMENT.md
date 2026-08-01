@@ -333,6 +333,32 @@ form. Creating branches is restricted to uploaders who are not tied to a single
 branch — a branch manager cannot conjure branches outside their own scope through
 a spreadsheet.
 
+## 4b. The customer data sheet
+
+An agent can download a one-page PDF for any lead assigned to them, from the
+toolbar of the customer screen in the app. It carries the borrower's details, the
+loan position, the branch's settlement position (OTS/KRM eligibility and figures),
+promises to pay, and the append-only visit history.
+
+```
+GET /api/v1/customers/{id}/sheet      ->  application/pdf
+```
+
+**Scoped harder than the rest of the lead API on purpose.** Everything else an
+agent reads stays inside the app; this leaves the device as a file that can be
+printed, mailed or forwarded. So an agent may only take the sheet for a lead
+**assigned to them** — not for any lead that merely sits in their branch, which is
+all `GET /customers/{id}` requires. Managers and admins get it for any lead inside
+their branch scope.
+
+Every download is written to the audit log as an `export` against the loan account,
+because the sheet contains contact details and settlement figures.
+
+On the device the file is written to the app's cache, not to Downloads: it should
+not outlive the agent's use of it, and the cache is what `FileProvider` is allowed
+to share. The Aadhaar number is masked on the sheet; the mobile number is not,
+because the agent has to be able to ring the borrower from the printed page.
+
 ## 5. Scheduled jobs (cron)
 
 cPanel → **Cron Jobs**. Use the absolute path to your PHP binary
