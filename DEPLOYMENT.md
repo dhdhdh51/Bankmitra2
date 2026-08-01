@@ -882,6 +882,61 @@ php ~/public_html/cron/backup.php
 > with `DROP TABLE IF EXISTS` and would delete every record you have. Only ever
 > run it on a fresh, empty database.
 
+### Adding location recording to an existing install
+
+```sql
+ALTER TABLE `visit_reports`
+  ADD COLUMN `gps_latitude`    DECIMAL(10,7) DEFAULT NULL AFTER `family_member_relationship`,
+  ADD COLUMN `gps_longitude`   DECIMAL(10,7) DEFAULT NULL AFTER `gps_latitude`,
+  ADD COLUMN `gps_accuracy_m`  SMALLINT UNSIGNED DEFAULT NULL AFTER `gps_longitude`,
+  ADD COLUMN `gps_captured_at` DATETIME      DEFAULT NULL AFTER `gps_accuracy_m`,
+  ADD COLUMN `gps_address`     VARCHAR(400)  DEFAULT NULL AFTER `gps_captured_at`,
+  ADD COLUMN `gps_source`      ENUM('device','unavailable','denied') DEFAULT NULL AFTER `gps_address`;
+
+ALTER TABLE `photos`
+  ADD COLUMN `gps_latitude`   DECIMAL(10,7) DEFAULT NULL AFTER `uploaded_by`,
+  ADD COLUMN `gps_longitude`  DECIMAL(10,7) DEFAULT NULL AFTER `gps_latitude`,
+  ADD COLUMN `gps_accuracy_m` SMALLINT UNSIGNED DEFAULT NULL AFTER `gps_longitude`,
+  ADD COLUMN `captured_at`    DATETIME DEFAULT NULL AFTER `gps_accuracy_m`,
+  ADD COLUMN `capture_source` ENUM('camera','gallery','unknown') NOT NULL DEFAULT 'unknown' AFTER `captured_at`;
+
+-- Logger::audit() swallows its own failures, so an action name missing from this
+-- ENUM never raises anything - it just silently never records. That is how the
+-- customer-sheet export was "audited" without a row ever appearing.
+ALTER TABLE `audit_logs`
+  MODIFY COLUMN `action` ENUM('create','update','delete','import','assign','reassign',
+    'transfer','restore','backup','login_reset','export','consent','view_location','purge') NOT NULL;
+
+-- then the two new tables, from schema.sql section 14:
+--   tracking_consents
+--   bc_location_logs
+```
+
+**Before you turn this on**, work through the checklist in §8 — the notice text,
+the acknowledgements, the retention period, and the purge cron. Nothing is recorded
+for an agent until they have acknowledged, so the safe order is: deploy, set
+`location_retention_days`, schedule the purge, then roll out the consent screen.
+
+```
+15 3 * * * /usr/local/bin/php /home/USER/public_html/cron/purge-location-logs.php
+```
+
+Run it once with `--dry-run` first; it reports how many points are past the window
+without deleting anything.
+
+### SSS enrolment reminders
+
+By email and in-app. There is no SMS gateway in this deployment, so a reminder
+written for SMS would never arrive.
+
+```
+0 11,14,16 * * * /usr/local/bin/php /home/USER/public_html/cron/sss-reminder.php
+0 17       * * * /usr/local/bin/php /home/USER/public_html/cron/sss-reminder.php --final
+```
+
+Only the `--final` slot copies the branch supervisor. An agent with no SSS target
+for the month is never reminded, and reminders stop the moment they record an entry.
+
 ### Adding the BC performance module to an existing install
 
 Six new tables and three new `users` columns. On a database created before this
