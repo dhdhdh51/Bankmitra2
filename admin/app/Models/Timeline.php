@@ -31,6 +31,9 @@ final class Timeline
         'closed'          => ['label' => 'Closed',           'icon' => 'lock',     'tone' => 'slate'],
         'reopened'        => ['label' => 'Reopened',         'icon' => 'unlock',   'tone' => 'warning'],
         'note'            => ['label' => 'Note',             'icon' => 'note',     'tone' => 'slate'],
+        'visit_approved'  => ['label' => 'Visit approved',   'icon' => 'check-circle', 'tone' => 'success'],
+        'visit_rejected'  => ['label' => 'Visit rejected',   'icon' => 'x',        'tone' => 'danger'],
+        'visit_revised'   => ['label' => 'Visit corrected',  'icon' => 'pen',      'tone' => 'warning'],
     ];
 
     /**

@@ -38,8 +38,10 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
 <div class="alert alert-info">
     <?= icon('info') ?>
     <div>
-        Loan amounts, NPA date and loan type are maintained by the Excel import and are not editable here &mdash;
-        a manual change would be overwritten by the next upload. Only borrower contact details can be corrected.
+        Loan figures come from the Excel import. You can correct them here, and any figure
+        you change is <strong>marked as hand-edited</strong> so later imports leave it alone
+        and report that they skipped it. Clear the override from the loan record if you want
+        the import to take over that figure again.
     </div>
 </div>
 
@@ -102,6 +104,94 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                             <?= field_error($errors, 'address') ?>
                         </div>
                     </div>
+                </div>
+
+                    <?php if (($customerFields ?? []) !== []): ?>
+                        <hr class="my-3">
+                        <h3 class="h6 mb-2">Additional borrower details</h3>
+                        <?= \App\Core\View::partial('partials/custom-fields', [
+                            'fields' => $customerFields,
+                            'old'    => $old,
+                            'errors' => $errors,
+                        ]) ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="lrms-card mt-3">
+                <div class="lrms-card-head"><h2>Loan figures</h2></div>
+                <div class="lrms-card-body">
+                    <div class="row g-3">
+                        <?php
+                        $moneyFields = [
+                            'outstanding_amount' => 'Outstanding amount',
+                            'overdue_amount'     => 'Overdue amount',
+                            'closure_amount'     => 'Closure amount',
+                            'ots_amount'         => 'OTS amount',
+                            'deposit_amount'     => 'Deposit amount',
+                        ];
+                        $overriddenSet = array_flip($overridden ?? []);
+                        ?>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="loan_type">Loan type</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'loan_type') ?>"
+                                   id="loan_type" name="loan_type" value="<?= $value('loan_type') ?>" maxlength="80">
+                            <?= field_error($errors, 'loan_type') ?>
+                            <?php if (isset($overriddenSet['loan_type'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="cif_number">CIF number</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'cif_number') ?>"
+                                   id="cif_number" name="cif_number" value="<?= $value('cif_number') ?>" maxlength="40">
+                            <?= field_error($errors, 'cif_number') ?>
+                        </div>
+
+                        <?php foreach ($moneyFields as $column => $label): ?>
+                            <div class="col-md-4">
+                                <label class="form-label" for="<?= e($column) ?>"><?= e($label) ?> (&#8377;)</label>
+                                <input type="number" class="form-control<?= has_error($errors, $column) ?>"
+                                       id="<?= e($column) ?>" name="<?= e($column) ?>"
+                                       value="<?= $value($column) ?>" min="0" step="0.01" inputmode="decimal">
+                                <?= field_error($errors, $column) ?>
+                                <?php if ($column === 'closure_amount'): ?>
+                                    <div class="form-text">What the borrower must pay to close the account outright.</div>
+                                <?php endif; ?>
+                                <?php if (isset($overriddenSet[$column])): ?>
+                                    <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="npa_date">NPA date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'npa_date') ?>"
+                                   id="npa_date" name="npa_date" value="<?= $value('npa_date') ?>">
+                            <?= field_error($errors, 'npa_date') ?>
+                            <div class="form-text">Clearing it removes the NPA flag too.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="ckcc_renewal_due_date">CKCC renewal due date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'ckcc_renewal_due_date') ?>"
+                                   id="ckcc_renewal_due_date" name="ckcc_renewal_due_date"
+                                   value="<?= $value('ckcc_renewal_due_date') ?>">
+                            <?= field_error($errors, 'ckcc_renewal_due_date') ?>
+                        </div>
+                    </div>
+
+                    <?php if (($loanFields ?? []) !== []): ?>
+                        <hr class="my-3">
+                        <h3 class="h6 mb-2">Additional loan details</h3>
+                        <?= \App\Core\View::partial('partials/custom-fields', [
+                            'fields' => $loanFields,
+                            'old'    => $old,
+                            'errors' => $errors,
+                        ]) ?>
+                    <?php endif; ?>
                 </div>
 
                 <div class="lrms-card-foot d-flex gap-2">

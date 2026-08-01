@@ -9,6 +9,9 @@ on:
       - 'admin/**'
       - 'schema.sql'
       - 'tools/**'
+      # The upgrade SQL published in DEPLOYMENT.md is executed and compared against
+      # schema.sql, so editing either one has to re-run this workflow.
+      - 'DEPLOYMENT.md'
       - '.github/workflows/verify-backend.yml'
   pull_request:
     branches: [main]
@@ -154,3 +157,17 @@ jobs:
           LRMS_DB_USER: root
           LRMS_DB_PASS: root
         run: php tools/integration-test.php
+
+      # An upgrade migration is only correct if somebody runs it, and the first
+      # person to run a wrong one should not be the operator, halfway through, on a
+      # populated database, with the new code already serving. This extracts the SQL
+      # from DEPLOYMENT.md, applies it to a database rebuilt in the pre-release shape
+      # and seeded with rows, then compares the result against schema.sql column by
+      # column. It caught two statements that could not execute at all.
+      - name: Verify the documented upgrade SQL
+        env:
+          LRMS_DB_HOST: 127.0.0.1
+          LRMS_DB_PORT: 3306
+          LRMS_DB_USER: root
+          LRMS_DB_PASS: root
+        run: sh tools/verify-upgrade-sql.sh

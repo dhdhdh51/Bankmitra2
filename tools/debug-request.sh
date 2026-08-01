@@ -23,12 +23,12 @@ docker run -d --name "$CT" -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=lrms \
 
 i=0
 while [ "$i" -lt 120 ]; do
-  docker exec "$CT" mysql -uroot -proot -e "SELECT 1" >/dev/null 2>&1 && break
+  docker exec "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -e "SELECT 1" >/dev/null 2>&1 && break
   i=$((i + 1)); sleep 2
 done
 
-docker exec -i "$CT" mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS lrms;" 2>/dev/null
-docker exec -i "$CT" mysql -uroot -proot lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS lrms;" 2>/dev/null
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
 
 K1=$(php -r 'echo bin2hex(random_bytes(32));')
 cat > "$ROOT_DIR/admin/config/config.php" <<PHPEOF

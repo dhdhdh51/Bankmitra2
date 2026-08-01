@@ -2074,6 +2074,334 @@ check('and can be turned off for everyone', Settings::bool('daily_report_reminde
 Settings::updateMany(['daily_report_reminder_enabled' => '1'], null);
 
 // ---------------------------------------------------------------------------
+section('Hand-corrected loan figures survive the next import');
+
+// Making the figures editable is only half the feature. The other half is that the
+// next import must not put the old number back, because that failure is silent: the
+// panel shows the corrected figure the day somebody fixes it and the wrong one again
+// the morning after the nightly import.
+$editable = LoanAccount::find($leadId);
+$changed = LoanAccount::applyManualEdit($leadId, ['closure_amount' => '161500.00'], 1);
+check('a corrected figure reports what moved', array_key_exists('closure_amount', $changed));
+check('and carries the value it replaced',
+    array_key_exists('from', $changed['closure_amount'] ?? [])
+    && (string) ($changed['closure_amount']['from'] ?? '') === (string) ($editable['closure_amount'] ?? ''),
+    json_encode($changed['closure_amount'] ?? null));
+check('the figure had no imported value to begin with', $editable['closure_amount'] === null,
+    var_export($editable['closure_amount'], true));
+
+$edited = LoanAccount::find($leadId);
+check('the figure is stored', abs((float) $edited['closure_amount'] - 161500.0) < 0.01, (string) $edited['closure_amount']);
+check('the column is marked as hand-edited',
+    in_array('closure_amount', LoanAccount::overriddenColumns($edited['manual_overrides'] ?? null), true),
+    (string) ($edited['manual_overrides'] ?? ''));
+$overrideMeta = json_decode((string) $edited['manual_overrides'], true);
+check('the override names who did it', (int) ($overrideMeta['closure_amount']['by'] ?? 0) === 1);
+check('and when', ($overrideMeta['closure_amount']['at'] ?? '') !== '');
+
+// The comparison has to be loose or a no-op save marks every figure as overridden,
+// which would stop the importer updating anything at all on that row.
+check('re-saving the same figure is not an edit',
+    LoanAccount::applyManualEdit($leadId, ['closure_amount' => '161500.00'], 1) === []);
+check('1000 and "1000.00" are the same figure',
+    LoanAccount::applyManualEdit($leadId, ['closure_amount' => 161500], 1) === []);
+check('only closure_amount is overridden so far',
+    LoanAccount::overriddenColumns(LoanAccount::find($leadId)['manual_overrides'] ?? null) === ['closure_amount'],
+    json_encode(LoanAccount::overriddenColumns(LoanAccount::find($leadId)['manual_overrides'] ?? null)));
+
+// closure_amount, ots_amount and deposit_amount are panel-only: an NPA statement
+// carries neither, and ImportService never writes them. So the override guard can
+// only be observed on a column the importer does write - correct the outstanding
+// balance, which is exactly the figure a branch rings up about.
+LoanAccount::applyManualEdit($leadId, ['outstanding_amount' => '147250.00'], 1);
+check('the outstanding balance is corrected by hand',
+    abs((float) LoanAccount::find($leadId)['outstanding_amount'] - 147250.0) < 0.01);
+
+// A column outside the whitelist must be ignored rather than trusted: this array
+// arrives from a browser post.
+LoanAccount::applyManualEdit($leadId, ['loan_account_number' => 'HIJACKED', 'current_status' => 'closed'], 1);
+$untouched = LoanAccount::find($leadId);
+check('a non-editable column is ignored', (string) $untouched['loan_account_number'] === 'LN1001',
+    (string) $untouched['loan_account_number']);
+check('status is not editable this way', (string) $untouched['current_status'] !== 'closed');
+
+// is_npa is derived from npa_date, so it has to follow it.
+LoanAccount::applyManualEdit($leadId, ['npa_date' => null], 1);
+check('clearing the NPA date clears the NPA flag', (int) LoanAccount::find($leadId)['is_npa'] === 0);
+LoanAccount::applyManualEdit($leadId, ['npa_date' => '2024-06-30'], 1);
+check('setting it again re-flags the account', (int) LoanAccount::find($leadId)['is_npa'] === 1);
+
+// Now the actual promise: an import carrying different numbers for the same account.
+$overrideCsv = $workDir . '/override.csv';
+file_put_contents($overrideCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Mobile,Village,Loan Type,Outstanding Amount,Overdue Amount',
+    'BR001,LN1001,Ramesh Kumar,9876543210,Kotri,Crop Loan,150000,41000',
+]));
+
+$overrideResult = ImportService::run(
+    ['name' => 'override.csv', 'tmp_name' => $overrideCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($overrideCsv)],
+    null,
+    null,
+    1,
+    'System Administrator'
+);
+
+$afterImport = LoanAccount::find($leadId);
+check('the import updated the row', $overrideResult['updated'] === 1, 'updated=' . $overrideResult['updated']);
+check('the hand-corrected balance survived the import',
+    abs((float) $afterImport['outstanding_amount'] - 147250.0) < 0.01, (string) $afterImport['outstanding_amount']);
+check('the file did not quietly win',
+    abs((float) $afterImport['outstanding_amount'] - 150000.0) > 0.01);
+check('a column nobody corrected still updates',
+    abs((float) $afterImport['overdue_amount'] - 41000.0) < 0.01, (string) $afterImport['overdue_amount']);
+check('the skip is reported, not silent',
+    in_array('outstanding_amount', $overrideResult['skipped_overrides']['LN1001'] ?? [], true),
+    json_encode($overrideResult['skipped_overrides']));
+// Every overridden column the file carries is named - the hand-set NPA date is one
+// of them, and a report that named only some of them would be worse than none.
+check('the hand-set NPA date is reported too',
+    in_array('npa_date', $overrideResult['skipped_overrides']['LN1001'] ?? [], true),
+    json_encode($overrideResult['skipped_overrides']['LN1001'] ?? []));
+check('and nothing the file never carried is claimed as skipped',
+    !in_array('closure_amount', $overrideResult['skipped_overrides']['LN1001'] ?? [], true));
+check('untouched accounts are not listed',
+    !array_key_exists('LN1002', $overrideResult['skipped_overrides']),
+    json_encode(array_keys($overrideResult['skipped_overrides'])));
+check('the panel-only closure figure is untouched either way',
+    abs((float) $afterImport['closure_amount'] - 161500.0) < 0.01, (string) $afterImport['closure_amount']);
+
+// ---------------------------------------------------------------------------
+section('Corrections to a filed report');
+
+$reportId = (int) $visit1['visit_id'];
+$filedName = (string) VisitReport::find($reportId)['customer_name'];
+
+$rev1 = VisitReport::applyRevision(
+    $reportId,
+    ['customer_name' => 'Ramesh Kumar Yadav', 'village' => 'Kotri'],
+    1,
+    'System Administrator',
+    'Name misspelled at data entry',
+    '127.0.0.1'
+);
+check('a correction is revision 1', $rev1 === 1, var_export($rev1, true));
+check('the report now reads correctly',
+    (string) VisitReport::find($reportId)['customer_name'] === 'Ramesh Kumar Yadav');
+check('the revision count is on the report', (int) VisitReport::find($reportId)['revision_count'] === 1);
+
+$revisions = VisitReport::revisions($reportId);
+check('the correction was recorded', count($revisions) === 1, (string) count($revisions));
+check('only the field that moved is in it',
+    array_keys($revisions[0]['changes_decoded']) === ['customer_name'],
+    json_encode(array_keys($revisions[0]['changes_decoded'])));
+check('with the value as filed',
+    (string) $revisions[0]['changes_decoded']['customer_name']['from'] === $filedName);
+check('and the value as corrected',
+    (string) $revisions[0]['changes_decoded']['customer_name']['to'] === 'Ramesh Kumar Yadav');
+check('the reason is kept', (string) $revisions[0]['reason'] === 'Name misspelled at data entry');
+check('so is who made it', (string) $revisions[0]['changed_by_name'] === 'System Administrator');
+
+// A save with no edits must not manufacture a revision, or the count printed on the
+// report stops meaning anything.
+check('saving with nothing changed files no revision',
+    VisitReport::applyRevision($reportId, ['customer_name' => 'Ramesh Kumar Yadav'], 1, 'A', 'no reason', null) === null);
+check('the count did not move', (int) VisitReport::find($reportId)['revision_count'] === 1);
+check('blank and null are the same absence',
+    VisitReport::applyRevision($reportId, ['family_member_name' => ''], 1, 'A', 'r', null) === null);
+
+// The agent's assertions are not the reviewer's to overwrite.
+$beforeAssertions = VisitReport::find($reportId);
+check('the recommendation is not correctable',
+    VisitReport::applyRevision($reportId, ['rec_regular_followup' => 0, 'remarks' => 'rewritten'], 1, 'A', 'r', null) === null);
+$afterAssertions = VisitReport::find($reportId);
+check('remarks are untouched', (string) $afterAssertions['remarks'] === (string) $beforeAssertions['remarks']);
+check('tick boxes are untouched',
+    (int) $afterAssertions['rec_regular_followup'] === (int) $beforeAssertions['rec_regular_followup']);
+
+$rev2 = VisitReport::applyRevision($reportId, ['village' => 'Kotri Kalan'], 1, 'System Administrator', 'Village corrected', null);
+check('the next correction is revision 2', $rev2 === 2, var_export($rev2, true));
+check('revisions read newest first', (int) VisitReport::revisions($reportId)[0]['revision_no'] === 2);
+check('nothing overwrote revision 1',
+    count(VisitReport::revisions($reportId)) === 2, (string) count(VisitReport::revisions($reportId)));
+
+// The submitted original has to be reconstructible, or "append-only" is a slogan.
+$replay = VisitReport::find($reportId);
+$current = ['customer_name' => (string) $replay['customer_name'], 'village' => (string) $replay['village']];
+foreach (VisitReport::revisions($reportId) as $revision) {
+    foreach ($revision['changes_decoded'] as $column => $delta) {
+        $current[$column] = (string) ($delta['from'] ?? '');
+    }
+}
+check('replaying the corrections backwards returns the filed report',
+    $current['customer_name'] === $filedName && $current['village'] === 'Kotri',
+    json_encode($current));
+
+// Approval is additive: it must not disturb a single thing the agent submitted.
+$beforeApproval = VisitReport::find($reportId);
+VisitReport::recordApproval($reportId, [
+    'approval_status'          => 'approved',
+    'approved_by'              => 1,
+    'approver_name'            => 'System Administrator',
+    'approved_at'              => date('Y-m-d H:i:s'),
+    'approval_remarks'         => 'Verified against the branch register',
+    'approval_gps_latitude'    => 26.9124,
+    'approval_gps_longitude'   => 75.7873,
+    'approval_gps_accuracy_m'  => 12,
+    'approval_gps_source'      => 'device',
+]);
+$approved = VisitReport::find($reportId);
+check('the report is approved', (string) $approved['approval_status'] === 'approved');
+check('the approver is named', (string) $approved['approver_name'] === 'System Administrator');
+check('the approver position is kept', abs((float) $approved['approval_gps_latitude'] - 26.9124) < 0.0001);
+check('the position source is kept distinct', (string) $approved['approval_gps_source'] === 'device');
+check('approval changed nothing the agent wrote',
+    (string) $approved['remarks'] === (string) $beforeApproval['remarks']
+    && (string) $approved['customer_name'] === (string) $beforeApproval['customer_name']);
+check('approval is not a revision', (int) $approved['revision_count'] === 2);
+check('an approval event has a timeline label',
+    isset(Timeline::EVENTS['visit_approved'], Timeline::EVENTS['visit_rejected'], Timeline::EVENTS['visit_revised']));
+
+// ---------------------------------------------------------------------------
+section('Fields the user adds themselves');
+
+check('a label becomes a readable key', \App\Models\CustomField::keyFrom('PAN Number') === 'pan_number',
+    \App\Models\CustomField::keyFrom('PAN Number'));
+check('punctuation collapses', \App\Models\CustomField::keyFrom('  Spouse\'s Occupation / Trade  ') === 'spouse_s_occupation_trade',
+    \App\Models\CustomField::keyFrom('  Spouse\'s Occupation / Trade  '));
+check('a label with no letters still yields a key', \App\Models\CustomField::keyFrom('###') === 'field');
+check('keys are capped to the column', strlen(\App\Models\CustomField::keyFrom(str_repeat('a', 200))) === 60);
+
+$panId = \App\Models\CustomField::create([
+    'entity' => 'customer', 'field_key' => \App\Models\CustomField::uniqueKey('customer', 'PAN Number'),
+    'label' => 'PAN Number', 'field_type' => 'text', 'is_required' => 0, 'show_in_report' => 1,
+    'sort_order' => 1, 'status' => 'active', 'created_by' => 1,
+]);
+$dupKey = \App\Models\CustomField::uniqueKey('customer', 'PAN Number');
+check('a second field with the same label gets its own key', $dupKey === 'pan_number_2', $dupKey);
+check('the same label on another entity is free',
+    \App\Models\CustomField::uniqueKey('loan_account', 'PAN Number') === 'pan_number');
+
+$limitId = \App\Models\CustomField::create([
+    'entity' => 'customer', 'field_key' => \App\Models\CustomField::uniqueKey('customer', 'Sanctioned Limit'),
+    'label' => 'Sanctioned Limit', 'field_type' => 'money', 'is_required' => 0, 'show_in_report' => 0,
+    'sort_order' => 2, 'status' => 'active', 'created_by' => 1,
+]);
+$visitedId = \App\Models\CustomField::create([
+    'entity' => 'customer', 'field_key' => \App\Models\CustomField::uniqueKey('customer', 'Shop Verified'),
+    'label' => 'Shop Verified', 'field_type' => 'toggle', 'is_required' => 0, 'show_in_report' => 1,
+    'sort_order' => 3, 'status' => 'active', 'created_by' => 1,
+]);
+$dobId = \App\Models\CustomField::create([
+    'entity' => 'customer', 'field_key' => \App\Models\CustomField::uniqueKey('customer', 'Date Of Birth'),
+    'label' => 'Date Of Birth', 'field_type' => 'date', 'is_required' => 0, 'show_in_report' => 0,
+    'sort_order' => 4, 'status' => 'active', 'created_by' => 1,
+]);
+$dependentsId = \App\Models\CustomField::create([
+    'entity' => 'customer', 'field_key' => \App\Models\CustomField::uniqueKey('customer', 'Dependents'),
+    'label' => 'Dependents', 'field_type' => 'number', 'is_required' => 0, 'show_in_report' => 0,
+    'sort_order' => 5, 'status' => 'active', 'created_by' => 1,
+]);
+
+$customerId = (int) LoanAccount::find($leadId)['customer_id'];
+$saved = \App\Models\CustomField::saveValues('customer', $customerId, [
+    'pan_number'       => '  ABCDE1234F ',
+    'sanctioned_limit' => '175000',
+    'shop_verified'    => '1',
+    'date_of_birth'    => '15 January 1980',
+    'dependents'       => '4.7',
+], 1);
+check('saving reports which fields changed', count($saved) === 5, json_encode($saved));
+
+$values = \App\Models\CustomField::valuesFor('customer', $customerId);
+check('text is trimmed', ($values['pan_number'] ?? '') === 'ABCDE1234F', json_encode($values['pan_number'] ?? null));
+check('money is stored to 2dp', ($values['sanctioned_limit'] ?? '') === '175000.00', (string) ($values['sanctioned_limit'] ?? ''));
+check('a toggle stores a real yes', ($values['shop_verified'] ?? '') === '1');
+check('a date is normalised, not stored as typed',
+    ($values['date_of_birth'] ?? '') === '1980-01-15', (string) ($values['date_of_birth'] ?? ''));
+check('a number is stored as a whole number', ($values['dependents'] ?? '') === '4', (string) ($values['dependents'] ?? ''));
+
+// An unparseable date must not be stored verbatim, or it sorts as nonsense forever.
+\App\Models\CustomField::saveValues('customer', $customerId, ['date_of_birth' => 'sometime in the monsoon'], 1);
+check('an unreadable date is refused rather than kept',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['date_of_birth'] ?? null) === null);
+
+// "Not recorded" and "recorded as empty" have to stay distinguishable.
+\App\Models\CustomField::saveValues('customer', $customerId, ['pan_number' => '   '], 1);
+check('a blank answer deletes the row',
+    (int) $db->scalar('SELECT COUNT(*) FROM custom_field_values WHERE definition_id = ? AND entity_id = ?',
+        [$panId, $customerId]) === 0);
+check('not just stored as an empty string',
+    !array_key_exists('pan_number', \App\Models\CustomField::valuesFor('customer', $customerId)));
+
+// An unchecked box is an answer, not an absence.
+\App\Models\CustomField::saveValues('customer', $customerId, ['shop_verified' => '0'], 1);
+check('an unchecked toggle stores a real no',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['shop_verified'] ?? null) === '0');
+
+// A field absent from the post was not on the form.
+\App\Models\CustomField::saveValues('customer', $customerId, ['dependents' => '5'], 1);
+check('a field absent from the submission is left alone',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['sanctioned_limit'] ?? '') === '175000.00');
+
+// Double submit must not give one field two answers.
+\App\Models\CustomField::saveValues('customer', $customerId, ['dependents' => '6'], 1);
+\App\Models\CustomField::saveValues('customer', $customerId, ['dependents' => '6'], 1);
+check('one field holds one answer',
+    (int) $db->scalar('SELECT COUNT(*) FROM custom_field_values WHERE definition_id = ? AND entity_id = ?',
+        [$dependentsId, $customerId]) === 1);
+
+$joined = \App\Models\CustomField::withValues('customer', $customerId);
+$byKey = [];
+foreach ($joined as $definition) {
+    $byKey[(string) $definition['field_key']] = $definition;
+}
+check('definitions come back joined to answers', ($byKey['dependents']['value'] ?? '') === '6');
+check('an unanswered field is present with no value', array_key_exists('pan_number', $byKey)
+    && $byKey['pan_number']['value'] === null);
+check('only fields marked for print are flagged', (int) $byKey['shop_verified']['show_in_report'] === 1
+    && (int) $byKey['sanctioned_limit']['show_in_report'] === 0);
+
+// Retiring a field keeps the answers; deleting destroys them, which is why the two
+// are separate actions.
+\App\Models\CustomField::update($limitId, ['status' => 'inactive']);
+$activeKeys = array_column(\App\Models\CustomField::definitions('customer'), 'field_key');
+check('a retired field drops off the form', !in_array('sanctioned_limit', $activeKeys, true), json_encode($activeKeys));
+check('but its answers are still there', \App\Models\CustomField::answerCount($limitId) === 1,
+    (string) \App\Models\CustomField::answerCount($limitId));
+check('and a retired field ignores new submissions',
+    \App\Models\CustomField::saveValues('customer', $customerId, ['sanctioned_limit' => '1'], 1) === []);
+check('a retired field is still listed for management',
+    in_array('sanctioned_limit', array_column(\App\Models\CustomField::all(), 'field_key'), true));
+
+\App\Models\CustomField::delete($limitId);
+check('deleting the definition takes the answers with it',
+    (int) $db->scalar('SELECT COUNT(*) FROM custom_field_values WHERE definition_id = ?', [$limitId]) === 0);
+check('other fields are unaffected',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['dependents'] ?? '') === '6');
+
+// Answers belong to one record, not to the entity type.
+$otherCustomerId = (int) LoanAccount::findByNumber('LN1002')['customer_id'];
+check('another borrower has no answers yet',
+    \App\Models\CustomField::valuesFor('customer', $otherCustomerId) === []);
+\App\Models\CustomField::saveValues('customer', $otherCustomerId, ['dependents' => '2'], 1);
+check('answers do not leak between records',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['dependents'] ?? '') === '6'
+    && (\App\Models\CustomField::valuesFor('customer', $otherCustomerId)['dependents'] ?? '') === '2');
+
+// A loan-account field with the same key must not collide with the customer one.
+$loanFieldId = \App\Models\CustomField::create([
+    'entity' => 'loan_account', 'field_key' => \App\Models\CustomField::uniqueKey('loan_account', 'Dependents'),
+    'label' => 'Dependents', 'field_type' => 'number', 'is_required' => 0, 'show_in_report' => 0,
+    'sort_order' => 1, 'status' => 'active', 'created_by' => 1,
+]);
+\App\Models\CustomField::saveValues('loan_account', $leadId, ['dependents' => '9'], 1);
+check('the same key on two entities holds two answers',
+    (\App\Models\CustomField::valuesFor('customer', $customerId)['dependents'] ?? '') === '6'
+    && (\App\Models\CustomField::valuesFor('loan_account', $leadId)['dependents'] ?? '') === '9');
+check('a visit-report field is a third namespace',
+    \App\Models\CustomField::valuesFor('visit_report', $reportId) === []);
+
+// ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";
 printf("  INTEGRATION: %d passed, %d failed\n", $passed, $failed);
 if ($failures !== []) {

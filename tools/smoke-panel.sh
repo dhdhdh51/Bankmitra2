@@ -39,11 +39,14 @@ docker run -d --name "$CT" \
   -p "$DB_PORT":3306 \
   mysql:8.0 >/dev/null
 
-echo "==> waiting for authenticated connections"
+# Probed over TCP, not the socket: the entrypoint's temporary initialisation server
+# answers on the socket and is then shut down, so a socket probe can report ready
+# moments before the server disappears and the schema import hits nothing.
+echo "==> waiting for the real server to accept TCP connections"
 READY=0
 i=0
 while [ "$i" -lt 120 ]; do
-  if docker exec "$CT" mysql -uroot -proot -e "SELECT 1" >/dev/null 2>&1; then
+  if docker exec "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -e "SELECT 1" >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -52,9 +55,9 @@ while [ "$i" -lt 120 ]; do
 done
 [ "$READY" -eq 1 ] || { echo "!! MySQL not ready"; docker logs --tail 30 "$CT"; exit 1; }
 
-docker exec -i "$CT" mysql -uroot -proot -e \
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -e \
   "CREATE DATABASE IF NOT EXISTS lrms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
-docker exec -i "$CT" mysql -uroot -proot lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
 
 echo "==> writing a temporary config.php"
 APP_KEY=$(php -r 'echo bin2hex(random_bytes(32));')

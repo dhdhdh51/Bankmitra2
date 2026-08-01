@@ -38,11 +38,11 @@ docker run -d --name "$CT" -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=lrms \
     -p "$DB_PORT":3306 mysql:8.0 > /dev/null
 i=0
 while [ "$i" -lt 120 ]; do
-    docker exec "$CT" mysql -uroot -proot -e 'SELECT 1' lrms > /dev/null 2>&1 && break
+    docker exec "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -e 'SELECT 1' lrms > /dev/null 2>&1 && break
     i=$((i + 1)); sleep 2
 done
 [ "$i" -lt 120 ] || { echo '!! MySQL never became ready'; exit 1; }
-docker exec -i "$CT" mysql -uroot -proot lrms < "$ROOT/schema.sql" 2>&1 | grep -v 'Using a password' || true
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot lrms < "$ROOT/schema.sql" 2>&1 | grep -v 'Using a password' || true
 
 APP_KEY=$(php -r 'echo bin2hex(random_bytes(32));')
 DATA_KEY=$(php -r 'echo bin2hex(random_bytes(32));')

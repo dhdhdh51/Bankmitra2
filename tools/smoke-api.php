@@ -9,6 +9,13 @@
 
 declare(strict_types=1);
 
+// The harness has to keep the same calendar as the server it is testing. Without
+// this it runs in the container's UTC while the app runs in Asia/Kolkata, so every
+// date() here is a day behind the server's for the 5.5 hours after 18:30 UTC - which
+// turns "yesterday is still correctable" into a request to backdate by two days and
+// the suite fails nightly for no reason anyone can reproduce in the morning.
+date_default_timezone_set('Asia/Kolkata');
+
 $base = rtrim(getenv('LRMS_BASE') ?: 'http://127.0.0.1:8099', '/') . '/api/v1';
 
 $passed = 0;

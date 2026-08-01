@@ -9,6 +9,11 @@
 
 declare(strict_types=1);
 
+// Same calendar as the server under test - see the note in smoke-api.php. The panel
+// posts dates too (visit dates, report ranges), and a harness a day behind the app
+// files them outside the windows the app enforces.
+date_default_timezone_set('Asia/Kolkata');
+
 $base = rtrim(getenv('LRMS_BASE') ?: 'http://127.0.0.1:8099', '/');
 $cookieJar = sys_get_temp_dir() . '/lrms_smoke_cookies.txt';
 @unlink($cookieJar);
@@ -589,6 +594,300 @@ $settings = page('GET /settings', '/settings', 200, 'Settings');
 check('settings groups render as tabs', str_contains($settings, 'tab-general'));
 check('secret settings are not echoed back', !str_contains($settings, 'demo-key'));
 check('integration status renders', str_contains($settings, 'Integration status'));
+
+// ---------------------------------------------------------------------------
+section('Visit report approval and correction');
+
+page('GET /visits/{id}/approve', '/visits/' . $visitId . '/approve', 200, 'Approve visit report');
+$approveForm = request($base . '/visits/' . $visitId . '/approve');
+check('the approval form can carry images',
+    str_contains($approveForm['body'], 'enctype="multipart/form-data"'));
+check('it asks the browser for a position',
+    str_contains($approveForm['body'], 'navigator.geolocation'));
+check('a position nobody typed cannot be forged into the form',
+    str_contains($approveForm['body'], 'name="gps_latitude" id="gps_latitude" value=""'));
+
+// Rejecting without a reason leaves the agent nothing to act on, so it must be refused.
+$rejectNoReason = request($base . '/visits/' . $visitId . '/approve', [
+    '_csrf'    => csrfToken($approveForm['body']),
+    'decision' => 'reject',
+]);
+check('a rejection with no remarks is refused',
+    str_contains($rejectNoReason['body'], 'Say why') || str_contains($rejectNoReason['body'], 'invalid-feedback'),
+    'HTTP ' . $rejectNoReason['status']);
+
+// Approve, with a photograph and a position.
+$approverPhoto = tempPng(80, 80, [40, 90, 40]);
+$approveForm2 = request($base . '/visits/' . $visitId . '/approve');
+$approved = postMultipart($base . '/visits/' . $visitId . '/approve', [
+    '_csrf'            => csrfToken($approveForm2['body']),
+    'decision'         => 'approve',
+    'approval_remarks' => 'Verified against the branch register.',
+    'gps_latitude'     => '19.0728350',
+    'gps_longitude'    => '72.8826100',
+    'gps_accuracy_m'   => '14',
+    'gps_source'       => 'device',
+], ['approval_photo' => $approverPhoto]);
+check('an approval is recorded', $approved['status'] === 200
+    && str_contains($approved['body'], 'approved'), 'HTTP ' . $approved['status']);
+
+$afterApproval = request($base . '/visits/' . $visitId);
+check('the report shows as approved', str_contains($afterApproval['body'], 'Approved'));
+check('the approver is named', str_contains($afterApproval['body'], 'Verified against the branch register'));
+check('the position the approval was made from is shown',
+    str_contains($afterApproval['body'], '19.072835'));
+check('the approver photograph is rendered',
+    str_contains($afterApproval['body'], 'Approver photograph'));
+
+// No signature was uploaded and this approver has none on file, so none is shown.
+// Asserted rather than assumed: silently printing an empty signature block would look
+// like a signature that failed to load.
+check('no approver signature is shown when there is none to show',
+    !str_contains($afterApproval['body'], 'Approver signature'));
+
+// Now approve again with a signature, which is the normal case.
+$approverSignature = tempPng(140, 50, [15, 15, 25]);
+$approveForm3 = request($base . '/visits/' . $visitId . '/approve');
+check('an already-approved report says so on the form',
+    str_contains($approveForm3['body'], 'already'));
+
+$reApproved = postMultipart($base . '/visits/' . $visitId . '/approve', [
+    '_csrf'            => csrfToken($approveForm3['body']),
+    'decision'         => 'approve',
+    'approval_remarks' => 'Re-checked with the signature attached.',
+    'gps_source'       => 'denied',
+], ['approval_signature' => $approverSignature]);
+check('a second decision is accepted', $reApproved['status'] === 200, 'HTTP ' . $reApproved['status']);
+
+$withSignature = request($base . '/visits/' . $visitId);
+check('the approver signature is rendered when supplied',
+    str_contains($withSignature['body'], 'Approver signature'));
+// A declined position must be recorded as declined, not as "no fix".
+check('a declined position is reported as declined',
+    str_contains($withSignature['body'], 'declined to share'));
+
+// A new decision must not keep the previous decision's photograph: that image was
+// taken at a different moment and presenting it as evidence of this one is a lie.
+check('the previous decision\'s photograph is not carried forward',
+    !str_contains($withSignature['body'], 'Approver photograph'));
+
+// And the fallback must never delete the approver's PROFILE signature - that file
+// appears on every report they have ever approved.
+$adminForm = request($base . '/users/2/edit');
+check('a profile signature survives being borrowed by an approval',
+    str_contains($adminForm['body'], 'Current signature'));
+
+@unlink($approverSignature);
+
+// And it reaches the printed report.
+$approvedPdf = request($base . '/visits/' . $visitId . '/pdf');
+check('the printed report carries the approval', $approvedPdf['status'] === 200
+    && str_contains($approvedPdf['body'], 'Approved'), 'HTTP ' . $approvedPdf['status']);
+
+// ---- Correction, and the append-only guarantee ------------------------------
+page('GET /visits/{id}/revise', '/visits/' . $visitId . '/revise', 200, 'Correct visit report');
+$reviseForm = request($base . '/visits/' . $visitId . '/revise');
+check('the correction form warns that nothing is overwritten silently',
+    str_contains($reviseForm['body'], 'Nothing here is overwritten silently'));
+
+// The agent's own assertions must NOT be correctable - a reviewer overwriting the
+// tick boxes turns the agent's report into the reviewer's.
+foreach (['customer_met', 'ready_to_pay', 'remarks', 'rec_legal_action'] as $offLimits) {
+    check("the reviewer cannot edit {$offLimits}",
+        !str_contains($reviseForm['body'], 'name="' . $offLimits . '"'));
+}
+
+$originalName = formValue($reviseForm['body'], 'customer_name');
+check('the correction form is pre-filled with the current value', $originalName !== '');
+
+// A correction with no reason is refused: the reason is what makes the trail useful.
+$noReason = request($base . '/visits/' . $visitId . '/revise', [
+    '_csrf'         => csrfToken($reviseForm['body']),
+    'customer_name' => $originalName . ' Corrected',
+]);
+check('a correction with no reason is refused',
+    str_contains($noReason['body'], 'Say why') || str_contains($noReason['body'], 'invalid-feedback'));
+
+$reviseForm2 = request($base . '/visits/' . $visitId . '/revise');
+$corrected = request($base . '/visits/' . $visitId . '/revise', [
+    '_csrf'         => csrfToken($reviseForm2['body']),
+    'customer_name' => $originalName . ' Corrected',
+    'village'       => 'Corrected Village',
+    'reason'        => 'Name misspelt on the original submission.',
+]);
+check('a correction is saved', $corrected['status'] === 200
+    && str_contains($corrected['body'], 'revision 1'), 'HTTP ' . $corrected['status']);
+
+$afterRevision = request($base . '/visits/' . $visitId);
+check('the corrected value is shown', str_contains($afterRevision['body'], $originalName . ' Corrected'));
+// The whole point: the value the agent submitted is still there.
+check('the ORIGINAL value is retained', str_contains($afterRevision['body'], $originalName));
+check('the correction is listed with its reason',
+    str_contains($afterRevision['body'], 'Name misspelt on the original submission'));
+check('the report states it has been corrected',
+    str_contains($afterRevision['body'], 'Corrected <strong>1</strong> time(s)')
+    || str_contains($afterRevision['body'], 'time(s) since'));
+
+// A save that changes nothing must not manufacture an empty revision, or the count on
+// the printed report stops meaning anything.
+$reviseForm3 = request($base . '/visits/' . $visitId . '/revise');
+$noChange = request($base . '/visits/' . $visitId . '/revise', [
+    '_csrf'         => csrfToken($reviseForm3['body']),
+    'customer_name' => $originalName . ' Corrected',
+    'village'       => 'Corrected Village',
+    'reason'        => 'Saving without changing anything.',
+]);
+check('a no-op correction records no revision',
+    str_contains($noChange['body'], 'Nothing was changed'), 'HTTP ' . $noChange['status']);
+
+$stillOne = request($base . '/visits/' . $visitId);
+check('the revision count did not move', !str_contains($stillOne['body'], 'revision 2')
+    && !str_contains($stillOne['body'], '>2</td>'));
+
+// The printed report has to admit it was corrected.
+$correctedPdf = request($base . '/visits/' . $visitId . '/pdf');
+check('the printed report discloses the correction',
+    str_contains($correctedPdf['body'], 'every change is retained'), 'HTTP ' . $correctedPdf['status']);
+
+@unlink($approverPhoto);
+
+// ---------------------------------------------------------------------------
+section('Closure amount, editable loan figures and custom fields');
+
+$profile2 = request($base . '/customers/' . $leadId);
+check('the loan panel shows a closure amount', str_contains($profile2['body'], 'Closure amount'));
+// The user asked for the closure figure in place of the BC code, which belongs to the
+// agent rather than the loan and is still snapshotted on the visit report.
+check('the BC code no longer clutters the loan panel',
+    !str_contains($profile2['body'], 'BC / DC code'));
+
+$editPage = page('GET /customers/{id}/edit', '/customers/' . $leadId . '/edit', 200, 'Edit borrower');
+check('loan figures are editable now', str_contains($editPage, 'name="outstanding_amount"'));
+check('the closure amount is editable', str_contains($editPage, 'name="closure_amount"'));
+check('the banner no longer claims loan figures are read-only',
+    !str_contains($editPage, 'are not editable here'));
+check('and it explains the override instead', str_contains($editPage, 'marked as hand-edited'));
+
+// Edit a loan figure by hand.
+$editForm = request($base . '/customers/' . $leadId . '/edit');
+$loanEdit = request($base . '/customers/' . $leadId . '/edit', [
+    '_csrf'              => csrfToken($editForm['body']),
+    'name'               => formValue($editForm['body'], 'name'),
+    'village'            => formValue($editForm['body'], 'village'),
+    'closure_amount'     => '123456.78',
+    'outstanding_amount' => formValue($editForm['body'], 'outstanding_amount'),
+    'overdue_amount'     => formValue($editForm['body'], 'overdue_amount'),
+]);
+check('a hand-edited loan figure is accepted', $loanEdit['status'] === 200
+    && str_contains($loanEdit['body'], 'updated'), 'HTTP ' . $loanEdit['status']);
+
+$afterLoanEdit = request($base . '/customers/' . $leadId);
+check('the closure amount is shown', str_contains($afterLoanEdit['body'], '1,23,456'));
+
+$editAgain = request($base . '/customers/' . $leadId . '/edit');
+// The override is what stops the next import silently undoing the correction.
+check('the edited figure is flagged as hand-edited',
+    str_contains($editAgain['body'], 'imports skip this'));
+
+// ---- Custom fields ----------------------------------------------------------
+page('GET /custom-fields', '/custom-fields', 200, 'Custom fields');
+page('GET /custom-fields/create', '/custom-fields/create', 200, 'Add a custom field');
+check('the custom field screen warns against loan figures',
+    str_contains(request($base . '/custom-fields')['body'], 'Not for loan figures'));
+
+$cfForm = request($base . '/custom-fields/create');
+$cfCreate = request($base . '/custom-fields/create', [
+    '_csrf'          => csrfToken($cfForm['body']),
+    'entity'         => 'customer',
+    'label'          => 'PAN number',
+    'field_type'     => 'text',
+    'hint'           => 'Ten characters',
+    'status'         => 'active',
+    'sort_order'     => '1',
+    'show_in_report' => '1',
+]);
+check('a custom field is created', $cfCreate['status'] === 200
+    && str_contains($cfCreate['body'], 'added'), 'HTTP ' . $cfCreate['status']);
+
+$cfList = request($base . '/custom-fields');
+check('the key is derived from the label', str_contains($cfList['body'], 'pan_number'));
+
+// A second field with the same label must not collide on the unique key.
+$cfForm2 = request($base . '/custom-fields/create');
+$cfDup = request($base . '/custom-fields/create', [
+    '_csrf'      => csrfToken($cfForm2['body']),
+    'entity'     => 'customer',
+    'label'      => 'PAN number',
+    'field_type' => 'text',
+    'status'     => 'active',
+    'sort_order' => '2',
+]);
+check('a duplicate label gets its own key, not a database error', $cfDup['status'] === 200
+    && str_contains($cfDup['body'], 'added'), 'HTTP ' . $cfDup['status']);
+check('the second key is suffixed', str_contains(request($base . '/custom-fields')['body'], 'pan_number_2'));
+
+// A loan-account field of a different type, to exercise the renderer.
+$cfForm3 = request($base . '/custom-fields/create');
+request($base . '/custom-fields/create', [
+    '_csrf'      => csrfToken($cfForm3['body']),
+    'entity'     => 'loan_account',
+    'label'      => 'Security type',
+    'field_type' => 'select',
+    'options'    => 'Land, Gold, Unsecured',
+    'status'     => 'active',
+    'sort_order' => '1',
+]);
+
+// The new fields must appear on the borrower form with no release.
+$editWithCustom = request($base . '/customers/' . $leadId . '/edit');
+check('a new borrower field appears on the form immediately',
+    str_contains($editWithCustom['body'], 'name="pan_number"'));
+check('a new loan field appears too', str_contains($editWithCustom['body'], 'name="security_type"'));
+check('a select field renders its choices', str_contains($editWithCustom['body'], 'Unsecured'));
+
+// Answer them.
+$answerForm = request($base . '/customers/' . $leadId . '/edit');
+$answered = request($base . '/customers/' . $leadId . '/edit', [
+    '_csrf'         => csrfToken($answerForm['body']),
+    'name'          => formValue($answerForm['body'], 'name'),
+    'pan_number'    => 'ABCDE1234F',
+    'security_type' => 'Gold',
+]);
+check('custom answers are saved', $answered['status'] === 200, 'HTTP ' . $answered['status']);
+
+$profileWithCustom = request($base . '/customers/' . $leadId);
+check('the answer shows on the profile', str_contains($profileWithCustom['body'], 'ABCDE1234F'));
+check('the loan answer shows too', str_contains($profileWithCustom['body'], 'Gold'));
+// An unanswered field is still listed - "not recorded" is information.
+check('an unanswered field is listed rather than hidden',
+    str_contains($profileWithCustom['body'], 'Not recorded'));
+
+// Blanking an answer must remove the row, not store an empty string, so
+// "not recorded" and "recorded as empty" stay distinguishable.
+$blankForm = request($base . '/customers/' . $leadId . '/edit');
+request($base . '/customers/' . $leadId . '/edit', [
+    '_csrf'      => csrfToken($blankForm['body']),
+    'name'       => formValue($blankForm['body'], 'name'),
+    'pan_number' => '',
+]);
+$afterBlank = request($base . '/customers/' . $leadId);
+check('a blanked answer reverts to not recorded', !str_contains($afterBlank['body'], 'ABCDE1234F'));
+
+// Retiring keeps answers; the list has to say how many a delete would destroy.
+$cfListFinal = request($base . '/custom-fields');
+check('the list reports how many answers each field holds',
+    preg_match('#<td class="num">\s*\d+\s*</td>#', $cfListFinal['body']) === 1);
+// A field marked for the report must reach the printed report; one not marked must not.
+$reportPdf = request($base . '/visits/' . $visitId . '/pdf');
+check('a field flagged for printing reaches the report',
+    str_contains($reportPdf['body'], 'Additional Details')
+    && str_contains($reportPdf['body'], 'PAN number'), 'HTTP ' . $reportPdf['status']);
+check('a field not flagged for printing stays off it',
+    !str_contains($reportPdf['body'], 'Security type'));
+
+check('deleting warns about destroying answers',
+    str_contains($cfListFinal['body'], 'set it to Inactive instead')
+    || str_contains($cfListFinal['body'], 'Nothing has been recorded'));
 
 // ---------------------------------------------------------------------------
 section('BC performance: targets, SSS, scorecard');

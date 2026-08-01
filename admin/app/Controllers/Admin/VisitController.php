@@ -8,8 +8,12 @@ use App\Core\Auth;
 use App\Core\Pdf;
 use App\Core\Request;
 use App\Core\Response;
+use App\Core\Logger;
 use App\Core\Uploader;
+use App\Models\Timeline;
+use App\Services\TrackingService;
 use App\Models\Branch;
+use App\Models\CustomField;
 use App\Models\LoanAccount;
 use App\Models\User;
 use App\Models\VisitReport;
@@ -78,7 +82,248 @@ final class VisitController extends Controller
             'photos'     => VisitReport::photos((int) $report['id']),
             'documents'  => VisitReport::documents((int) $report['id']),
             'signatures' => VisitReport::signatures((int) $report['id']),
+            'revisions'  => VisitReport::revisions((int) $report['id']),
         ]);
+    }
+
+    /**
+     * Approve or reject a submitted report.
+     *
+     * The approver's photograph, signature and position are captured at the moment
+     * they act, not read off their profile. A signature on file proves who they are;
+     * a photograph and a coordinate taken now are the only things that say they
+     * actually looked at this report where and when they claim.
+     *
+     * Position comes from the browser and is allowed to be absent. Refusing to record
+     * an approval because a laptop has no GPS would push approvals off the system
+     * entirely, so "no fix" and "declined" are recorded as what they are.
+     */
+    public function approve(Request $request): void
+    {
+        $this->guard($request, 'visits.approve');
+
+        $report = $this->load($request);
+        $id = (int) $report['id'];
+
+        if (!$request->isPost()) {
+            $this->view($request, 'visits/approve', [
+                'title'  => 'Approve visit report',
+                'report' => $report,
+            ]);
+        }
+
+        $decision = $request->str('decision') === 'reject' ? 'rejected' : 'approved';
+
+        // Rejecting without saying why leaves the agent nothing to act on.
+        $remarks = $request->nullableStr('approval_remarks');
+        if ($decision === 'rejected' && ($remarks === null || trim($remarks) === '')) {
+            $this->backWithErrors(
+                '/visits/' . $id . '/approve',
+                ['approval_remarks' => ['Say why the report is being rejected - the agent has to know what to fix.']],
+                $request->all()
+            );
+        }
+
+        try {
+            // A new decision replaces its own evidence. Passing "remove" whenever no
+            // file was supplied is deliberate: keeping the previous photograph would
+            // present an image taken at an earlier decision as evidence of this one,
+            // and leaving it behind unreferenced would litter the uploads directory.
+            $photoPath = $this->optionalImage(
+                'approval_photo',
+                'approvals',
+                $report['approval_photo_path'] ?? null,
+                !Uploader::hasUpload('approval_photo')
+            );
+
+            // The signature needs more care. The stored path may be one BORROWED from
+            // the approver's user record by the fallback below, and deleting that
+            // would destroy their profile signature - which appears on every report
+            // they have ever approved. Only a file that was uploaded here is ours to
+            // remove.
+            $previousSignature = $report['approval_signature_path'] ?? null;
+            $signatureIsOurs = is_string($previousSignature)
+                && str_starts_with($previousSignature, 'approvals/');
+
+            $signaturePath = $this->optionalImage(
+                'approval_signature',
+                'approvals',
+                $signatureIsOurs ? $previousSignature : null,
+                $signatureIsOurs && !Uploader::hasUpload('approval_signature')
+            );
+        } catch (\Throwable $e) {
+            $this->backWithErrors(
+                '/visits/' . $id . '/approve',
+                ['approval_photo' => [$e->getMessage()]],
+                $request->all(),
+                'The image could not be accepted.'
+            );
+        }
+
+        // Falls back to the signature already on the approver's record. Somebody who
+        // signed a sheet once should not have to re-upload it for every report.
+        $approver = Auth::user();
+        if ($signaturePath === null && ($approver['signature_path'] ?? null) !== null) {
+            $signaturePath = (string) $approver['signature_path'];
+        }
+
+        $position = $this->submittedPosition($request);
+
+        VisitReport::recordApproval($id, [
+            'approval_status'          => $decision,
+            'approved_by'              => Auth::id(),
+            'approver_name'            => (string) ($approver['name'] ?? ''),
+            'approved_at'              => date('Y-m-d H:i:s'),
+            'approval_remarks'         => $remarks,
+            'approval_photo_path'      => $photoPath,
+            'approval_signature_path'  => $signaturePath,
+            'approval_gps_latitude'    => $position['latitude'],
+            'approval_gps_longitude'   => $position['longitude'],
+            'approval_gps_accuracy_m'  => $position['accuracy'],
+            'approval_gps_source'      => $position['source'],
+        ]);
+
+        Timeline::record(
+            (int) $report['loan_account_id'],
+            $decision === 'approved' ? 'visit_approved' : 'visit_rejected',
+            $decision === 'approved' ? 'Visit report approved' : 'Visit report rejected',
+            $remarks,
+            Auth::id(),
+            (string) ($approver['name'] ?? ''),
+            $id,
+            null,
+            ['position' => $position['source']]
+        );
+
+        Logger::audit(
+            'update',
+            'visit_report',
+            $id,
+            ['approval_status' => (string) ($report['approval_status'] ?? 'pending')],
+            ['approval_status' => $decision],
+            sprintf('Visit report #%d %s', $id, $decision)
+        );
+
+        $this->back(
+            '/visits/' . $id,
+            $decision === 'approved' ? 'success' : 'warning',
+            sprintf('Report #%d %s.', $id, $decision)
+        );
+    }
+
+    /**
+     * Correct a submitted report.
+     *
+     * The row is updated and the previous value of every changed field is kept, so
+     * nothing the agent filed is lost and the printed report says how many times it
+     * has been corrected. See VisitReport::applyRevision().
+     */
+    public function revise(Request $request): void
+    {
+        $this->guard($request, 'visits.revise');
+
+        $report = $this->load($request);
+        $id = (int) $report['id'];
+
+        if (!$request->isPost()) {
+            $this->view($request, 'visits/revise', [
+                'title'     => 'Correct visit report',
+                'report'    => $report,
+                'revisions' => VisitReport::revisions($id),
+            ]);
+        }
+
+        $reason = $request->nullableStr('reason');
+        if ($reason === null || trim($reason) === '') {
+            $this->backWithErrors(
+                '/visits/' . $id . '/revise',
+                ['reason' => ['Say why this correction is being made. It is recorded with the change.']],
+                $request->all()
+            );
+        }
+
+        $proposed = [];
+        foreach (array_keys(VisitReport::CORRECTABLE) as $column) {
+            if ($request->has($column)) {
+                $proposed[$column] = $request->nullableStr($column);
+            }
+        }
+
+        $user = Auth::user();
+        $revisionNo = VisitReport::applyRevision(
+            $id,
+            $proposed,
+            Auth::id(),
+            (string) ($user['name'] ?? ''),
+            $reason,
+            $request->ip()
+        );
+
+        if ($revisionNo === null) {
+            $this->back('/visits/' . $id, 'info', 'Nothing was changed, so no revision was recorded.');
+        }
+
+        Timeline::record(
+            (int) $report['loan_account_id'],
+            'visit_revised',
+            sprintf('Visit report corrected (revision %d)', $revisionNo),
+            $reason,
+            Auth::id(),
+            (string) ($user['name'] ?? ''),
+            $id,
+            null,
+            ['revision' => $revisionNo]
+        );
+
+        Logger::audit(
+            'update',
+            'visit_report',
+            $id,
+            null,
+            ['revision' => $revisionNo, 'reason' => $reason],
+            sprintf('Corrected visit report #%d (revision %d)', $id, $revisionNo)
+        );
+
+        $this->back('/visits/' . $id, 'success', sprintf(
+            'Correction saved as revision %d. The original values are retained.',
+            $revisionNo
+        ));
+    }
+
+    /**
+     * The position the browser reported, if it did.
+     *
+     * The three outcomes are kept distinct because they mean different things to
+     * whoever reads the approval later: a coordinate, a refusal, or a device that
+     * could not tell. Collapsing them would make a laptop indistinguishable from
+     * somebody who declined.
+     *
+     * @return array{latitude:float|null,longitude:float|null,accuracy:int|null,source:string}
+     */
+    private function submittedPosition(Request $request): array
+    {
+        $blank = ['latitude' => null, 'longitude' => null, 'accuracy' => null];
+
+        if ($request->str('gps_source') === 'denied') {
+            return $blank + ['source' => 'denied'];
+        }
+
+        $latitude = $request->nullableFloat('gps_latitude');
+        $longitude = $request->nullableFloat('gps_longitude');
+
+        if ($latitude === null || $longitude === null
+            || !TrackingService::plausible($latitude, $longitude)) {
+            return $blank + ['source' => 'unavailable'];
+        }
+
+        $accuracy = $request->nullableInt('gps_accuracy_m');
+
+        return [
+            'latitude'  => $latitude,
+            'longitude' => $longitude,
+            'accuracy'  => $accuracy === null ? null : max(0, $accuracy),
+            'source'    => 'device',
+        ];
     }
 
     /**
@@ -312,6 +557,31 @@ final class VisitController extends Controller
             if ($approvalCells !== []) {
                 $pdf->imageStrip($approvalCells, 84.0);
             }
+        }
+
+        // ---- Operator-defined fields ----------------------------------------
+        // Only those marked "print on the visit report". Off by default, because a
+        // field somebody added to track an internal note should not silently start
+        // appearing on a document handed to a borrower.
+        $extra = [];
+        foreach ([
+            ['customer', (int) $report['customer_id']],
+            ['loan_account', (int) $report['loan_account_id']],
+            ['visit_report', (int) $report['id']],
+        ] as [$entity, $entityId]) {
+            foreach (CustomField::withValues($entity, $entityId) as $definition) {
+                if ((int) $definition['show_in_report'] !== 1) {
+                    continue;
+                }
+
+                $display = CustomField::display($definition);
+                $extra[(string) $definition['label']] = $display === '' ? 'Not recorded' : $display;
+            }
+        }
+
+        if ($extra !== []) {
+            $pdf->heading('Additional Details');
+            $pdf->keyValueBlock($extra, 2);
         }
 
         $pdf->heading('Attachments');

@@ -32,19 +32,34 @@ trap cleanup EXIT INT TERM
 cleanup
 rm -rf "$WORK"; mkdir -p "$WORK"
 
-sql() { docker exec -i "$CT" mysql -uroot -proot -N -B lrms 2>/dev/null; }
+# The app pins the MySQL session timezone to the app timezone (see
+# Database::alignTimezone) because dates are written from PHP and compared in SQL.
+# The mysql CLI does no such thing, so a fixture built with CURDATE() lands in the
+# server's UTC day while the cron reads Asia/Kolkata - which makes "due today"
+# fixtures land on yesterday for the 5.5 hours after 18:30 UTC. Pin it here too, or
+# this harness passes 18.5 hours a day and fails the other 5.5.
+TZ_OFFSET=$(php -r 'echo (new DateTimeImmutable("now", new DateTimeZone("Asia/Kolkata")))->format("P");')
+
+sql() {
+    { printf "SET time_zone='%s';\n" "$TZ_OFFSET"; cat; } \
+        | docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot -N -B lrms 2>/dev/null
+}
 sqlv() { printf '%s' "$1" | sql; }
 
 echo "==> MySQL on port $DB_PORT"
 docker run -d --name "$CT" -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=lrms \
     -p "$DB_PORT":3306 mysql:8.0 > /dev/null
+# TCP, not the socket: the entrypoint's temporary init server answers on the socket
+# and is then shut down, so a socket probe can pass moments before the server dies.
 i=0
 while [ "$i" -lt 120 ]; do
-    docker exec "$CT" mysql -uroot -proot -e "SELECT 1" > /dev/null 2>&1 && break
+    docker exec "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot \
+        -e "SELECT 1" > /dev/null 2>&1 && break
     i=$((i + 1)); sleep 2
 done
 [ "$i" -lt 120 ] || { echo '!! MySQL never became ready'; exit 1; }
-docker exec -i "$CT" mysql -uroot -proot lrms < "$ROOT/schema.sql" 2>&1 | grep -v 'Using a password' || true
+docker exec -i "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot lrms \
+    < "$ROOT/schema.sql" 2>&1 | grep -v 'Using a password' || true
 
 echo '==> config + demo data'
 APP_KEY=$(php -r 'echo bin2hex(random_bytes(32));')

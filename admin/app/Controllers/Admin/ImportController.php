@@ -277,6 +277,31 @@ final class ImportController extends Controller
                 . '</code>.';
         }
 
+        // Figures a human corrected in the panel are left alone by the import. That is
+        // the point of allowing the correction, but it has to be said out loud: an
+        // override nobody remembers setting freezes a figure forever, and the operator
+        // watching the file go in is the only person positioned to notice.
+        if (($result['skipped_overrides'] ?? []) !== []) {
+            $accounts = array_slice(array_keys($result['skipped_overrides']), 0, 6);
+            $labels = [];
+            foreach ($accounts as $account) {
+                $columns = array_map(
+                    static fn (string $column): string =>
+                        \App\Models\LoanAccount::MANUALLY_EDITABLE[$column] ?? $column,
+                    array_unique($result['skipped_overrides'][$account])
+                );
+                $labels[] = $account . ' (' . implode(', ', $columns) . ')';
+            }
+
+            $parts[] = sprintf(
+                '<strong>%d account(s) kept hand-corrected figures</strong> instead of the'
+                . ' values in the file: <code>%s</code>%s',
+                count($result['skipped_overrides']),
+                e(implode('; ', $labels)),
+                count($result['skipped_overrides']) > 6 ? ' and more.' : ''
+            );
+        }
+
         if ($result['error_log'] !== null) {
             $parts[] = sprintf(
                 '<a href="%s">Download the error log</a> to see why rows were skipped.',

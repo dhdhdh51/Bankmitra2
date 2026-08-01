@@ -27,15 +27,20 @@ docker run -d --name "$CT" \
   -p "$PORT":3306 \
   mysql:8.0 >/dev/null
 
-# Neither `mysqladmin ping` nor the "ready for connections" log line is a
-# reliable readiness signal: the entrypoint runs a *temporary* server during
-# initialisation that answers both. Poll for the thing we actually need instead
-# - an authenticated connection using the configured root password.
-echo "==> waiting for server to accept authenticated connections"
+# Neither `mysqladmin ping`, the "ready for connections" log line, nor an
+# authenticated socket connection is a reliable readiness signal: the entrypoint
+# runs a *temporary* server during initialisation that answers all three, then
+# shuts it down and restarts. Winning that race leaves the schema import hitting a
+# dead socket, which then reports as "schema import failed" with no hint why.
+#
+# The temporary server is started with networking disabled, so a TCP connection is
+# the one signal that cannot come from it.
+echo "==> waiting for the real server to accept TCP connections"
 READY=0
 i=0
 while [ "$i" -lt 120 ]; do
-  if docker exec "$CT" mysql -uroot -proot -e "SELECT 1" >/dev/null 2>&1; then
+  if docker exec "$CT" mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot \
+       -e "SELECT 1" >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -50,12 +55,13 @@ if [ "$READY" -ne 1 ]; then
 fi
 
 echo "==> importing schema.sql"
-docker exec -i "$CT" mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS lrms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>&1 | grep -v 'Using a password' || true
-docker exec -i "$CT" mysql -uroot -proot lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
+MYSQL="mysql --protocol=TCP -h 127.0.0.1 -P 3306 -uroot -proot"
+docker exec -i "$CT" $MYSQL -e "CREATE DATABASE IF NOT EXISTS lrms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>&1 | grep -v 'Using a password' || true
+docker exec -i "$CT" $MYSQL lrms < "$ROOT_DIR/schema.sql" 2>&1 | grep -v 'Using a password' || true
 
 # Fail fast if the schema did not land, rather than reporting confusing
 # "table doesn't exist" errors from inside the test.
-TABLE_COUNT=$(docker exec -i "$CT" mysql -uroot -proot -N -B lrms \
+TABLE_COUNT=$(docker exec -i "$CT" $MYSQL -N -B lrms \
   -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='lrms';" 2>/dev/null | tr -d '[:space:]')
 echo "==> tables present: ${TABLE_COUNT:-0}"
 if [ "${TABLE_COUNT:-0}" -lt 20 ]; then

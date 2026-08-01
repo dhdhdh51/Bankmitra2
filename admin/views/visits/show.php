@@ -68,14 +68,150 @@ foreach ($signatures as $signature) {
     </div>
 </div>
 
+<?php
+/**
+ * Provenance and approval state.
+ *
+ * This block used to end with "It cannot be edited", which stopped being true when
+ * reviewers were given a way to correct a misheard name. The append-only guarantee
+ * still holds and is stated precisely instead: nothing is deleted, and no value
+ * changes without the previous one being kept.
+ */
+$approvalStatus = (string) ($report['approval_status'] ?? 'pending');
+$revisionCount = (int) ($report['revision_count'] ?? 0);
+?>
 <div class="alert alert-info no-print">
     <?= icon('info') ?>
     <div>
-        This is an append-only record submitted from
+        Submitted from
         <strong><?= e($report['source']) ?><?= $report['app_version'] === null ? '' : ' v' . e($report['app_version']) ?></strong>
-        on <?= e(fmt_datetime((string) $report['created_at'])) ?>. It cannot be edited.
+        on <?= e(fmt_datetime((string) $report['created_at'])) ?>.
+        <?php if ($revisionCount === 0): ?>
+            Nothing has been changed since.
+        <?php else: ?>
+            Corrected <strong><?= e((string) $revisionCount) ?></strong> time(s) since;
+            every previous value is retained below.
+        <?php endif; ?>
     </div>
 </div>
+
+<div class="lrms-card mb-3 no-print">
+    <div class="lrms-card-body d-flex flex-wrap gap-3 align-items-center justify-content-between">
+        <div>
+            <div class="lrms-stat-label mb-1"><?= icon('shield') ?> Approval</div>
+            <?php if ($approvalStatus === 'pending'): ?>
+                <span class="lrms-badge badge-pending">Awaiting review</span>
+            <?php elseif ($approvalStatus === 'approved'): ?>
+                <span class="lrms-badge badge-visited">Approved</span>
+                <span class="text-muted" style="font-size:.8125rem">
+                    by <?= e((string) ($report['approver_name'] ?? '')) ?>
+                    on <?= e(fmt_datetime((string) $report['approved_at'])) ?>
+                </span>
+            <?php else: ?>
+                <span class="lrms-badge badge-legal">Rejected</span>
+                <span class="text-muted" style="font-size:.8125rem">
+                    by <?= e((string) ($report['approver_name'] ?? '')) ?>
+                    on <?= e(fmt_datetime((string) $report['approved_at'])) ?>
+                </span>
+            <?php endif; ?>
+
+            <?php if (($report['approval_remarks'] ?? '') !== ''): ?>
+                <div class="text-muted mt-1" style="font-size:.8125rem">
+                    &ldquo;<?= e((string) $report['approval_remarks']) ?>&rdquo;
+                </div>
+            <?php endif; ?>
+
+            <?php if ($approvalStatus !== 'pending'): ?>
+                <div class="text-muted mt-1" style="font-size:.75rem">
+                    <?php if ((string) ($report['approval_gps_source'] ?? '') === 'device'
+                        && $report['approval_gps_latitude'] !== null): ?>
+                        Approved at
+                        <span class="font-mono">
+                            <?= e(sprintf('%.6F, %.6F', (float) $report['approval_gps_latitude'], (float) $report['approval_gps_longitude'])) ?>
+                        </span>
+                        <?= $report['approval_gps_accuracy_m'] === null
+                            ? ''
+                            : e(sprintf('(±%d m)', (int) $report['approval_gps_accuracy_m'])) ?>
+                    <?php elseif ((string) ($report['approval_gps_source'] ?? '') === 'denied'): ?>
+                        The approver declined to share their position.
+                    <?php else: ?>
+                        No position was available at approval.
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="d-flex gap-2">
+            <?php if (can('visits.approve')): ?>
+                <a href="<?= e(url('/visits/' . (int) $report['id'] . '/approve')) ?>" class="btn btn-primary btn-sm">
+                    <?= icon('check-circle') ?> <?= $approvalStatus === 'pending' ? 'Approve or reject' : 'Change decision' ?>
+                </a>
+            <?php endif; ?>
+            <?php if (can('visits.revise')): ?>
+                <a href="<?= e(url('/visits/' . (int) $report['id'] . '/revise')) ?>" class="btn btn-outline-secondary btn-sm">
+                    <?= icon('pen') ?> Correct a field
+                </a>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if (($report['approval_photo_path'] ?? null) !== null || ($report['approval_signature_path'] ?? null) !== null): ?>
+        <div class="lrms-card-body border-top">
+            <div class="d-flex flex-wrap gap-4">
+                <?php if (($report['approval_photo_path'] ?? null) !== null): ?>
+                    <div>
+                        <div class="lrms-stat-label mb-1">Approver photograph</div>
+                        <img src="<?= e(Url::media((string) $report['approval_photo_path'])) ?>"
+                             alt="Approver photograph"
+                             style="height:110px;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
+                    </div>
+                <?php endif; ?>
+                <?php if (($report['approval_signature_path'] ?? null) !== null): ?>
+                    <div>
+                        <div class="lrms-stat-label mb-1">Approver signature</div>
+                        <img src="<?= e(Url::media((string) $report['approval_signature_path'])) ?>"
+                             alt="Approver signature"
+                             style="height:110px;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    <?php endif; ?>
+</div>
+
+<?php if (!empty($revisions)): ?>
+    <div class="lrms-card mb-3">
+        <div class="lrms-card-head"><h2>Corrections</h2></div>
+        <div class="lrms-table-wrap">
+            <table class="lrms-table">
+                <thead>
+                    <tr><th>#</th><th>When</th><th>By</th><th>Changed</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($revisions as $revision): ?>
+                        <tr>
+                            <td class="num"><?= (int) $revision['revision_no'] ?></td>
+                            <td style="font-size:.8125rem"><?= fmt_datetime($revision['changed_at']) ?></td>
+                            <td style="font-size:.8125rem"><?= nullable($revision['changed_by_name']) ?></td>
+                            <td style="font-size:.75rem">
+                                <?php foreach ($revision['changes_decoded'] as $field => $change): ?>
+                                    <div>
+                                        <strong><?= e(VisitReport::CORRECTABLE[$field] ?? $field) ?>:</strong>
+                                        <span class="text-muted" style="text-decoration:line-through">
+                                            <?= e((string) ($change['from'] ?? '')) ?>
+                                        </span>
+                                        &rarr; <?= e((string) ($change['to'] ?? '')) ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </td>
+                            <td style="font-size:.75rem"><?= nullable($revision['reason']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+<?php endif; ?>
 
 <div class="row g-3">
     <div class="col-xl-8">

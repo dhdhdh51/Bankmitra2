@@ -56,11 +56,37 @@ never processes a payment** — repayment always happens through the bank's own 
 - Agent opens a lead, records outcome (paid, promised, refused, not found,
   disputed, absent, …), amount promised, promise date and free-text remarks.
 - Photo capture (borrower/house/document) and on-device signature pad.
+- **Photographs are geo-stamped and carry their source.** Each photo stores its own
+  coordinates, accuracy and whether it came from the camera or the gallery, and the
+  printed report captions every photograph with that. The source is sent by the app,
+  never inferred from whether a fix was obtained — a camera photo taken inside a house
+  has no fix, and recording that as a gallery pick is an accusation on a recovery file.
 - Submissions are **multipart and idempotent** — a `client_uuid` makes a retry on a
   flaky rural connection return the original report instead of creating a duplicate.
-- **Visit history is append-only.** Nothing is ever edited or deleted; corrections are
-  new entries. The `visit_history` table is written by trigger-free service code and
-  the panel exposes no update/delete path for it.
+- **Visit history is append-only.** The `visit_history` table is written by trigger-free
+  service code and the panel exposes no update or delete path for it.
+- **A filed report can be corrected, and the correction is part of the record.** Eight
+  identity fields (names, address, village, family member, supervisor) may be fixed by a
+  reviewer with a mandatory reason. The row is updated so the report reads correctly from
+  now on, and the same transaction writes the before and after of every field that moved
+  into `visit_report_revisions`, which nothing ever updates or deletes. The submitted
+  original is reconstructible by replaying those backwards, and the printed report states
+  how many times it was corrected — a clean-looking document cannot hide that it differs
+  from what was filed. The tick boxes, the recommendation and the remarks are **not**
+  correctable: those are the agent's assertions about what they saw, and a reviewer
+  overwriting them turns the agent's report into the reviewer's.
+
+**Approval of a filed report**
+- A branch manager or admin approves or rejects a visit report with **their own
+  geo-tagged photograph and signature**, plus remarks — because "I approved it at the
+  branch" and "I approved forty of them from home at midnight" are different claims and
+  only one of them is verification.
+- The position comes from the browser and records `device`, `denied` and `unavailable`
+  as distinct outcomes. A missing fix does not block the approval: refusing to accept it
+  would push approvals off the system and onto a phone call, which records nothing.
+- Approval is purely additive — it writes the approval columns and touches nothing the
+  agent submitted. The approver's photograph, signature, position and remarks all print
+  on the report.
 
 **Promises to pay**
 - Promise ledger per loan account with kept / broken / pending state.
@@ -73,6 +99,25 @@ never processes a payment** — repayment always happens through the bank's own 
 
 **Administration**
 - Branch, user and role/permission management with a real permission matrix.
+- **Staff photograph and signature** on every BC/DC agent record, both uploaded images.
+  The agent's photograph prints beside their signature on every visit report they file.
+  The signature is an uploaded image rather than a pad redrawn per report: an agent signs
+  one sheet, it is photographed once, and the same mark appears on every report — which
+  is what makes two reports comparable. A form saved without touching the file inputs
+  leaves both alone; clearing one is an explicit checkbox, because saving a phone-number
+  change should not delete somebody's signature.
+- **Borrower and loan figures are fully editable**, and every hand-correction is
+  recorded in `manual_overrides` with who and when. The next import **skips** the columns
+  a human corrected and reports which accounts and fields it left alone. Without that the
+  edit is pointless: somebody fixes an outstanding balance, the nightly import silently
+  restores the wrong number, and nobody finds out until an agent quotes it at a doorstep.
+- **Fields you add yourself**, without a code change — on borrowers, loan accounts or
+  visit reports. Eight types (text, long text, number, money, date, select, toggle), and
+  each definition can be marked to print on the visit report. Stored as definitions plus
+  values, not a JSON bag, so "which borrowers have no PAN" is answerable. A blank answer
+  deletes the row so *not recorded* stays distinguishable from *recorded as empty*; an
+  unchecked toggle is a real "no". Retiring a field keeps its answers, deleting one
+  destroys them, and the confirmation says how many.
 - Audit log (who changed what) and activity log (who did what, from where).
 - Database backup to `.sql` from the panel or cron, with retention pruning.
 - Settings screen for app name, pagination, promise reminder windows, SMS gateway
@@ -86,7 +131,14 @@ These are hard product constraints, not missing features:
 
 - ❌ **No payment collection** of any kind — no cash logging, no gateway, no UPI.
 - ❌ **No attendance, check-in/check-out or working-hours monitoring.**
-- ❌ **No editing or deletion of submitted visit history.**
+- ❌ **No deletion of submitted visit history, and no untracked editing of a filed
+  report.** A reviewer may correct the identity fields of a report with a reason, and
+  every such correction is written to an append-only revisions table and counted on the
+  printed document. What is refused is a silent edit: there is no path anywhere that
+  changes a filed report without leaving the previous value, the reason and the author
+  behind it. Refusing corrections outright was considered and rejected — it does not stop
+  a misspelled name being fixed, it just moves the fix to a phone call that records
+  nothing.
 
 ### The daily report reminder
 
@@ -173,7 +225,7 @@ a different and much harder thing to defend.
 ## Repository layout
 
 ```
-schema.sql                  23-table MySQL schema + seed roles, permissions, admin user
+schema.sql                  35-table MySQL schema + seed roles, permissions, admin user
 DEPLOYMENT.md               step-by-step cPanel / shared-hosting deployment guide
 
 admin/                      web root for the panel and the API
@@ -183,16 +235,16 @@ admin/                      web root for the panel and the API
     config.sample.php       copy to config.php and fill in (config.php is git-ignored)
   app/
     bootstrap.php           autoloader + error handler + container wiring
-    Core/                   23 framework classes, all hand-written, zero dependencies
-    Models/                 8 data models (Branch, User, Customer, LoanAccount, …)
-    Services/               6 services (Import, Visit, Assignment, Report, Dashboard, Backup)
-    Controllers/Admin/      15 panel controllers + shared base
-    Controllers/Api/        8 API controllers + shared base
+    Core/                   24 framework classes, all hand-written, zero dependencies
+    Models/                 11 data models (Branch, User, Customer, LoanAccount, CustomField, …)
+    Services/               10 services (Import, Visit, Assignment, Report, Dashboard, Backup, …)
+    Controllers/Admin/      20 panel controllers + shared base
+    Controllers/Api/        11 API controllers + shared base
     routes/web.php          panel routes
     routes/api.php          /api/v1 routes
-  views/                    33 server-rendered view files
+  views/                    43 server-rendered view files
   assets/                   app.css + app.js (Bootstrap itself comes from CDN)
-  uploads/                  photos, signatures, documents — denied to the web by .htaccess
+  uploads/                  photos, signatures, staff, approvals, documents — denied to the web
   storage/                  logs, backups, import files, tmp
   cron/
     backup.php              nightly database backup + retention
@@ -271,7 +323,12 @@ php -S 127.0.0.1:8080 -t admin tools/router-dev.php
 | **Agent** | Own assigned leads only: view, visit, upload, promise history |
 | **Auditor** | Read-only: reports, audit and activity logs. No edits, no PII |
 
-41 permissions across the four seeded roles, including the BC performance group.
+44 permissions across the four seeded roles, including the BC performance group.
+
+`visits.approve` and `visits.revise` are held by branch managers and super admins, not
+agents: an agent approving their own report, or correcting the name on it after filing,
+would make both the approval and the revision log worthless. `custom_fields.manage` is
+super-admin only — a field definition is schema, and every borrower record answers to it.
 
 Permissions are rows in `permissions`, joined to roles through `role_permissions`, so
 the matrix is editable in the panel rather than hard-coded. Two decisions worth knowing:
@@ -312,6 +369,31 @@ Every report supports the same filters (date range, branch, agent, village, loan
 status) and exports to **PDF** and **Excel**. Both writers are in `admin/app/Core/`
 (`Pdf.php` emits real PDF objects with an embedded font; `Xlsx.php` writes the OOXML
 zip by hand), because Composer is not available on the target hosting.
+
+### The printed visit report
+
+`Pdf.php` embeds real images, written from scratch for the same reason — no Composer,
+so no PDF library. A baseline RGB or greyscale JPEG passes straight through as
+`/DCTDecode`; PNG, GIF and BMP are decoded with GD, **flattened onto white**, and
+deflated as raw RGB; WebP, CMYK JPEG and **progressive** JPEG are re-encoded to baseline
+JPEG. Two details are not optional. Flattening is mandatory because transparent pixels
+read as black in RGB, so an unflattened signature prints as a solid black rectangle.
+Progressive JPEGs are detected by scanning the markers rather than trusted, because
+`/DCTDecode` renders one as a grey box — a report that looks fine until someone opens it.
+
+The printed report carries:
+
+- the borrower and loan details as filed, with the **closure amount** (the figure needed
+  to close the account, distinct from an OTS amount, which is a settlement the branch
+  agrees to accept for less),
+- **Location recorded** — the visit's coordinates, accuracy and how they were obtained,
+  distinguishing "the device had no fix" from "the agent declined location",
+- **Field photographs**, each captioned with its own coordinates and whether it came from
+  the camera or the gallery,
+- **Signatures** — the borrower's, next to the **agent's photograph and signature**,
+- **Approval** — status, approver, their position, remarks, photograph and signature,
+- any custom fields marked to print,
+- and, in the footer, the number of times the report was corrected after filing.
 
 ---
 
@@ -426,19 +508,20 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 134 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
-| Schema | `sh tools/verify-schema.sh` | **24** — 32 tables, 52 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **575** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures and visit-counter repair |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 141 files (a file count, not assertions) |
+| Core unit tests | `php tools/selftest-core.php` | **191** — includes column detection against real bank-export shapes and the PDF image encoder |
+| Schema | `sh tools/verify-schema.sh` | **24** — 35 tables, 57 FKs, seeds, bcrypt login hash |
+| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **14** — the migration in `DEPLOYMENT.md` is extracted from the document and run on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, and grant by grant |
+| Integration | `sh tools/integration-test.sh` | **656** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, and user-added fields |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **161** panel + **219** API |
-| Android | `sh tools/verify-android.sh` | **216** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **252** panel + **221** API |
+| Android | `sh tools/verify-android.sh` | **217** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
 | **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
-| **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **11** — a camera capture may carry coordinates, a gallery pick may not (a subset of the Android row) |
+| **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **12** — a camera capture may carry coordinates, a gallery pick may not, and the capture source is sent rather than guessed (a subset of the Android row) |
 | **SSS entry** | `:app:testDebugUnitTest` (`SssEntryTest`) | **11** — four typed schemes, and no field anywhere for typing a visit count (a subset of the Android row) |
 | **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **21** — real behavioural tests: never in the past, never on a Sunday, a lead time that cannot move past the deadline (a subset of the Android row) |
 | **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **14** — survives reboot, cannot stop rescheduling, no exact-alarm permission (a subset of the Android row) |
@@ -446,11 +529,11 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
-| CDN integrity | `php tools/verify-cdn-integrity.php` | every SRI hash matches the file the browser fetches |
+| CDN integrity | `php tools/verify-cdn-integrity.php` | **5** — every SRI hash matches the file the browser fetches |
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,538 assertions total** — the sum of the bold counts above, counting the seven
+**1,741 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -751,6 +834,71 @@ Kept here because they are the reason the tests exist:
     one source of truth and it is the one that survives recreation. `TabSwitchingTest`
     was checked against the old implementation first and fails four of its assertions
     there — a regression test that passes on the bug it describes is decoration.
+52. **Every photograph claimed an unknown source.** The schema comment on
+    `photos.capture_source` says a coordinate only means something when the photo came
+    from the camera — and nothing ever wrote the column. Every photo read `unknown`, so
+    the geo-tag printed on a report could not be distinguished from a gallery pick of a
+    picture taken somewhere else on some other day. The app now sends the source
+    explicitly per slot; it is never *inferred* from the presence of coordinates,
+    because a camera photo taken inside a house has no fix and calling that a gallery
+    pick is an accusation on a recovery file.
+53. **The whole geo-tagging path shipped exercised by nothing.** `tools/seed-demo.php`
+    never granted tracking consent, and `TrackingService` correctly gates every
+    coordinate behind it — so all seeded visits stored `gps_source='denied'`, every
+    per-photo fix was dropped, and the demo data proved the feature absent rather than
+    present. The seed now consents per agent and files GPS, a camera-stamped photo, a
+    gallery photo and both signatures on every third visit.
+54. **Bug 42 recurred, in the same shape.** `LoanAccount::findWithPii()` and
+    `LoanAccount::SELECT` each spell their columns out by hand, so `closure_amount` and
+    `manual_overrides` existed in the table, were written correctly, and were invisible
+    to every screen until added to *both*. The comment naming bug 42 is now on both
+    lists; two hand-maintained column lists for one table will keep doing this.
+55. **A smoke test reassigned a manager's branch.** The new staff-photo block posted the
+    user form with a hardcoded `branch_id=1`, which silently moved MGR001 to another
+    branch and broke four unrelated API promise-settlement tests — the failures pointed
+    nowhere near the cause. It now reads the current values off the form and resubmits
+    them unchanged. A test that edits a record has to put back everything it did not
+    come to change.
+56. **"Nothing was skipped" on every single import.** The import declines to overwrite
+    figures a human corrected in the panel, and reports which ones it skipped so a stale
+    override cannot freeze a number forever. `$skippedOverrides` was never added to the
+    `use` list of the closure that fills it, so each append auto-vivified a *local* array
+    that died with the closure — PHP raised nothing at all. The guard worked; the report
+    was always empty, which is the worse half to lose: a silent skip is indistinguishable
+    from a silent clobber. Caught by asserting on the reported list rather than only on
+    the surviving value, and the panel now prints the accounts and the field labels.
+57. **Two harnesses passed 18.5 hours a day.** `tools/verify-cron.sh` built its fixtures
+    through the `mysql` CLI, which — unlike the app, see `Database::alignTimezone()` —
+    does not pin the session timezone, and both smoke harnesses ran in the container's
+    UTC while the server runs `Asia/Kolkata`. So a promise inserted as "due today" landed
+    on the server's yesterday, and `date('-1 day')` in the API smoke asked to backdate by
+    two days, for the 5.5 hours after 18:30 UTC. Found by running the suite after
+    midnight IST. The harnesses now keep the same calendar as the server they test.
+58. **A readiness probe that answered from a server about to die.** Every docker-backed
+    harness waited for MySQL by opening an *authenticated socket* connection — and the
+    entrypoint runs a temporary initialisation server that authenticates on the socket
+    and is then shut down and restarted. Winning that race left the schema import
+    connecting to nothing, reported only as `!! schema import failed` with no hint why.
+    The temporary server is started with networking disabled, so all six scripts now
+    probe over TCP, which is the one signal it cannot produce.
+59. **The documented upgrade SQL did not run.** The migration published in
+    `DEPLOYMENT.md` for this release referenced a `users.signature_data` column that does
+    not exist, and inserted permissions using `group_name` / `description` when the table
+    has `module` / `display_name`. Both would have failed on the operator's live database,
+    partway through, with the new code already serving. Nothing caught it because no
+    harness had ever *run* the documentation. `tools/verify-upgrade-sql.sh` now extracts
+    the SQL from the document itself — a copy in a test would drift, and the copy that
+    matters is the one someone pastes into phpMyAdmin — reconstructs the pre-release
+    schema, seeds rows so the `ALTER`s meet real data, runs it, and compares the outcome
+    against `schema.sql`. It found both bugs on its first run, plus four column comments
+    that differed, so an upgraded database is now indistinguishable from a fresh one.
+60. **A harness that reported success having tested nothing.** The first working version
+    of `verify-upgrade-sql.sh` printed `UPGRADE SQL OK` after three checks because the
+    Python that replays the schema comparison into the shell counters died on a syntax
+    error, and its output was piped into `eval`, which cheerfully evaluated nothing. Every
+    structural comparison was skipped and the summary said everything passed. It now
+    asserts the expected number of comparisons actually ran. A harness that passes while
+    doing nothing is worse than one that fails, because it is believed.
 
 ---
 
