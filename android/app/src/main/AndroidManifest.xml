@@ -44,6 +44,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+        Needed to re-register the daily report reminder after a restart. Android drops
+        every alarm on reboot, silently, so without this the reminder works until the
+        agent's phone runs flat once and then never fires again - while the app still
+        shows it as on.
+
+        SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM are deliberately NOT requested. Google
+        restricts those to alarm clocks and calendar events; a deadline nudge is not
+        one, and an inexact alarm within a ten-minute window is entirely adequate for
+        it - and survives Doze, which an idle phone in a village will be in.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- A camera is preferred for capturing visit photos but not required. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -146,6 +159,24 @@
             android:name=".location.DutyLocationService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!--
+            The daily report reminder. Both receivers are unexported: nothing outside
+            this app has any reason to trigger an agent's reminder.
+        -->
+        <receiver
+            android:name=".reminder.ReportReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".reminder.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <activity
             android:name=".ui.sss.SssEntryActivity"

@@ -1308,6 +1308,14 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   ('promise_reminder_days','1',             'notifications', 'Promise reminder lead time (days)', 'number', 0, 0, 'Notify this many days before the promise date', 1),
   ('followup_reminder_days','7',            'notifications', 'Follow-up reminder after (days)',   'number', 0, 0, 'Nudge if a lead has had no visit for N days', 2),
 
+  -- The daily report deadline. The app schedules a local alarm from this, so it is
+  -- the bank's policy in one place rather than a time typed into each phone.
+  -- Stored as HH:MM in 24-hour form; anything unparseable falls back to 17:00 in
+  -- code, because the settings screen has no per-type validation and a blank here
+  -- must not mean "no deadline".
+  ('daily_report_due_time','17:00',         'notifications', 'Daily report due by',               'select', 0, 0, 'The app reminds agents at this time. Keep the sss-reminder --final cron entry on the same hour.', 3),
+  ('daily_report_reminder_enabled','1',     'notifications', 'Remind agents to submit',           'select', 0, 0, 'Turns the in-app daily alarm off for everyone. Agents can also switch off their own.', 4),
+
   ('backup_retention_days','14',            'backup',  'Backup retention (days)', 'number', 0, 0, 'Older .sql files are pruned', 1),
   ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text',   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2),
 
@@ -1321,6 +1329,12 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
 
 UPDATE `settings` SET `options` = 'tls,ssl,none' WHERE `setting_key` = 'smtp_encryption';
 UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'geocode_enabled';
+UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'daily_report_reminder_enabled';
+-- A select rather than free text: a typo in a free-text time silently becomes the
+-- 17:00 fallback, and the operator would have no way to tell that their change did
+-- nothing. Half-hour steps across the plausible range instead.
+UPDATE `settings` SET `options` = '15:00,15:30,16:00,16:30,17:00,17:30,18:00,18:30,19:00,19:30,20:00'
+ WHERE `setting_key` = 'daily_report_due_time';
 
 -- ============================================================================
 -- SEED: bootstrap super admin + demo branch

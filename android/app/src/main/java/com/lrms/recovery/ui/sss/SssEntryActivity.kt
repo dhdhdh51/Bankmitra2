@@ -143,6 +143,11 @@ class SssEntryActivity : BaseActivity() {
 
             when (result) {
                 is ApiResult.Success -> {
+                    // Stops the evening reminder nagging somebody who has already
+                    // filed. Recorded against the day the server accepted, not the
+                    // device's idea of today, so a wrong phone clock cannot silence
+                    // a reminder that is still due.
+                    session.lastReportSubmittedDate = result.data.date
                     showMessage(getString(R.string.sss_saved, result.data.total), binding.root)
                     // Re-read rather than trusting what was typed: the counted
                     // figures may have moved since the screen opened.

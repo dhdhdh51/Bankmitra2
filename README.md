@@ -88,6 +88,41 @@ These are hard product constraints, not missing features:
 - ❌ **No attendance, check-in/check-out or working-hours monitoring.**
 - ❌ **No editing or deletion of submitted visit history.**
 
+### The daily report reminder
+
+The deadline is bank policy; the nudge is the agent's. They are stored and controlled
+separately, on purpose.
+
+The **deadline** is a server setting (`daily_report_due_time`, default 17:00) changed
+in the panel — which is responsive, so an operator can move it from their phone and
+every agent's alarm follows the next time they open the app. The **reminder** is the
+agent's own: they can be nudged earlier than the deadline, or switch it off, from the
+Account tab. What they cannot do is move it *later* — that would quietly let somebody
+opt out of a deadline they are still assessed against.
+
+It is a **local alarm, not a push**. Firebase is not in the APK at all, so a
+server-driven push could not reach the phone; and for agents on patchy rural
+connections a device alarm is the only thing that fires reliably. That decision brings
+the obligations with it, all of them enforced in code:
+
+- **Inexact, in a ten-minute window.** `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` are
+  restricted by Google to alarm clocks and calendar events. A deadline nudge is not
+  one, and an inexact alarm also survives Doze — which an idle phone in a village will
+  be in.
+- **Re-armed after a reboot and after an app update.** Android drops every alarm on
+  both. Without a boot receiver the reminder works until the phone runs flat once and
+  then never fires again, while the app still shows it switched on.
+- **Each firing books the next one**, before any early return. A repeating alarm could
+  not skip Sundays or pick up a changed deadline; and rescheduling *after* the
+  notification would mean the one day an agent had already submitted was the day the
+  chain silently ended.
+- **Never on a Sunday**, matching the rest of the system — nothing is assessed on one.
+- **Silent once the work is done.** Filing a visit or saving enrolment figures marks
+  the day, and the alarm then stays quiet. Nagging somebody who has already filed is
+  how a reminder becomes noise, and noise gets silenced.
+- **The permission is asked for.** On Android 13+ a notification the agent never
+  allowed is dropped silently, so the reminder would look on and simply never arrive.
+
 ### Addresses are derived, never stored as the record
 
 Coordinates are what a visit and a location point carry. An address is resolved
@@ -394,10 +429,10 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 134 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **177** — includes column detection against real bank-export shapes |
 | Schema | `sh tools/verify-schema.sh` | **24** — 32 tables, 52 FKs, seeds, bcrypt login hash |
-| Integration | `sh tools/integration-test.sh` | **562** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures and visit-counter repair |
+| Integration | `sh tools/integration-test.sh` | **575** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures and visit-counter repair |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **161** panel + **216** API |
-| Android | `sh tools/verify-android.sh` | **172** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **161** panel + **219** API |
+| Android | `sh tools/verify-android.sh` | **216** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
@@ -405,6 +440,9 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
 | **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **11** — a camera capture may carry coordinates, a gallery pick may not (a subset of the Android row) |
 | **SSS entry** | `:app:testDebugUnitTest` (`SssEntryTest`) | **11** — four typed schemes, and no field anywhere for typing a visit count (a subset of the Android row) |
+| **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **21** — real behavioural tests: never in the past, never on a Sunday, a lead time that cannot move past the deadline (a subset of the Android row) |
+| **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **14** — survives reboot, cannot stop rescheduling, no exact-alarm permission (a subset of the Android row) |
+| **Tab switching** | `:app:testDebugUnitTest` (`TabSwitchingTest`) | **9** — one source of truth for which tab is on screen; verified to fail against the old code (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
@@ -412,7 +450,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,478 assertions total** — the sum of the bold counts above, counting the four
+**1,538 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -700,6 +738,19 @@ Kept here because they are the reason the tests exist:
     checked a literal count and iterated a literal list, so a ninth report type would
     have shipped completely unexercised — no table, no Excel, no PDF. Both now read
     the types from what the server actually serves.
+51. **Two tabs drawn on top of each other.** `MainActivity` kept its own
+    `Map<Int, Fragment>` of the tabs it had created and hid things based on it. That map
+    lives in the activity instance; the fragments do not. So anything that recreated the
+    activity — a rotation, a system font-size change, **the dark-mode switch on the
+    Account tab**, returning after the process was killed — emptied the map while the
+    FragmentManager restored the tagged fragments it already had. The map then reported
+    "nothing is showing", nothing was hidden, and a second copy was added on top of the
+    restored one: two pages visible at once, one bleeding through the other, getting
+    worse with every further tap because `hide()` was operating on an instance that was
+    no longer on screen. Every lookup now goes through `findFragmentByTag`, so there is
+    one source of truth and it is the one that survives recreation. `TabSwitchingTest`
+    was checked against the old implementation first and fails four of its assertions
+    there — a regression test that passes on the bug it describes is decoration.
 
 ---
 

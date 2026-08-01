@@ -197,6 +197,17 @@ check('meta returns loan types', is_array($meta['json']['data']['loan_types'] ??
 check('meta returns statuses', in_array('pending', (array) ($meta['json']['data']['statuses'] ?? []), true));
 check('agents do not receive the branch list', ($meta['json']['data']['branches'] ?? null) === []);
 
+// The app schedules its daily alarm from this, with no network at fire time - so a
+// missing or malformed value here would leave agents silently un-reminded for a
+// deadline they are still assessed against.
+check('/meta carries the report deadline',
+    isset($meta['json']['data']['report_due_time']), json_encode($meta['json']['data'] ?? null));
+check('the deadline is HH:MM',
+    preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', (string) ($meta['json']['data']['report_due_time'] ?? '')) === 1,
+    (string) ($meta['json']['data']['report_due_time'] ?? 'missing'));
+check('/meta carries the reminder master switch',
+    array_key_exists('report_reminder', (array) ($meta['json']['data'] ?? [])));
+
 $dashboard = api('GET', '/dashboard', null, $agentToken);
 check('GET /dashboard returns 200', $dashboard['status'] === 200, 'HTTP ' . $dashboard['status']);
 check('agent dashboard has lead counters', isset($dashboard['json']['data']['leads']['total']));

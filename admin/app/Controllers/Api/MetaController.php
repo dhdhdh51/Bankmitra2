@@ -17,6 +17,15 @@ use App\Services\DashboardService;
 final class MetaController extends Controller
 {
     /**
+     * Used when the configured deadline is missing or malformed.
+     *
+     * Deliberately a real time rather than null: "no deadline configured" would turn
+     * a misconfiguration into agents never being reminded, and nobody would notice
+     * until a month of missing reports.
+     */
+    private const DEFAULT_DUE_TIME = '17:00';
+
+    /**
      * Unauthenticated health/version probe. The app calls this before the login
      * screen so it can show a "please update" prompt without a valid session.
      */
@@ -70,7 +79,40 @@ final class MetaController extends Controller
             'app_version'      => Settings::get('app_version', '1.0.0'),
             'min_version'      => Settings::get('app_min_version', '1.0.0'),
             'maps_key'         => Settings::get('google_maps_key'),
+
+            // The daily report deadline. The app schedules a local alarm from this,
+            // so the bank sets it in one place instead of it being a time typed into
+            // each phone - and changing it here moves every agent's reminder.
+            'report_due_time'  => self::reportDueTime(),
+            'report_reminder'  => Settings::bool('daily_report_reminder_enabled'),
         ]);
+    }
+
+    /**
+     * The configured deadline as HH:MM, or 17:00.
+     *
+     * Validated on the way out rather than trusted. The settings screen has no
+     * per-type validation, so this value can be anything a browser posted, and a
+     * blank or malformed time reaching the app would either crash the alarm
+     * scheduler or silently mean "no deadline" - which is the one interpretation
+     * nobody wants for a deadline agents are measured against.
+     */
+    public static function reportDueTime(): string
+    {
+        $raw = trim((string) (Settings::get('daily_report_due_time', '') ?? ''));
+
+        if (preg_match('/^(\d{1,2}):(\d{2})$/', $raw, $matches) !== 1) {
+            return self::DEFAULT_DUE_TIME;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = (int) $matches[2];
+
+        if ($hour > 23 || $minute > 59) {
+            return self::DEFAULT_DUE_TIME;
+        }
+
+        return sprintf('%02d:%02d', $hour, $minute);
     }
 
     /**

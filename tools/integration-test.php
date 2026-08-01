@@ -2039,6 +2039,41 @@ check('no lead is left with a wrong visit_count', (int) $db->scalar(
 ) === 0);
 
 // ---------------------------------------------------------------------------
+section('The daily report deadline');
+
+// The settings screen has no per-type validation, so this value can be whatever a
+// browser posted. The app builds an alarm from it, and a blank reaching the phone
+// would either break the scheduler or mean "no deadline" - the one reading nobody
+// wants for a deadline agents are measured against.
+foreach ([
+    ['17:00', '17:00'],
+    ['9:30',  '09:30'],
+    ['00:00', '00:00'],
+    ['23:59', '23:59'],
+    ['',      '17:00'],
+    ['   ',   '17:00'],
+    ['5pm',   '17:00'],
+    ['17',    '17:00'],
+    ['24:00', '17:00'],
+    ['17:60', '17:00'],
+    ['abc',   '17:00'],
+] as [$stored, $expected]) {
+    Settings::updateMany(['daily_report_due_time' => $stored], null);
+    $resolved = \App\Controllers\Api\MetaController::reportDueTime();
+    check(
+        sprintf('deadline %s resolves to %s', $stored === '' ? '(blank)' : $stored, $expected),
+        $resolved === $expected,
+        $resolved
+    );
+}
+
+Settings::updateMany(['daily_report_due_time' => '17:00'], null);
+check('the reminder master switch defaults on', Settings::bool('daily_report_reminder_enabled'));
+Settings::updateMany(['daily_report_reminder_enabled' => '0'], null);
+check('and can be turned off for everyone', Settings::bool('daily_report_reminder_enabled') === false);
+Settings::updateMany(['daily_report_reminder_enabled' => '1'], null);
+
+// ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";
 printf("  INTEGRATION: %d passed, %d failed\n", $passed, $failed);
 if ($failures !== []) {

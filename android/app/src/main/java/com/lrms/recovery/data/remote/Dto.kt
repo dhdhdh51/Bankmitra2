@@ -399,6 +399,10 @@ data class MetaPayload(
     @SerializedName("statuses") val statuses: List<String> = emptyList(),
     @SerializedName("app_version") val appVersion: String? = null,
     @SerializedName("min_version") val minVersion: String? = null,
+    /** The bank's daily report deadline, `HH:mm`. Drives the on-device alarm. */
+    @SerializedName("report_due_time") val reportDueTime: String? = null,
+    /** The bank's master switch for the reminder. Overrides the agent's own. */
+    @SerializedName("report_reminder") val reportReminder: Boolean = true,
 )
 
 data class AgentDashboardPayload(

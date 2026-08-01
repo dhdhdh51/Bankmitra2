@@ -825,6 +825,13 @@ class VisitReportActivity : BaseActivity() {
         lifecycleScope.launch {
             val result = repository.submitVisit(form)
 
+            if (result is ApiResult.Success) {
+                // Filing a visit is reporting. rollUpDay() counts report_submitted the
+                // same way, so the reminder must agree with it - otherwise an agent who
+                // spent the day on visits still gets told they have not reported.
+                session.lastReportSubmittedDate = Formatters.todayIso()
+            }
+
             submitting = false
             setSubmitting(false)
 

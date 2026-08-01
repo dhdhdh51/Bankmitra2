@@ -3,6 +3,7 @@ package com.lrms.recovery
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
 import com.lrms.recovery.data.LrmsRepository
+import com.lrms.recovery.reminder.ReportReminderScheduler
 
 /**
  * Application entry point.
@@ -25,5 +26,11 @@ class LrmsApp : Application() {
                 else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
             },
         )
+
+        // Re-register the daily reminder from whatever is cached. Cheap, idempotent,
+        // and it covers the cases the boot receiver does not: a process killed by the
+        // system, a "clear all" from the task switcher, a phone that was off at the
+        // time the alarm should have fired.
+        ReportReminderScheduler.reschedule(this, repository.session)
     }
 }

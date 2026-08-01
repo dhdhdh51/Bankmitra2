@@ -54,6 +54,29 @@ if (strtotime($date) === false) {
 $slot = $isFinal ? 'final' : ('h' . date('H'));
 
 printf("SSS reminder for %s  slot=%s%s\n", $date, $slot, $dryRun ? '  (dry run)' : '');
+
+// The app's alarm is scheduled from the `daily_report_due_time` setting, while this
+// job fires at whatever hour the crontab says. Those are two places holding the same
+// policy, and nothing stops them drifting - so the drift is reported rather than left
+// to be discovered by agents being reminded at one time and assessed at another.
+if ($isFinal) {
+    $configuredDue = \App\Controllers\Api\MetaController::reportDueTime();
+    $configuredHour = (int) substr($configuredDue, 0, 2);
+    $runningHour = (int) date('H');
+
+    if (!isset($options['date']) && $configuredHour !== $runningHour) {
+        fwrite(STDERR, sprintf(
+            "!! The deadline in Settings is %s but this --final run started at %02d:00.\n"
+            . "   Agents are reminded by the app at %s. Move the crontab entry to that hour,\n"
+            . "   or change 'Daily report due by' in Settings, so the two agree.\n",
+            $configuredDue,
+            $runningHour,
+            $configuredDue
+        ));
+    } else {
+        printf("  deadline         : %s (matches this run)\n", $configuredDue);
+    }
+}
 echo str_repeat('=', 66), "\n";
 
 if (!BcPerformanceService::isWorkingDay($date)) {

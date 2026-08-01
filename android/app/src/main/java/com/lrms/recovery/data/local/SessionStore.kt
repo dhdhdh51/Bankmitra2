@@ -147,6 +147,50 @@ class SessionStore(context: Context) {
         get() = prefs.getBoolean(KEY_REMEMBER, true)
         set(value) = prefs.edit().putBoolean(KEY_REMEMBER, value).apply()
 
+    // ---- Daily report reminder ---------------------------------------------
+
+    /**
+     * The bank's deadline, cached from /meta as `HH:mm`.
+     *
+     * Cached rather than fetched when the alarm fires, because the alarm has to work
+     * with no network - which in these villages is the normal case, not the edge one.
+     * A stale deadline is far better than no reminder.
+     */
+    var reportDueTime: String?
+        get() = prefs.getString(KEY_REPORT_DUE, null)
+        set(value) = prefs.edit().putString(KEY_REPORT_DUE, value).apply()
+
+    /** Whether the bank has the reminder switched on for everybody. */
+    var reportReminderAllowed: Boolean
+        get() = prefs.getBoolean(KEY_REPORT_ALLOWED, true)
+        set(value) = prefs.edit().putBoolean(KEY_REPORT_ALLOWED, value).apply()
+
+    /** The agent's own switch. Defaults on: an unasked-for deadline still applies. */
+    var reportReminderEnabled: Boolean
+        get() = prefs.getBoolean(KEY_REPORT_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_REPORT_ENABLED, value).apply()
+
+    /**
+     * How many minutes before the deadline this agent wants nudging.
+     *
+     * Only ever forward. See ReportReminderPlan: a lead time that could go negative
+     * would let somebody quietly move the reminder past the deadline they are still
+     * assessed against.
+     */
+    var reportReminderLeadMinutes: Int
+        get() = prefs.getInt(KEY_REPORT_LEAD, 0)
+        set(value) = prefs.edit().putInt(KEY_REPORT_LEAD, value).apply()
+
+    /**
+     * The last date this agent filed anything, `yyyy-MM-dd`.
+     *
+     * Written when a visit is submitted or SSS figures are saved, and read when the
+     * alarm fires so somebody who has already done the work is not told to do it.
+     */
+    var lastReportSubmittedDate: String?
+        get() = prefs.getString(KEY_REPORT_LAST_SUBMIT, null)
+        set(value) = prefs.edit().putString(KEY_REPORT_LAST_SUBMIT, value).apply()
+
     var lastEmployeeCode: String?
         get() = prefs.getString(KEY_LAST_CODE, null)
         set(value) = prefs.edit().putString(KEY_LAST_CODE, value).apply()
@@ -167,6 +211,13 @@ class SessionStore(context: Context) {
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_EXPIRES_AT)
             .remove(KEY_USER)
+            // Cleared with the session, unlike the theme or the base URL. These
+            // phones get shared and reassigned, and "already submitted today" left
+            // behind by the previous agent would silently deny the next one their
+            // reminder - on their first day, when they need it most.
+            .remove(KEY_REPORT_LAST_SUBMIT)
+            .remove(KEY_REPORT_LEAD)
+            .remove(KEY_REPORT_ENABLED)
             .apply()
     }
 
@@ -184,6 +235,11 @@ class SessionStore(context: Context) {
         private const val KEY_REMEMBER = "remember_me"
         private const val KEY_LAST_CODE = "last_employee_code"
         private const val KEY_DEVICE_TOKEN = "device_token"
+        private const val KEY_REPORT_DUE = "report_due_time"
+        private const val KEY_REPORT_ALLOWED = "report_reminder_allowed"
+        private const val KEY_REPORT_ENABLED = "report_reminder_enabled"
+        private const val KEY_REPORT_LEAD = "report_reminder_lead"
+        private const val KEY_REPORT_LAST_SUBMIT = "report_last_submitted"
 
         private const val EXPIRY_MARGIN_MS = 30_000L
     }
