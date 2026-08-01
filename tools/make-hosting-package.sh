@@ -76,7 +76,7 @@ note() { printf '  %-6s %s\n' "$1" "$2"; [ "$1" = 'ok' ] || fail=1; }
 
 for f in index.php .htaccess app/bootstrap.php config/config.sample.php \
          config/.htaccess views/layouts/app.php assets/css/app.css \
-         assets/img/d2-lockup.webp assets/img/d2-mark.webp \
+         assets/img/d2-mark.webp \
          cron/backup.php cron/reminders.php storage/.htaccess uploads/.htaccess \
          schema.sql README.md DEPLOYMENT.md diag.php setup-keys.php; do
     if [ -e "$OUT/$f" ]; then note ok "$f"; else note MISSING "$f"; fi

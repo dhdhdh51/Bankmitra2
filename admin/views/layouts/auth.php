@@ -40,11 +40,15 @@ $bankName = Settings::get('bank_name', '');
 
 <div class="lrms-auth">
     <section class="lrms-auth-brand">
-        <img
-            class="lrms-auth-lockup"
-            src="<?= e(asset('img/d2-lockup.webp')) ?>"
-            alt="<?= e($appName) ?>"
-            width="900" height="900">
+        <!--
+            No logo here on purpose. A sign-in page is a door, not a billboard: the
+            artwork was competing with the one thing the page exists for. What is
+            left is the name set as a wordmark - letterspaced, with a gold rule
+            under it - which reads as considered rather than decorated.
+        -->
+        <div class="lrms-auth-wordmark">
+            <span><?= e($appName) ?></span>
+        </div>
 
         <div>
             <h1>Loan Recovery<br>Management System</h1>
@@ -69,12 +73,10 @@ $bankName = Settings::get('bank_name', '');
     <section class="lrms-auth-form">
         <div class="lrms-auth-box">
             <!-- The brand panel beside this one is hidden below 900px, so the
-                 lockup is repeated here rather than dropping to an initial. -->
-            <img
-                class="lrms-auth-mobile-lockup"
-                src="<?= e(asset('img/d2-lockup.webp')) ?>"
-                alt="<?= e($appName) ?>"
-                width="900" height="900">
+                 wordmark is repeated here. -->
+            <div class="lrms-auth-mobile-wordmark">
+                <span><?= e($appName) ?></span>
+            </div>
 
             <?= \App\Core\View::partial('partials/flash', ['flash' => $flash ?? []]) ?>
             <?= $content ?>

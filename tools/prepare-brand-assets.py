@@ -44,10 +44,13 @@ MARK_BOX = (200, 36, 872, 528)
 # is a panel asset, for the sidebar and 404 headers. Shipping it to Android too
 # would be a drawable nothing references; the release build's resource shrinker
 # proved the point by dropping it.
+# The panel gets the monogram only. Its sign-in page deliberately carries no logo -
+# a sign-in page is a door, not a billboard - and the monogram is all the sidebar and
+# 404 headers have room for. The full lockup ships only to the app, whose launch and
+# login screens are built around it.
 TARGETS = [
     # (destination, kind, width in px, webp quality)
     (ROOT / "android/app/src/main/res/drawable-nodpi/brand_lockup.webp", "lockup", 900, 82),
-    (ROOT / "admin/assets/img/d2-lockup.webp", "lockup", 900, 82),
     (ROOT / "admin/assets/img/d2-mark.webp", "mark", 420, 88),
 ]
 

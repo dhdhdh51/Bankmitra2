@@ -155,17 +155,22 @@ page('unknown route returns 404', '/no-such-page', 404);
 $asset = request($base . '/assets/css/app.css');
 check('CSS asset is served', $asset['status'] === 200 && str_contains($asset['body'], '--lrms-primary'));
 
-// The brand artwork is referenced by both layouts, so a missing file would leave
-// a broken image on the sign-in page - the first thing anyone sees.
-foreach (['img/d2-lockup.webp' => 'lockup', 'img/d2-mark.webp' => 'monogram'] as $file => $label) {
-    $image = request($base . '/assets/' . $file);
-    check(
-        "brand $label is served",
-        $image['status'] === 200 && str_starts_with($image['body'], "RIFF"),
-        'HTTP ' . $image['status'] . ', ' . strlen((string) $image['body']) . ' bytes',
-    );
-}
-check('login page shows the brand lockup', str_contains($loginPage, 'd2-lockup.webp'));
+// The monogram sits in the sidebar and the 404 header, so a missing file would
+// leave a broken image on every signed-in page.
+$monogram = request($base . '/assets/img/d2-mark.webp');
+check(
+    'brand monogram is served',
+    $monogram['status'] === 200 && str_starts_with($monogram['body'], 'RIFF'),
+    'HTTP ' . $monogram['status'] . ', ' . strlen((string) $monogram['body']) . ' bytes',
+);
+
+// The sign-in page carries NO artwork by choice: type only, nothing to load.
+check(
+    'login page loads no logo image',
+    !str_contains($loginPage, '/assets/img/'),
+    'the sign-in page is still requesting an image',
+);
+check('login page sets the name as a wordmark', str_contains($loginPage, 'lrms-auth-wordmark'));
 check(
     'login page no longer shows the old LR monogram',
     !str_contains($loginPage, '>LR<'),
