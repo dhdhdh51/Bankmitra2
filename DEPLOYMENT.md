@@ -937,6 +937,112 @@ written for SMS would never arrive.
 Only the `--final` slot copies the branch supervisor. An agent with no SSS target
 for the month is never reminded, and reminders stop the moment they record an entry.
 
+### CKCC / OD-2 renewal alerts
+
+```
+0 7 * * * /usr/local/bin/php /home/USER/public_html/cron/ckcc-renewal-check.php
+```
+
+Alerts the assigned agent as an account crosses 30, 15 and 7 days to its renewal
+deadline, and again once it is overdue. Each threshold is announced once per
+account: the job matches on the band and the due date carried in the notification,
+so a re-run at noon, or a catch-up after a failed night, does not send it twice.
+
+There is deliberately **no stored "urgency" column**. The band is a function of
+`ckcc_renewal_due_date` and today's date, so it is derived in SQL where it cannot go
+stale — a stored value would be wrong every day between midnight and whenever the
+cron ran, and silently so. The cron exists only for the part that is not derivable:
+telling somebody.
+
+Widen or narrow the alert window with the `ckcc_renewal_alert_days` setting
+(default 30).
+
+### Address lookup from coordinates (optional, free)
+
+```
+20 * * * * /usr/local/bin/php /home/USER/public_html/cron/geocode-backfill.php
+```
+
+Turns the coordinates stored on visits and location trails into readable addresses
+using **OpenStreetMap's Nominatim**, which is free and needs no API key. Three
+things to know before switching it on:
+
+1. **Set `geocode_contact_email` in Settings.** Nominatim asks callers to identify
+   themselves. Without it the lookups stay off rather than being sent anonymously —
+   anonymous traffic from a shared host is how an entire IP range gets blocked.
+2. **It is slow on purpose.** The service asks for at most one request per second
+   and no bulk reverse-geocoding, so the job resolves ~120 coordinates per run and
+   throttles itself internally. Raising `--limit` into the thousands is the fastest
+   way to lose the feature for every branch at once.
+3. **Nothing depends on it.** Panel pages read addresses out of `geocode_cache` and
+   show raw coordinates for anything not yet resolved. No page render ever waits on
+   a third party. Setting `geocode_enabled` to `0` leaves the system fully working
+   and showing coordinates — that is the designed fallback, not a degraded mode.
+
+Addresses are never written into the visit report itself. The coordinate is the
+record; the address is a derived label, because a free service naming the wrong
+village must stay distinguishable from something the agent asserted.
+
+### Adding the BC screens, renewal alerts and address lookup
+
+On a database created before this release:
+
+```sql
+-- 1. The reverse-geocoding cache (schema.sql section 14a).
+--    Copy the CREATE TABLE for `geocode_cache` from schema.sql.
+
+-- 2. Two more notification types. A type missing from this ENUM throws on insert,
+--    and the nightly jobs insert in a loop - one absent value once took out an
+--    entire warning run before the first agent was notified.
+ALTER TABLE `notifications`
+  MODIFY COLUMN `type` ENUM('new_lead_assigned','followup_reminder','promise_reminder',
+    'broadcast','target_warning','sss_pending','ckcc_renewal_due') NOT NULL;
+
+-- 3. The five permissions the new screens are gated on. Without these the pages
+--    exist but nobody, including the super admin, can open them.
+INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
+  ('bc_targets.view',   'BC performance', 'View monthly BC targets'),
+  ('bc_targets.manage', 'BC performance', 'Set and update monthly BC targets'),
+  ('sss.view',          'BC performance', 'View SSS enrolment entries'),
+  ('sss.manage',        'BC performance', 'Record and correct SSS enrolment'),
+  ('scorecard.view',    'BC performance', 'View the BC summary scorecard');
+
+-- Super admin gets everything; re-running this is safe because of the NOT EXISTS.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 1, p.`id` FROM `permissions` p
+   WHERE p.`code` LIKE 'bc_targets.%' OR p.`code` IN ('sss.view','sss.manage','scorecard.view')
+     AND NOT EXISTS (SELECT 1 FROM `role_permissions` rp
+                      WHERE rp.`role_id` = 1 AND rp.`permission_id` = p.`id`);
+
+-- Branch managers manage their own agents (scoped in code, not by this grant).
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 2, `id` FROM `permissions`
+   WHERE `code` IN ('bc_targets.view','bc_targets.manage','sss.view','sss.manage','scorecard.view');
+
+-- Auditors read, never manage: checking whether a warning was fair means seeing
+-- the target it was measured against.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 4, `id` FROM `permissions`
+   WHERE `code` IN ('bc_targets.view','sss.view','scorecard.view');
+
+-- 4. Four settings. location_retention_days was previously read from code with a
+--    hard-coded fallback, which meant the operator accountable for the retention
+--    window could not actually change it.
+INSERT INTO `settings`
+  (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `is_secret`, `is_required`, `hint`, `sort_order`)
+VALUES
+  ('location_retention_days','90','location','Location retention (days)','number',0,0,'Location points older than this are deleted by the purge cron',1),
+  ('geocode_enabled','1','location','Resolve addresses from coordinates','select',0,0,'Uses the free OpenStreetMap service. Turn off to store coordinates only.',2),
+  ('geocode_contact_email','','location','Contact email for the map service','text',0,0,'OpenStreetMap asks who is calling. Without it, lookups are skipped rather than sent anonymously.',3),
+  ('ckcc_renewal_alert_days','30','location','CKCC renewal alert window (days)','number',0,0,'Agents are alerted as a renewal crosses this many days, then 15, 7 and overdue',4);
+
+UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'geocode_enabled';
+```
+
+Then sign in, open **Roles & Permissions**, and confirm the new *BC performance*
+group appears. The sidebar entries are permission-gated, so if the group is missing
+the grants above did not apply.
+
 ### Adding the BC performance module to an existing install
 
 Six new tables and three new `users` columns. On a database created before this

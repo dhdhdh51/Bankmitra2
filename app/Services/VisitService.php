@@ -14,6 +14,7 @@ use App\Models\Notification;
 use App\Models\Promise;
 use App\Models\Timeline;
 use App\Models\VisitReport;
+use App\Services\TrackingService;
 
 /**
  * Submits a Digital BC Field Visit Report.
@@ -205,6 +206,13 @@ final class VisitService
                 'rec_other_text'        => self::str($input['rec_other_text'] ?? null, 255),
 
                 'remarks'     => self::text($input['remarks'] ?? null),
+
+                // Where the agent was standing, when the app reports it and the
+                // agent has consented. See geo() - a report is never rejected over
+                // this, because a missing fix is not a reason to lose a doorstep
+                // visit that already happened.
+                ...self::geo($input, (int) $agent['id']),
+
                 'source'      => $source === 'web' ? 'web' : 'android',
                 'app_version' => self::str($input['app_version'] ?? null, 30),
                 'device_info' => self::str($input['device_info'] ?? null, 255),
@@ -360,10 +368,14 @@ final class VisitService
         // ---- typed photos ------------------------------------------------
         foreach (self::PHOTO_FIELDS as $field => $photoType) {
             try {
+                // Only a camera capture carries a point. A gallery pick deliberately
+                // gets null rather than the visit's coordinates.
+                $point = self::photoPoint($input, $photoType, $userId);
+
                 if (Uploader::hasUpload($field)) {
                     foreach (Uploader::normalizeMultiple($field) as $file) {
                         $stored = Uploader::store($file, 'photos', $imageMime, $maxPhoto);
-                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId);
+                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point);
                         $counts['photos']++;
                     }
                     continue;
@@ -372,7 +384,7 @@ final class VisitService
                 $base64 = trim((string) ($input[$field . '_base64'] ?? ''));
                 if ($base64 !== '') {
                     $stored = Uploader::storeBase64($base64, 'photos', $maxPhoto);
-                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId);
+                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point);
                     $counts['photos']++;
                 }
             } catch (\Throwable $e) {
@@ -441,9 +453,18 @@ final class VisitService
         return $counts;
     }
 
-    /** @param array{path:string,original_name:string,mime:string,size:int,width:int|null,height:int|null} $stored */
-    private static function insertPhoto(int $visitId, int $loanAccountId, string $photoType, array $stored, int $userId): void
-    {
+    /**
+     * @param array{path:string,original_name:string,mime:string,size:int,width:int|null,height:int|null} $stored
+     * @param array{latitude:float,longitude:float,accuracy:int|null}|null $point
+     */
+    private static function insertPhoto(
+        int $visitId,
+        int $loanAccountId,
+        string $photoType,
+        array $stored,
+        int $userId,
+        ?array $point = null
+    ): void {
         Database::instance()->insert('photos', [
             'visit_report_id' => $visitId,
             'loan_account_id' => $loanAccountId,
@@ -454,8 +475,126 @@ final class VisitService
             'file_size'       => $stored['size'],
             'width'           => $stored['width'],
             'height'          => $stored['height'],
+            'gps_latitude'    => $point['latitude'] ?? null,
+            'gps_longitude'   => $point['longitude'] ?? null,
+            'gps_accuracy_m'  => $point['accuracy'] ?? null,
             'uploaded_by'     => $userId,
         ]);
+    }
+
+    /**
+     * The visit's GPS columns, derived from what the app sent.
+     *
+     * Three rules, and each one exists because the alternative is a record that
+     * claims more than it knows:
+     *
+     *   NO CONSENT, NO COORDINATES. Consent is checked on the server, not trusted
+     *   from the client, and an agent who has not acknowledged the notice - or has
+     *   withdrawn - gets `denied` with empty coordinates. The app is not the place
+     *   this is enforced, because the app is the part an agent could be handed with
+     *   the toggle already flipped.
+     *
+     *   AN IMPLAUSIBLE FIX IS NOT A FIX. (0,0) is what a device reports when it has
+     *   nothing, and it is a real point in the Gulf of Guinea. Recording it would
+     *   put every agent without a signal in the same fictional place.
+     *
+     *   A MISSING FIX NEVER BLOCKS A SUBMIT. `unavailable` is a perfectly normal
+     *   outcome indoors or in a village with no sky view. Refusing the report would
+     *   lose a visit that actually happened, which is worse than not knowing where
+     *   it happened.
+     *
+     * @param  array<string,mixed>  $input
+     * @return array<string,mixed>
+     */
+    private static function geo(array $input, int $agentId): array
+    {
+        $blank = [
+            'gps_latitude' => null,
+            'gps_longitude' => null,
+            'gps_accuracy_m' => null,
+            'gps_captured_at' => null,
+            'gps_address' => null,
+        ];
+
+        // The app tells us it asked and was refused. Recorded as such, because
+        // "refused" and "no signal" are different conversations with a supervisor.
+        if ((string) ($input['gps_source'] ?? '') === 'denied') {
+            return $blank + ['gps_source' => 'denied'];
+        }
+
+        $latitude = self::nullableAmount($input['gps_latitude'] ?? null);
+        $longitude = self::nullableAmount($input['gps_longitude'] ?? null);
+
+        if ($latitude === null || $longitude === null) {
+            return $blank + ['gps_source' => 'unavailable'];
+        }
+
+        if (!TrackingService::hasConsented($agentId)) {
+            return $blank + ['gps_source' => 'denied'];
+        }
+
+        if (!TrackingService::plausible((float) $latitude, (float) $longitude)) {
+            return $blank + ['gps_source' => 'unavailable'];
+        }
+
+        $accuracy = $input['gps_accuracy_m'] ?? null;
+        $capturedAt = self::str($input['gps_captured_at'] ?? null, 19);
+
+        return [
+            'gps_latitude' => (float) $latitude,
+            'gps_longitude' => (float) $longitude,
+            'gps_accuracy_m' => $accuracy === null || $accuracy === '' ? null : max(0, (int) $accuracy),
+            // A device clock ahead of the server is replaced rather than trusted; a
+            // visit stamped next week sorts wrongly forever.
+            'gps_captured_at' => $capturedAt !== null && strtotime($capturedAt) !== false
+                && strtotime($capturedAt) <= time() + 300
+                    ? date('Y-m-d H:i:s', (int) strtotime($capturedAt))
+                    : date('Y-m-d H:i:s'),
+            // Left null on purpose. The address is resolved later from the
+            // coordinates by cron/geocode-backfill.php and cached; freezing a free
+            // service's guess into the report would make it indistinguishable from
+            // something the agent asserted.
+            'gps_address' => null,
+            'gps_source' => 'device',
+        ];
+    }
+
+    /**
+     * The photo's own coordinates, when the app captured one per photo.
+     *
+     * Falls back to the visit's fix. A gallery-picked image sends no point of its
+     * own and must not inherit one: a photo taken last week at home would then
+     * carry today's doorstep coordinates, which is exactly the claim this column
+     * would be used to make.
+     *
+     * @param  array<string,mixed>  $input
+     * @return array{latitude:float,longitude:float,accuracy:int|null}|null
+     */
+    private static function photoPoint(array $input, string $slot, int $agentId): ?array
+    {
+        if ((string) ($input[$slot . '_photo_gps_source'] ?? '') !== 'camera') {
+            return null;
+        }
+
+        $latitude = self::nullableAmount($input[$slot . '_photo_latitude'] ?? null);
+        $longitude = self::nullableAmount($input[$slot . '_photo_longitude'] ?? null);
+
+        if ($latitude === null || $longitude === null) {
+            return null;
+        }
+
+        if (!TrackingService::hasConsented($agentId)
+            || !TrackingService::plausible((float) $latitude, (float) $longitude)) {
+            return null;
+        }
+
+        $accuracy = $input[$slot . '_photo_accuracy_m'] ?? null;
+
+        return [
+            'latitude' => (float) $latitude,
+            'longitude' => (float) $longitude,
+            'accuracy' => $accuracy === null || $accuracy === '' ? null : max(0, (int) $accuracy),
+        ];
     }
 
     // -----------------------------------------------------------------------

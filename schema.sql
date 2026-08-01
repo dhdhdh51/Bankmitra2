@@ -780,7 +780,10 @@ CREATE TABLE `notifications` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`         INT UNSIGNED DEFAULT NULL COMMENT 'NULL = broadcast to all',
   `branch_id`       INT UNSIGNED DEFAULT NULL COMMENT 'scope a broadcast to one branch',
-  `type`            ENUM('new_lead_assigned','followup_reminder','promise_reminder','broadcast','target_warning','sss_pending') NOT NULL,
+  -- Extend this list rather than reusing a near-enough value. A type missing from
+  -- here throws on insert, and the nightly jobs insert in a loop - one absent value
+  -- once took out an entire warning run before the first agent was notified.
+  `type`            ENUM('new_lead_assigned','followup_reminder','promise_reminder','broadcast','target_warning','sss_pending','ckcc_renewal_due') NOT NULL,
   `title`           VARCHAR(180) NOT NULL,
   `body`            VARCHAR(1000) DEFAULT NULL,
   `loan_account_id` BIGINT UNSIGNED DEFAULT NULL,
@@ -949,6 +952,42 @@ CREATE TABLE `bc_location_logs` (
   KEY `idx_location_agent_day` (`agent_id`, `logged_at`),
   KEY `idx_location_purge` (`logged_at`),
   CONSTRAINT `fk_location_agent` FOREIGN KEY (`agent_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Reverse-geocoding cache: coordinate -> human-readable address.
+--
+-- Coordinates are what get stored on a visit or a location point; an address is
+-- only ever derived for display. That ordering matters: a name resolved once and
+-- frozen into the record would quietly become the record, and a free service
+-- getting a village wrong would be indistinguishable from the agent being there.
+--
+-- The cache exists because the free provider (OpenStreetMap Nominatim) asks for
+-- at most one request per second and no bulk reverse-geocoding. An agent's day is
+-- hundreds of points inside a few hundred metres, so rounding the key to ~4
+-- decimal places (about 11 m) collapses almost all of them onto one lookup.
+--
+-- `failed_at` is remembered too. Without it, a coordinate the provider cannot
+-- name is retried on every single page view, which is precisely the behaviour
+-- that gets an IP blocked.
+DROP TABLE IF EXISTS `geocode_cache`;
+CREATE TABLE `geocode_cache` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `grid_key`    VARCHAR(32)  NOT NULL COMMENT 'lat,lng rounded to 4dp - the cache key',
+  `latitude`    DECIMAL(10,7) NOT NULL,
+  `longitude`   DECIMAL(10,7) NOT NULL,
+  `address`     VARCHAR(400) DEFAULT NULL COMMENT 'NULL when the lookup failed',
+  `village`     VARCHAR(150) DEFAULT NULL,
+  `district`    VARCHAR(150) DEFAULT NULL,
+  `state`       VARCHAR(150) DEFAULT NULL,
+  `postcode`    VARCHAR(20)  DEFAULT NULL,
+  `provider`    VARCHAR(40)  NOT NULL DEFAULT 'nominatim',
+  `failed_at`   DATETIME     DEFAULT NULL COMMENT 'set when the provider could not name it',
+  `attempts`    SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_geocode_grid` (`grid_key`),
+  KEY `idx_geocode_retry` (`failed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -1183,6 +1222,12 @@ INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
   ('settings.view',         'Settings',    'View settings'),
   ('settings.update',       'Settings',    'Update settings'),
 
+  ('bc_targets.view',       'BC performance','View monthly BC targets'),
+  ('bc_targets.manage',     'BC performance','Set and update monthly BC targets'),
+  ('sss.view',              'BC performance','View SSS enrolment entries'),
+  ('sss.manage',            'BC performance','Record and correct SSS enrolment'),
+  ('scorecard.view',        'BC performance','View the BC summary scorecard'),
+
   ('backup.run',            'Backup',      'Run and download database backup');
 
 -- Super Admin -> every permission
@@ -1195,7 +1240,10 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
     'dashboard.view','customers.view','customers.update','users.view',
     'leads.assign','leads.reassign','leads.close',
     'visits.view','promises.view','promises.update',
-    'reports.view','reports.export','notifications.view','import.view'
+    'reports.view','reports.export','notifications.view','import.view',
+    -- A branch manager sets their own agents' targets and sees their scorecard.
+    -- Both are scoped to the manager's branch in code, not by this grant.
+    'bc_targets.view','bc_targets.manage','sss.view','sss.manage','scorecard.view'
   );
 
 -- BC/DC Agent -> Android app surface only.
@@ -1214,7 +1262,10 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 4, `id` FROM `permissions` WHERE `code` IN (
     'dashboard.view','dashboard.all_branches','customers.view','visits.view',
-    'promises.view','reports.view','reports.export','logs.audit','logs.activity','branches.view','users.view'
+    'promises.view','reports.view','reports.export','logs.audit','logs.activity','branches.view','users.view',
+    -- Read, never manage: an auditor checking whether a warning was fair must be
+    -- able to see the target it was measured against.
+    'bc_targets.view','sss.view','scorecard.view'
   );
 
 -- ============================================================================
@@ -1258,9 +1309,18 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   ('followup_reminder_days','7',            'notifications', 'Follow-up reminder after (days)',   'number', 0, 0, 'Nudge if a lead has had no visit for N days', 2),
 
   ('backup_retention_days','14',            'backup',  'Backup retention (days)', 'number', 0, 0, 'Older .sql files are pruned', 1),
-  ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text',   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2);
+  ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text',   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2),
+
+  -- Location. These were read from code with hard-coded fallbacks before they had
+  -- rows here, which meant the retention window could not actually be changed by
+  -- the operator who is accountable for it.
+  ('location_retention_days','90',          'location','Location retention (days)','number', 0, 0, 'Location points older than this are deleted by the purge cron', 1),
+  ('geocode_enabled',    '1',               'location','Resolve addresses from coordinates','select', 0, 0, 'Uses the free OpenStreetMap service. Turn off to store coordinates only.', 2),
+  ('geocode_contact_email','',              'location','Contact email for the map service','text', 0, 0, 'OpenStreetMap asks who is calling. Without it, lookups are skipped rather than sent anonymously.', 3),
+  ('ckcc_renewal_alert_days','30',          'location','CKCC renewal alert window (days)','number', 0, 0, 'Agents are alerted as a renewal crosses this many days, then 15, 7 and overdue', 4);
 
 UPDATE `settings` SET `options` = 'tls,ssl,none' WHERE `setting_key` = 'smtp_encryption';
+UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'geocode_enabled';
 
 -- ============================================================================
 -- SEED: bootstrap super admin + demo branch
