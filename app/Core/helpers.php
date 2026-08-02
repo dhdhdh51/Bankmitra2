@@ -332,6 +332,7 @@ if (!function_exists('icon')) {
                 'phone'      => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
                 'home'       => '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
                 'image'      => '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+                'map-pin'    => '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
                 'file'       => '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/>',
                 'pen'        => '<path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/>',
                 'money'      => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
@@ -360,5 +361,48 @@ if (!function_exists('icon')) {
         return '<svg' . $classAttr . ' viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"'
             . ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
             . $body . '</svg>';
+    }
+}
+
+
+if (!function_exists('geo_source_badge')) {
+    /**
+     * The pill that says how a photograph reached the system.
+     *
+     * A camera capture and a gallery pick are not the same evidence, and on screen
+     * they used to be indistinguishable - both rendered as a thumbnail with a type
+     * label. A gallery image could have been taken anywhere, on any day, by anyone,
+     * which is the whole reason the column exists.
+     *
+     * Shared by the visit report and the borrower profile so the two cannot end up
+     * describing the same photograph differently.
+     */
+    function geo_source_badge(string $source): string
+    {
+        [$text, $style, $title] = match ($source) {
+            'camera'  => [
+                'Camera',
+                'background:var(--lrms-primary-light);color:var(--lrms-primary)',
+                'Taken with the camera during this visit',
+            ],
+            'gallery' => [
+                'Gallery',
+                'background:#fff4e5;color:#8a5a00',
+                'Chosen from the phone gallery - it could have been taken anywhere, on any day',
+            ],
+            default   => [
+                'Source not recorded',
+                'background:var(--lrms-bg);color:var(--lrms-muted)',
+                'Filed by an app build that did not report where the image came from',
+            ],
+        };
+
+        return sprintf(
+            '<span title="%s" style="%s;font-size:.625rem;font-weight:700;text-transform:uppercase;'
+            . 'letter-spacing:.04em;padding:2px 6px;border-radius:999px;white-space:nowrap">%s</span>',
+            e($title),
+            $style,
+            e($text)
+        );
     }
 }

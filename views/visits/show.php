@@ -9,8 +9,12 @@
  * @var list<array<string,mixed>> $photos
  * @var list<array<string,mixed>> $documents
  * @var list<array<string,mixed>> $signatures
+ * @var array<string,mixed>       $agentOnFile  The agent's record, for the on-file
+ *                                              photograph and signature fallbacks.
  */
 
+use App\Controllers\Admin\VisitController;
+use App\Core\Geo;
 use App\Core\Url;
 use App\Models\VisitReport;
 
@@ -34,6 +38,16 @@ $flagBlock = static function (array $map, array $row): string {
 $signatureByType = [];
 foreach ($signatures as $signature) {
     $signatureByType[(string) $signature['signature_type']] = $signature;
+}
+
+// How many photographs actually carry a position. Shown in the card header because
+// "6 photographs" and "6 photographs, none of which record where they were taken"
+// are very different things to be looking at before approving a report.
+$geoTagged = 0;
+foreach ($photos as $photo) {
+    if (Geo::has($photo)) {
+        $geoTagged++;
+    }
 }
 ?>
 
@@ -578,18 +592,50 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                 <h2><?= icon('pen') ?> Signatures</h2>
             </div>
             <div class="lrms-card-body">
-                <?php foreach (['customer' => 'Customer signature', 'agent' => 'Agent signature'] as $type => $label): ?>
+                <?php foreach (['customer' => 'Borrower signature', 'agent' => 'Agent signature'] as $type => $label): ?>
                     <div class="mb-3">
                         <div class="text-muted mb-1" style="font-size:.6875rem;text-transform:uppercase;letter-spacing:.05em;font-weight:650">
                             <?= e($label) ?>
                         </div>
                         <?php if (isset($signatureByType[$type])): ?>
+                            <?php $signature = $signatureByType[$type]; ?>
                             <div class="lrms-signature">
-                                <img src="<?= e(Url::media((string) $signatureByType[$type]['file_path'])) ?>"
+                                <img src="<?= e(Url::media((string) $signature['file_path'])) ?>"
                                      alt="<?= e($label) ?>">
-                                <?php if (!empty($signatureByType[$type]['signed_name'])): ?>
-                                    <div class="cap"><?= e($signatureByType[$type]['signed_name']) ?></div>
+                                <?php if (!empty($signature['signed_name'])): ?>
+                                    <div class="cap"><?= e($signature['signed_name']) ?></div>
                                 <?php endif; ?>
+                            </div>
+                            <div class="lrms-photo-geo mt-1" style="padding-left:2px">
+                                <?php if (Geo::has($signature)): ?>
+                                    <span style="line-height:0"><?= icon('map-pin') ?></span>
+                                    <a href="<?= e(Geo::mapUrl($signature['gps_latitude'], $signature['gps_longitude'])) ?>"
+                                       target="_blank" rel="noopener noreferrer">
+                                        <?= e(Geo::coordinates($signature['gps_latitude'], $signature['gps_longitude'])) ?>
+                                    </a>
+                                    <?php if (($signature['gps_accuracy_m'] ?? null) !== null): ?>
+                                        <span class="<?= Geo::isPrecise($signature['gps_accuracy_m']) ? 'text-muted' : 'lrms-geo-coarse' ?>">
+                                            <?= e(Geo::accuracy($signature['gps_accuracy_m'])) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted"><?= e(Geo::signature($signature)) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        <?php elseif ($type === 'agent' && ($agentOnFile['signature_path'] ?? null) !== null): ?>
+                            <?php
+                            // The print falls back to the signature held on the agent's
+                            // record. The panel used to say "Not captured" for the same
+                            // report, so a reviewer checking the screen before approving
+                            // saw a gap where the PDF showed a signature.
+                            ?>
+                            <div class="lrms-signature">
+                                <img src="<?= e(Url::media((string) $agentOnFile['signature_path'])) ?>"
+                                     alt="Agent signature on file">
+                                <div class="cap">On file</div>
+                            </div>
+                            <div class="text-muted mt-1" style="font-size:.6875rem;padding-left:2px">
+                                Held on the agent's record - not signed at this visit, so it carries no position.
                             </div>
                         <?php else: ?>
                             <div class="lrms-signature" style="background:var(--lrms-bg);padding:20px 8px">
@@ -603,24 +649,67 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
-                <h2><?= icon('image') ?> Photos</h2>
-                <span class="text-muted" style="font-size:.75rem"><?= e((string) count($photos)) ?></span>
+                <h2><?= icon('image') ?> Photographs</h2>
+                <span class="text-muted" style="font-size:.75rem">
+                    <?= e((string) count($photos)) ?><?php if ($geoTagged > 0): ?> &middot; <?= e((string) $geoTagged) ?> geo-tagged<?php endif; ?>
+                </span>
             </div>
             <div class="lrms-card-body">
                 <?php if ($photos === []): ?>
-                    <p class="text-muted mb-0" style="font-size:.875rem">No photos attached to this visit.</p>
+                    <p class="text-muted mb-0" style="font-size:.875rem">No photographs attached to this visit.</p>
                 <?php else: ?>
-                    <div class="lrms-gallery">
-                        <?php foreach ($photos as $photo): ?>
-                            <a class="lrms-thumb" target="_blank" rel="noopener"
-                               href="<?= e(Url::media((string) $photo['file_path'])) ?>">
-                                <img src="<?= e(Url::media((string) $photo['file_path'])) ?>" alt="" loading="lazy">
-                                <span class="lrms-thumb-label">
-                                    <?= e(str_replace('_', ' ', (string) $photo['photo_type'])) ?>
-                                </span>
+                    <?php foreach ($photos as $photo): ?>
+                        <?php
+                        $hasFix = Geo::has($photo);
+                        $source = (string) ($photo['capture_source'] ?? 'unknown');
+                        ?>
+                        <figure class="lrms-photo">
+                            <a class="lrms-photo-frame" target="_blank" rel="noopener"
+                               href="<?= e(Url::media((string) $photo['file_path'])) ?>"
+                               title="Open the full-size photograph">
+                                <img src="<?= e(Url::media((string) $photo['file_path'])) ?>"
+                                     alt="<?= e(VisitController::photoLabel((string) $photo['photo_type'])) ?>"
+                                     loading="lazy">
                             </a>
-                        <?php endforeach; ?>
-                    </div>
+                            <figcaption>
+                                <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                    <strong style="font-size:.8125rem">
+                                        <?= e(VisitController::photoLabel((string) $photo['photo_type'])) ?>
+                                    </strong>
+                                    <?= geo_source_badge($source) ?>
+                                </div>
+
+                                <?php if ($hasFix): ?>
+                                    <div class="lrms-photo-geo">
+                                        <span style="line-height:0"><?= icon('map-pin') ?></span>
+                                        <a href="<?= e(Geo::mapUrl($photo['gps_latitude'], $photo['gps_longitude'])) ?>"
+                                           target="_blank" rel="noopener noreferrer"
+                                           title="Open these coordinates in a map">
+                                            <?= e(Geo::coordinates($photo['gps_latitude'], $photo['gps_longitude'])) ?>
+                                        </a>
+                                        <?php if (($photo['gps_accuracy_m'] ?? null) !== null): ?>
+                                            <span class="<?= Geo::isPrecise($photo['gps_accuracy_m']) ? 'text-muted' : 'lrms-geo-coarse' ?>"
+                                                  <?php if (!Geo::isPrecise($photo['gps_accuracy_m'])): ?>
+                                                      title="Too coarse to place a particular house - this is roughly a cell-tower fix"
+                                                  <?php endif; ?>>
+                                                <?= e(Geo::accuracy($photo['gps_accuracy_m'])) ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="text-muted" style="font-size:.75rem">
+                                        <?= e(Geo::photo($photo)) ?>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if (($photo['captured_at'] ?? null) !== null): ?>
+                                    <div class="text-muted" style="font-size:.6875rem;margin-top:2px">
+                                        Taken <?= e(fmt_datetime((string) $photo['captured_at'])) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </figcaption>
+                        </figure>
+                    <?php endforeach; ?>
                 <?php endif; ?>
             </div>
         </div>

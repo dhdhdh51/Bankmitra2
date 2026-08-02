@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use App\Core\Auth;
+use App\Core\Geo;
 use App\Core\Pdf;
 use App\Core\Request;
 use App\Core\Response;
@@ -83,6 +84,11 @@ final class VisitController extends Controller
             'documents'  => VisitReport::documents((int) $report['id']),
             'signatures' => VisitReport::signatures((int) $report['id']),
             'revisions'  => VisitReport::revisions((int) $report['id']),
+            // The agent's record, so the panel can show the same on-file photograph
+            // and signature fallbacks the PDF prints. Without it the screen said
+            // "Not captured" for a report whose printed copy shows a signature, and
+            // the screen is what somebody looks at before approving.
+            'agentOnFile' => User::find((int) $report['agent_id']) ?? [],
         ]);
     }
 
@@ -430,35 +436,47 @@ final class VisitController extends Controller
         $pdf->heading('Location Recorded');
         if ((string) $report['gps_source'] === 'device' && $report['gps_latitude'] !== null) {
             $pdf->keyValueBlock([
-                'Coordinates' => sprintf('%.6F, %.6F', (float) $report['gps_latitude'], (float) $report['gps_longitude']),
-                'Accuracy'    => $report['gps_accuracy_m'] === null ? 'not reported' : ((int) $report['gps_accuracy_m'] . ' m'),
+                'Coordinates' => Geo::coordinates($report['gps_latitude'], $report['gps_longitude']),
+                'Accuracy'    => $report['gps_accuracy_m'] === null
+                    ? 'not reported'
+                    : ((int) $report['gps_accuracy_m'] . ' m'
+                        . (Geo::isPrecise($report['gps_accuracy_m']) ? '' : ' - too coarse to place a doorstep')),
                 'Captured At' => $report['gps_captured_at'] === null ? '-' : fmt_datetime((string) $report['gps_captured_at']),
                 'Address'     => $report['gps_address'] ?? 'not resolved',
             ], 2);
         } else {
             // "Refused" and "no signal" are different conversations with a
             // supervisor, so the report says which it was rather than leaving a gap.
-            $pdf->paragraph(
-                (string) $report['gps_source'] === 'denied'
-                    ? 'The agent declined location recording for this report.'
-                    : 'No location fix was available when this report was filed.',
-                9.0,
-                '#1c2128'
-            );
+            // Worded by Geo so the panel and the print cannot disagree about it.
+            $pdf->paragraph(Geo::visit($report), 9.0, '#1c2128');
         }
 
         // ---- Field photographs, each with the position it was taken at -----
-        if ($photos !== []) {
+        //
+        // The agent's own photograph is pulled out of this set and printed beside
+        // their signature instead, where a reader looking for "who stood at this
+        // door" will actually look for it.
+        $agentPhoto = null;
+        $fieldPhotos = [];
+        foreach ($photos as $photo) {
+            if ((string) $photo['photo_type'] === 'agent' && $agentPhoto === null) {
+                $agentPhoto = $photo;
+                continue;
+            }
+            $fieldPhotos[] = $photo;
+        }
+
+        if ($fieldPhotos !== []) {
             $pdf->heading('Field Photographs');
 
             // Three to a row: any more and a printed photograph is too small to show
             // what it was taken to show.
-            foreach (array_chunk($photos, 3) as $chunk) {
+            foreach (array_chunk($fieldPhotos, 3) as $chunk) {
                 $pdf->imageStrip(array_map(
                     fn (array $photo): array => [
                         'path'    => Uploader::absolutePath((string) $photo['file_path']),
-                        'label'   => ucwords(str_replace('_', ' ', (string) $photo['photo_type'])),
-                        'caption' => $this->photoCaption($photo),
+                        'label'   => self::photoLabel((string) $photo['photo_type']),
+                        'caption' => Geo::photo($photo),
                     ],
                     $chunk
                 ), 104.0);
@@ -473,27 +491,40 @@ final class VisitController extends Controller
 
         $customerSignature = $this->signatureOf($signatures, 'customer');
         if ($customerSignature !== null) {
+            $signedName = trim((string) ($customerSignature['signed_name'] ?? ''));
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $customerSignature['file_path']),
                 'label'   => 'Borrower Signature',
-                'caption' => trim(((string) ($customerSignature['signed_name'] ?? '')) . "\n") !== ''
-                    ? (string) $customerSignature['signed_name']
-                    : (string) $report['customer_name'],
+                'caption' => ($signedName !== '' ? $signedName : (string) $report['customer_name'])
+                    . "\n" . Geo::signature($customerSignature),
             ];
         }
 
-        // The agent's photograph next to their signature. This is the point of
-        // holding both on the user record: a report a borrower signed should show who
-        // was standing there, and a name in a text field does not.
-        if ($agent !== null && ($agent['photo_path'] ?? null) !== null) {
+        // The agent's photograph next to their signature: a report a borrower signed
+        // should show who was standing there, and a name in a text field does not.
+        //
+        // Two different photographs can fill this cell and the difference is the whole
+        // point. A photograph taken at the door during this visit carries its own fix
+        // and is captioned with it. The portrait on the agent's user record was
+        // uploaded once in a branch office - so it is labelled "on file" and is NEVER
+        // captioned with this visit's coordinates. Stamping the visit's position onto
+        // an office portrait would have the document assert that this picture was
+        // taken at the borrower's house, which is exactly the kind of claim a printed
+        // report gets believed for.
+        $agentIdentity = (string) $report['agent_name']
+            . "\n" . (string) ($report['bc_code'] ?? $agent['employee_code'] ?? '');
+
+        if ($agentPhoto !== null) {
+            $signatureCells[] = [
+                'path'    => Uploader::absolutePath((string) $agentPhoto['file_path']),
+                'label'   => 'BC / DC Agent (at the visit)',
+                'caption' => $agentIdentity . "\n" . Geo::photo($agentPhoto),
+            ];
+        } elseif ($agent !== null && ($agent['photo_path'] ?? null) !== null) {
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $agent['photo_path']),
-                'label'   => 'BC / DC Agent',
-                'caption' => sprintf(
-                    "%s\n%s",
-                    (string) $report['agent_name'],
-                    (string) ($report['bc_code'] ?? $agent['employee_code'] ?? '')
-                ),
+                'label'   => 'BC / DC Agent (photo on file)',
+                'caption' => $agentIdentity . "\nOffice portrait - not taken at this visit.",
             ];
         }
 
@@ -502,16 +533,18 @@ final class VisitController extends Controller
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $agentSignature['file_path']),
                 'label'   => 'Agent Signature',
-                'caption' => (string) ($agentSignature['signed_name'] ?? $report['agent_name']),
+                'caption' => (string) ($agentSignature['signed_name'] ?? $report['agent_name'])
+                    . "\n" . Geo::signature($agentSignature),
             ];
         } elseif ($agent !== null && ($agent['signature_path'] ?? null) !== null) {
             // Falls back to the signature held on the agent's record. An agent who
             // signed a sheet once should not have to redraw it per report - and the
-            // same mark on every report is what makes two of them comparable.
+            // same mark on every report is what makes two of them comparable. But it
+            // was not signed here, so it gets no position either.
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $agent['signature_path']),
                 'label'   => 'Agent Signature (on file)',
-                'caption' => (string) $report['agent_name'],
+                'caption' => (string) $report['agent_name'] . "\nHeld on file - not signed at this visit.",
             ];
         }
 
@@ -532,7 +565,7 @@ final class VisitController extends Controller
                 'Status'      => ucfirst($status),
                 'Approved By' => $report['approver_name'] ?? '-',
                 'Approved At' => $report['approved_at'] === null ? '-' : fmt_datetime((string) $report['approved_at']),
-                'Position'    => $this->approvalPosition($report),
+                'Position'    => Geo::approval($report),
             ], 2);
 
             if (($report['approval_remarks'] ?? '') !== '') {
@@ -544,7 +577,7 @@ final class VisitController extends Controller
                 $approvalCells[] = [
                     'path'    => Uploader::absolutePath((string) $report['approval_photo_path']),
                     'label'   => 'Approver Photograph',
-                    'caption' => $this->approvalPosition($report),
+                    'caption' => Geo::approval($report),
                 ];
             }
             if (($report['approval_signature_path'] ?? null) !== null) {
@@ -645,67 +678,24 @@ final class VisitController extends Controller
 
     /** @param list<array<string,mixed>> $signatures */
     /**
-     * The geo caption printed under a field photograph.
+     * The printed and on-screen name for a photo_type.
      *
-     * A photograph on a recovery file is only worth something if it says where and
-     * when it was taken. A gallery pick says so explicitly rather than being passed
-     * off as a doorstep photograph - the app never attaches coordinates to one, and a
-     * caption that stayed silent about it would let it be read as though it had.
-     *
-     * @param array<string,mixed> $photo
+     * A map rather than ucwords() on the raw enum, because "Renewal Form" reads fine
+     * but "Aadhaar" does not survive ucwords('aadhaar') on a document a borrower is
+     * handed, and 'agent' on its own says nothing about whose photograph it is.
      */
-    private function photoCaption(array $photo): string
+    public static function photoLabel(string $photoType): string
     {
-        $source = (string) ($photo['capture_source'] ?? 'unknown');
-
-        $when = ($photo['captured_at'] ?? null) !== null
-            ? fmt_datetime((string) $photo['captured_at'])
-            : null;
-
-        if ($photo['gps_latitude'] === null || $photo['gps_longitude'] === null) {
-            return match ($source) {
-                'gallery' => 'Chosen from the gallery - no location recorded.'
-                    . ($when === null ? '' : ' ' . $when),
-                'camera'  => 'Camera photograph, no location fix.' . ($when === null ? '' : ' ' . $when),
-                default   => $when ?? 'No location recorded.',
-            };
-        }
-
-        return sprintf(
-            '%.6F, %.6F%s%s',
-            (float) $photo['gps_latitude'],
-            (float) $photo['gps_longitude'],
-            $photo['gps_accuracy_m'] === null ? '' : sprintf(' (+/-%d m)', (int) $photo['gps_accuracy_m']),
-            $when === null ? '' : ' - ' . $when
-        );
-    }
-
-    /**
-     * Where the approver was when they approved.
-     *
-     * Printed because "I approved it at the branch" and "I approved forty of them
-     * from home at midnight" are different claims, and only one of them is
-     * verification.
-     *
-     * @param array<string,mixed> $report
-     */
-    private function approvalPosition(array $report): string
-    {
-        if ((string) ($report['approval_gps_source'] ?? '') !== 'device'
-            || ($report['approval_gps_latitude'] ?? null) === null) {
-            return (string) ($report['approval_gps_source'] ?? '') === 'denied'
-                ? 'Location declined by the approver'
-                : 'No location fix at approval';
-        }
-
-        return sprintf(
-            '%.6F, %.6F%s',
-            (float) $report['approval_gps_latitude'],
-            (float) $report['approval_gps_longitude'],
-            ($report['approval_gps_accuracy_m'] ?? null) === null
-                ? ''
-                : sprintf(' (+/-%d m)', (int) $report['approval_gps_accuracy_m'])
-        );
+        return [
+            'customer'     => 'Borrower',
+            'house'        => 'House',
+            'land'         => 'Land',
+            'aadhaar'      => 'Aadhaar',
+            'passbook'     => 'Passbook',
+            'renewal_form' => 'Renewal Form',
+            'agent'        => 'BC / DC Agent',
+            'other'        => 'Other',
+        ][$photoType] ?? ucwords(str_replace('_', ' ', $photoType));
     }
 
     /**

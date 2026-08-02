@@ -682,14 +682,14 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 191 checks — crypto, JWT, XLSX, PDF (including image embedding), validator, paginator, key validation |
+| `php tools/selftest-core.php` | 225 checks — crypto, JWT, XLSX, PDF (including image embedding), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 24 checks — 35 tables, 57 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
-| `sh tools/integration-test.sh` | 656 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields |
-| `sh tools/verify-upgrade-sql.sh` | 14 checks — **runs the migration in section 10 of this document** on a populated pre-release database and compares the result against `schema.sql` |
+| `sh tools/integration-test.sh` | 675 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
+| `sh tools/verify-upgrade-sql.sh` | 14 checks — **runs the migration chain in section 10 of this document** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 252 panel + 221 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 217 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 266 panel + 221 API checks over real HTTP |
+| `sh tools/verify-android.sh` | 220 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
@@ -1299,6 +1299,52 @@ Two things to know about the files:
 Nothing needs re-importing or re-seeding. Existing reports read `approval_status =
 'pending'` and `revision_count = 0`, which is exactly true of them: nobody has approved
 or corrected them.
+
+### Adding geo-tagged agent photographs and signatures to an existing install
+
+Small migration: four columns on `signatures` and one new value in the `photos.photo_type`
+list. Run it after the previous section if you are coming from an older install.
+
+```sql
+-- 1. Where each signature was signed.
+--    A signature is the borrower agreeing to what the report says and the agent
+--    asserting they were there to collect it, so "signed at these coordinates" is what
+--    makes it more than a squiggle. It is a different fact from where the report was
+--    submitted - an agent can walk back to the road before pressing send.
+ALTER TABLE `signatures`
+  ADD COLUMN `gps_latitude`   DECIMAL(10,7) DEFAULT NULL AFTER `captured_at`,
+  ADD COLUMN `gps_longitude`  DECIMAL(10,7) DEFAULT NULL AFTER `gps_latitude`,
+  ADD COLUMN `gps_accuracy_m` SMALLINT UNSIGNED DEFAULT NULL AFTER `gps_longitude`,
+  -- Three-way, not a nullable flag: "the agent declined location recording" and
+  -- "there was no signal in the courtyard" are different answers to a supervisor
+  -- asking why a signed report carries no position.
+  ADD COLUMN `gps_source`     ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable' AFTER `gps_accuracy_m`;
+
+-- 2. The agent's own photograph, taken at the door, is a normal photo row.
+--    It lives in `photos` rather than in a column on `visit_reports` so it inherits
+--    everything a photograph already has: its own fix, its own capture_source,
+--    branch-scoped media authorisation and a place in the galleries.
+ALTER TABLE `photos`
+  MODIFY COLUMN `photo_type` ENUM('customer','house','land','aadhaar','passbook',
+                                  'renewal_form','agent','other') NOT NULL DEFAULT 'other';
+```
+
+Existing rows read `gps_source = 'unavailable'`, which is exactly true of them: nobody
+recorded a position when they were signed.
+
+Two notes:
+
+- **A new APK is required for this to do anything.** The columns are filled by the app:
+  the signature pad now reads a fix when Save is pressed, and there is a new camera-only
+  slot for the agent's own photograph. An older APK against the new server keeps working
+  and simply records no position for signatures.
+- **`photos.captured_at` starts being written.** It has existed since the first release
+  with the comment "device clock at capture" and nothing ever wrote it, so every
+  photograph already in your database has `NULL` there and will keep it. New photographs
+  filed by the new APK carry the time the shutter was pressed. Nothing backfills the old
+  rows, because the only timestamp available for them is when the upload arrived, and
+  writing that into a column labelled "captured at" would turn a missing fact into a
+  wrong one.
 
 ### Renaming to D2 Recovery on an existing install
 
