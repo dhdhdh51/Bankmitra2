@@ -15,7 +15,7 @@ declare(strict_types=1);
 $root = getenv('LRMS_APP_ROOT') ?: dirname(__DIR__) . '/admin';
 $root = rtrim($root, '/');
 if (!is_file($root . '/app/Core/helpers.php')) {
-    fwrite(STDERR, "seed-demo: '$root' is not a D2 Recovery application root\n");
+    fwrite(STDERR, "seed-demo: '$root' is not a D2 Recovery Solutions & Services application root\n");
     exit(1);
 }
 define('APP_PATH', $root . '/app');

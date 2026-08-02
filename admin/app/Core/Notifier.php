@@ -57,7 +57,7 @@ final class Notifier
 
     public static function sendOtpSms(string $mobile, string $otp): bool
     {
-        $template = (string) Settings::get('sms_otp_template', 'Your D2 Recovery OTP is {otp}. Valid for 10 minutes.');
+        $template = (string) Settings::get('sms_otp_template', 'Your D2 Recovery Solutions & Services OTP is {otp}. Valid for 10 minutes.');
         return self::sendSms($mobile, strtr($template, ['{otp}' => $otp]));
     }
 
@@ -78,7 +78,7 @@ final class Notifier
      */
     public static function sendOtpEmail(string $email, string $otp, int $expiryMinutes): bool
     {
-        $appName = (string) Settings::get('app_name', 'D2 Recovery');
+        $appName = (string) Settings::get('app_name', 'D2 Recovery Solutions & Services');
         $subject = sprintf('%s password reset code: %s', $appName, $otp);
 
         $body = '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;color:#1c2128">'
@@ -112,7 +112,7 @@ final class Notifier
         $password = (string) Settings::get('smtp_password', '');
         $encryption = strtolower((string) Settings::get('smtp_encryption', 'tls'));
         $fromEmail = (string) Settings::get('smtp_from_email', '');
-        $fromName = (string) Settings::get('smtp_from_name', 'D2 Recovery');
+        $fromName = (string) Settings::get('smtp_from_name', 'D2 Recovery Solutions & Services');
 
         $transport = $encryption === 'ssl' ? 'ssl://' : '';
         $context = stream_context_create([

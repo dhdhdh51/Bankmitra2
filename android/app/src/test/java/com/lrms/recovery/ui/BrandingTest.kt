@@ -9,7 +9,7 @@ import org.junit.Test
  * Pins the product name and the brand palette.
  *
  * Two things went wrong here that only a phone could reveal. The app was called
- * LRMS in a dozen strings after the product had been named D2 Recovery. And the
+ * LRMS in a dozen strings after the product had been named D2 Recovery Solutions &amp; Services. And the
  * UI used a brighter blue borrowed from the web panel, so tapping a navy-and-gold
  * launcher icon opened a plainly blue app - the icon and the app did not look
  * like the same product.
@@ -84,15 +84,19 @@ class BrandingTest {
     private val LOCALES = listOf("values/strings.xml", "values-hi/strings.xml")
 
     @Test
-    fun `the app is called D2 Recovery`() {
+    fun `the app is called D2 Recovery Solutions & Services`() {
         val strings = text("values/strings.xml")
         // The attribute list is matched loosely on purpose: app_name carries
         // translatable="false" (a product name is not translated), and a regex pinned to
         // `name="app_name">` stopped matching the moment that was added - which made this
         // test pass by finding nothing rather than by finding the right thing.
+        //
+        // Compared against the raw XML entity, not the decoded string: the regex reads
+        // the file as text and never runs an XML parser, so "&" in the resource is seen
+        // here exactly as it is written - "&amp;".
         val appName = Regex("""<string name="app_name"[^>]*>([^<]+)</string>""")
             .find(strings)?.groupValues?.get(1)
-        assertEquals("D2 Recovery", appName)
+        assertEquals("D2 Recovery Solutions &amp; Services", appName)
     }
 
     @Test

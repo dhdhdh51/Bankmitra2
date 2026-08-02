@@ -350,7 +350,7 @@ final class VisitController extends Controller
                 fmt_date((string) $report['visit_date'])
             ),
             false,
-            'D2 Recovery confidential - field verification record'
+            'D2 Recovery Solutions & Services confidential - field verification record'
         );
 
         // The paper form carries one grey line at the top of every page and its masthead
@@ -465,7 +465,7 @@ final class VisitController extends Controller
             // classified this date is the day it is EXPECTED to turn NPA; afterwards it is
             // the day it did. Printing only "NPA Date" made a probable date look like a
             // classification that had already happened.
-            'Probable NPA Date / NPA Date' => $report['npa_date'] === null
+            'Probable NPA/NPA DATE' => $report['npa_date'] === null
                 ? 'Not classified' : fmt_date((string) $report['npa_date']),
             'Current Status'     => ucfirst((string) $report['current_status']),
         ], 2);
