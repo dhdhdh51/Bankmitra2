@@ -1970,6 +1970,73 @@ if ($ownLeadId > 0) {
     check('and every figure they changed is marked as hand-edited',
         substr_count($agentDoorAgain['body'], 'Hand-edited') >= 2,
         substr_count($agentDoorAgain['body'], 'Hand-edited') . ' marked');
+
+    // "No restriction" means the whole record, so the last four columns and the two that
+    // are handled specially are checked as well - by the agent, on their own lead.
+    foreach ([
+        'loan_account_number' => 'the account number itself',
+        'current_status'      => 'the status',
+        'bc_code'             => 'the BC code on the account',
+        'ots_eligible'        => 'the OTS eligibility flag',
+        'krm_eligible'        => 'the KRM eligibility flag',
+        'next_followup_date'  => 'the next follow-up date',
+    ] as $field => $what) {
+        check("an agent can edit {$what}", str_contains($agentDoorAgain['body'], 'name="' . $field . '"'));
+    }
+
+    // The eligibility flags are three-state: "no" and "the file never said" are different
+    // facts, and a checkbox cannot tell them apart.
+    check('the eligibility flags can be left unstated rather than forced to no',
+        preg_match('#name="ots_eligible"[\s\S]{0,200}Not stated#', $agentDoorAgain['body']) === 1);
+
+    // Renaming the account: the identity of the row, so it gets its own timeline line.
+    $renamed = 'RENAMED' . substr((string) time(), -5);
+    $agentRename = request($base . '/customers/' . $ownLeadId . '/edit', [
+        '_csrf'               => csrfToken($agentDoorAgain['body']),
+        'name'                => formValue($agentDoorAgain['body'], 'name'),
+        'loan_account_number' => $renamed,
+        'current_status'      => 'followup',
+        'bc_code'             => 'BC-AGT-01',
+        'ots_eligible'        => '1',
+        'krm_eligible'        => '0',
+        'next_followup_date'  => date('Y-m-d', strtotime('+9 days')),
+    ]);
+    check('an agent can correct the account number', $agentRename['status'] === 200
+        && str_contains($agentRename['body'], $renamed), 'HTTP ' . $agentRename['status']);
+
+    $renamedProfile = request($base . '/customers/' . $ownLeadId);
+    check('the rename is recorded in the timeline, not done silently',
+        str_contains($renamedProfile['body'], 'Account number corrected'));
+    check('the visits already filed stay with the account',
+        !str_contains($renamedProfile['body'], 'No visits recorded'));
+    check('the status change is recorded as a status change',
+        str_contains($renamedProfile['body'], 'Status changed')
+        || str_contains($renamedProfile['body'], 'Followup')
+        || str_contains($renamedProfile['body'], 'followup'));
+    // Read back off the EDIT FORM, not the profile: an earlier decision deliberately keeps
+    // the BC code off the loan panel - it belongs to the agent rather than the loan - and
+    // asserting it there would be a test demanding the opposite of a settled decision.
+    check('the BC code they typed is stored',
+        formValue(request($base . '/customers/' . $ownLeadId . '/edit')['body'], 'bc_code') === 'BC-AGT-01');
+
+    // Two accounts cannot share a number, and the refusal has to name who holds it.
+    $collideForm = request($base . '/customers/' . $ownLeadId . '/edit');
+    $otherNumber = null;
+    foreach (preg_split('/\r?\n/', $agentLeads['body']) as $line) {
+        if (preg_match('#>([A-Z0-9/\-]{6,})</a>#', $line, $m) && $m[1] !== $renamed) {
+            $otherNumber = $m[1];
+            break;
+        }
+    }
+    if ($otherNumber !== null) {
+        $collide = request($base . '/customers/' . $ownLeadId . '/edit', [
+            '_csrf'               => csrfToken($collideForm['body']),
+            'name'                => formValue($collideForm['body'], 'name'),
+            'loan_account_number' => $otherNumber,
+        ]);
+        check('a rename onto another account\'s number is refused',
+            str_contains($collide['body'], 'cannot share a number'), 'HTTP ' . $collide['status']);
+    }
 }
 
 // An agent adds a borrower the export has not reached. This is the half of the feature

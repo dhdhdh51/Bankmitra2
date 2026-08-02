@@ -528,7 +528,45 @@ final class LoanAccount
         'drawing_power'         => 'Drawing power',
         'interest_overdue'      => 'Interest overdue',
         'remarks'               => 'Notes on this account',
+        // The last of the real data. Everything an import can write, a person can now
+        // correct; what is left out below is derived or plumbing, nothing else.
+        'bc_code'               => 'BC / DC code on the account',
+        'ots_eligible'          => 'Eligible for OTS',
+        'krm_eligible'          => 'Eligible for KRM',
+        'next_followup_date'    => 'Next follow-up date',
     ];
+
+    /*
+     * What is deliberately NOT in the list above, and why. "The rest is editable" is a
+     * promise, so the exceptions have to be defensible one at a time.
+     *
+     *   id, customer_id, import_id, manual_overrides, created_at, updated_at
+     *       Plumbing. Nothing on a screen should be able to re-point a row at a different
+     *       borrower or a different import batch.
+     *
+     *   is_npa
+     *       Derived from npa_date, set in applyManualEdit() when that date moves. Two
+     *       fields that can disagree about whether an account is NPA is worse than one.
+     *
+     *   visit_count, last_visit_at, last_promise_id
+     *       Counted from visit_reports and promises. A hand-set value is a lie the next
+     *       counter repair silently corrects, so the edit would appear to work and then
+     *       undo itself - the worst kind of editable field.
+     *
+     *   assigned_at, assigned_by, closed_at
+     *       Stamps written by the action that caused them. A stamp without the action is a
+     *       record of something that did not happen.
+     *
+     *   branch_id, assigned_agent_id
+     *       A branch move is a transfer and handing a lead over is an assignment. Both
+     *       have their own permission, their own audit event, their own timeline entry, and
+     *       assignment notifies the agent who receives it. Editing the column silently
+     *       would skip all of that.
+     *
+     * loan_account_number and current_status ARE editable, but not through this list -
+     * see CustomerController::edit(), which renames with a uniqueness check and moves the
+     * status through AssignmentService so the timeline still says what happened.
+     */
 
     /** The facilities that have their own renewal queue. */
     public const FACILITIES = [
