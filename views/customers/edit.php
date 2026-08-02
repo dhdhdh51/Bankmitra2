@@ -91,6 +91,46 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                             <div class="form-text">Stored encrypted; a masked form is shown in lists.</div>
                         </div>
 
+                        <?php
+                        /*
+                         * The second number, and whose it is.
+                         *
+                         * Before this an agent at the door had two bad options: overwrite
+                         * the number the bank was given at sanction, or write the working
+                         * number into a remarks field where nothing can dial it. The label
+                         * matters as much as the number - "who am I speaking to" is the
+                         * whole of a recovery call's first ten seconds - and no importer
+                         * touches either column, so what is collected here stays.
+                         */
+                        ?>
+                        <div class="col-md-6">
+                            <label class="form-label" for="alt_mobile">Second mobile</label>
+                            <input type="tel" class="form-control<?= has_error($errors, 'alt_mobile') ?>"
+                                   id="alt_mobile" name="alt_mobile" maxlength="13" inputmode="numeric"
+                                   value="<?= array_key_exists('alt_mobile', $old) ? e($old['alt_mobile']) : e($lead['alt_mobile'] ?? '') ?>">
+                            <?= field_error($errors, 'alt_mobile') ?>
+                            <div class="form-text">A number that actually reaches them. Searchable like the first.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="alt_mobile_label">Whose number is it</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'alt_mobile_label') ?>"
+                                   id="alt_mobile_label" name="alt_mobile_label" maxlength="60"
+                                   list="alt_mobile_label_options" placeholder="Son, brother, shop&hellip;"
+                                   value="<?= array_key_exists('alt_mobile_label', $old) ? e($old['alt_mobile_label']) : e($lead['alt_mobile_label'] ?? '') ?>">
+                            <datalist id="alt_mobile_label_options">
+                                <option value="Son"></option>
+                                <option value="Daughter"></option>
+                                <option value="Wife"></option>
+                                <option value="Husband"></option>
+                                <option value="Brother"></option>
+                                <option value="Neighbour"></option>
+                                <option value="Shop"></option>
+                                <option value="Guarantor"></option>
+                            </datalist>
+                            <?= field_error($errors, 'alt_mobile_label') ?>
+                        </div>
+
                         <div class="col-md-6">
                             <label class="form-label" for="aadhaar">Aadhaar</label>
                             <input type="text" class="form-control<?= has_error($errors, 'aadhaar') ?>"
@@ -289,6 +329,85 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                                    id="ckcc_renewal_due_date" name="ckcc_renewal_due_date"
                                    value="<?= $value('ckcc_renewal_due_date') ?>">
                             <?= field_error($errors, 'ckcc_renewal_due_date') ?>
+                        </div>
+
+                        <?php
+                        /*
+                         * The sanction side of the passbook. These were import-owned and
+                         * unreachable, which made the passbook a borrower holds out at the
+                         * door useless: the agent could read the sanction limit straight
+                         * off it and had nowhere to put it.
+                         */
+                        ?>
+                        <div class="col-md-4">
+                            <label class="form-label" for="sanction_date">Sanction date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'sanction_date') ?>"
+                                   id="sanction_date" name="sanction_date"
+                                   value="<?= $value('sanction_date') ?>">
+                            <?= field_error($errors, 'sanction_date') ?>
+                            <?php if (isset($overriddenSet['sanction_date'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="sanction_limit">Sanction limit (&#8377;)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'sanction_limit') ?>"
+                                   id="sanction_limit" name="sanction_limit" min="0" step="0.01" inputmode="decimal"
+                                   value="<?= $value('sanction_limit') ?>">
+                            <?= field_error($errors, 'sanction_limit') ?>
+                            <?php if (isset($overriddenSet['sanction_limit'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="drawing_power">Drawing power (&#8377;)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'drawing_power') ?>"
+                                   id="drawing_power" name="drawing_power" min="0" step="0.01" inputmode="decimal"
+                                   value="<?= $value('drawing_power') ?>">
+                            <?= field_error($errors, 'drawing_power') ?>
+                            <?php if (isset($overriddenSet['drawing_power'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="interest_overdue">Interest overdue (&#8377;)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'interest_overdue') ?>"
+                                   id="interest_overdue" name="interest_overdue" min="0" step="0.01" inputmode="decimal"
+                                   value="<?= $value('interest_overdue') ?>">
+                            <?= field_error($errors, 'interest_overdue') ?>
+                            <?php if (isset($overriddenSet['interest_overdue'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php
+                        /*
+                         * The field that gets used most, and the one that was missing.
+                         *
+                         * What an agent learns at a doorstep is rarely a number - "shifted
+                         * to Delhi, brother works the land", "wife says he is in hospital",
+                         * "shop is shut, neighbours say he sold the buffalo". There was
+                         * nowhere for any of it, so it stayed in somebody's notebook. A
+                         * visit report captures one visit; this is what is true about the
+                         * account, and it prints on the customer sheet.
+                         */
+                        ?>
+                        <div class="col-12">
+                            <label class="form-label" for="remarks">Notes on this account</label>
+                            <textarea class="form-control<?= has_error($errors, 'remarks') ?>"
+                                      id="remarks" name="remarks" rows="3" maxlength="1000"
+                                      placeholder="What somebody opening this account next needs to know"><?= $value('remarks') ?></textarea>
+                            <?= field_error($errors, 'remarks') ?>
+                            <div class="form-text">
+                                Standing notes about the account, not a visit report. Visits keep their own
+                                remarks and are append-only.
+                            </div>
+                            <?php if (isset($overriddenSet['remarks'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
                         </div>
                     </div>
 

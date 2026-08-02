@@ -684,11 +684,11 @@ Everything in the repository is covered by runnable checks.
 | --- | --- |
 | `php tools/selftest-core.php` | 249 checks — crypto, JWT, XLSX, PDF (including image embedding, the blank signature boxes and multi-line captions), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 28 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login, dropdown settings that have choices |
-| `sh tools/integration-test.sh` | 757 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo, a lead typed in by hand and what the next import does to it |
+| `sh tools/integration-test.sh` | 780 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo, a lead typed in by hand and what the next import does to it |
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 373 panel + 226 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
+| `sh tools/smoke-panel.sh` | 390 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
@@ -1695,6 +1695,71 @@ Afterwards:
 - The timeline shows **"Lead created by hand"** with its own icon, so a typed account is
   never mistaken for one the core banking system produced.
 - No new APK. This is a panel screen; the app does not create leads.
+
+### Recording what the agent finds out at the door
+
+The edit form existed so a mistake could be fixed. It also has to be somewhere to **add**
+what nobody knew when the file was built, and it was not: the fields an agent actually
+comes back with had nowhere to go.
+
+Two things this release adds.
+
+**A second phone number, and whose it is.** The borrower's own phone is dead more often
+than not, and the number that reaches them belongs to a son, a brother, or the shop at the
+crossroads. Without a place to put it an agent had two bad options: overwrite the number
+the bank was given at sanction, or write the working number into a note where nothing can
+dial it. The label is not decoration — "who am I speaking to" is the whole of a recovery
+call's first ten seconds. Encrypted and hashed like the primary, so it is **searchable**
+without being readable in the database, and **no importer touches it**: the bank's export
+has no such column, so what is collected at a doorstep cannot be flattened by tomorrow's
+file.
+
+```sql
+ALTER TABLE `customers`
+  ADD COLUMN `alt_mobile_enc`    VARBINARY(255) DEFAULT NULL AFTER `aadhaar_masked`,
+  ADD COLUMN `alt_mobile_hash`   CHAR(64)     DEFAULT NULL AFTER `alt_mobile_enc`,
+  ADD COLUMN `alt_mobile_masked` VARCHAR(20)  DEFAULT NULL AFTER `alt_mobile_hash`,
+  ADD COLUMN `alt_mobile_label`  VARCHAR(60)  DEFAULT NULL
+    COMMENT 'whose number it is - son, brother, shop' AFTER `alt_mobile_masked`,
+  ADD KEY `idx_customers_alt_mobile_hash` (`alt_mobile_hash`);
+```
+
+**Five more fields on the loan account, no schema change needed.** `sanction_date`,
+`sanction_limit`, `drawing_power`, `interest_overdue` and `remarks` already existed but were
+import-owned and unreachable, which made the passbook a borrower holds out at the door
+useless — the agent could read the sanction limit straight off it and had nowhere to put it.
+They are editable now, and like every other hand-edit they are stamped into
+`manual_overrides` so the next import leaves them alone. `remarks` is the one that will get
+used most: what an agent learns at a doorstep is rarely a number.
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'customers'
+   AND column_name LIKE 'alt_mobile%';                                  -- 4
+SELECT COUNT(*) FROM information_schema.statistics
+ WHERE table_schema = DATABASE() AND table_name = 'customers'
+   AND index_name = 'idx_customers_alt_mobile_hash';                    -- 1
+```
+
+Afterwards:
+
+- **Open a borrower and look at the Borrower details card.** "Second mobile" and "Whose
+  number is it" sit next to the mobile, and the profile shows the number as a `tel:` link
+  for anybody holding `customers.view_pii`, masked for anybody who does not, and an
+  invitation to add one when it is empty — a field nobody can see is a field nobody fills
+  in.
+- **Search works on it.** Somebody with a missed call is searching the number that called
+  them, which is exactly the number the borrower does not answer on.
+- **The old "Remarks from import" row on the profile is now "Notes on this account"**,
+  because it is no longer only the import's. Visit remarks are untouched and still
+  append-only; this is the standing note about the account.
+- **The app gets the second number through `/leads` and `/customers/{id}`** under the same
+  PII gate as the first, in both the list row and the profile. The **currently published
+  APK ignores the new fields** — it does not know about them — so the next APK is what makes
+  the second number dialable from the app. Nothing breaks in the meantime.
+- No new APK is required for the panel side, which is where the recording happens.
 
 ### Renaming to D2 Recovery on an existing install
 

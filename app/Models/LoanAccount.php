@@ -51,6 +51,7 @@ final class LoanAccount
     /** The joined borrower / branch / agent columns every screen also reads. */
     private const JOINED_COLUMNS = "c.name AS customer_name, c.father_husband_name, c.village, c.address,
                    c.mobile_masked, c.aadhaar_masked,
+                   c.alt_mobile_masked, c.alt_mobile_label,
                    b.name AS branch_name, b.branch_code,
                    ag.name AS agent_name, ag.employee_code AS agent_code";
 
@@ -87,7 +88,7 @@ final class LoanAccount
         // column constants, so it can no longer fall behind.
         $row = Database::instance()->first(
             'SELECT ' . self::LOAN_COLUMNS . ', ' . self::JOINED_COLUMNS
-                . ', c.mobile_enc, c.aadhaar_enc ' . self::FROM . ' WHERE la.id = ? LIMIT 1',
+                . ', c.mobile_enc, c.alt_mobile_enc, c.aadhaar_enc ' . self::FROM . ' WHERE la.id = ? LIMIT 1',
             [$id]
         );
         if ($row === null) {
@@ -95,8 +96,9 @@ final class LoanAccount
         }
 
         $row['mobile'] = Crypto::decrypt($row['mobile_enc'] ?? null);
+        $row['alt_mobile'] = Crypto::decrypt($row['alt_mobile_enc'] ?? null);
         $row['aadhaar'] = Crypto::decrypt($row['aadhaar_enc'] ?? null);
-        unset($row['mobile_enc'], $row['aadhaar_enc']);
+        unset($row['mobile_enc'], $row['alt_mobile_enc'], $row['aadhaar_enc']);
 
         return $row;
     }
@@ -120,10 +122,14 @@ final class LoanAccount
      * button never appears and an agent has to open every lead one by one just to
      * phone the borrower.
      *
-     * Done as ONE extra query for the whole page rather than a lookup per row,
-     * and it resolves `mobile` only - Aadhaar stays out of list responses, since
-     * nothing in a list needs it and bulk-shipping it would widen the blast
-     * radius of any single leaked response for no benefit.
+     * Done as ONE extra query for the whole page rather than a lookup per row, and it
+     * resolves the two phone numbers only - Aadhaar stays out of list responses, since
+     * nothing in a list needs it and bulk-shipping it would widen the blast radius of any
+     * single leaked response for no benefit.
+     *
+     * The alternate number is here for the same reason the first one is: it is the number
+     * that answers, and an agent who has to open the borrower to find it will phone the
+     * dead number instead.
      *
      * @param  list<array<string,mixed>> $rows
      * @return list<array<string,mixed>>
@@ -148,17 +154,22 @@ final class LoanAccount
         $ids = array_keys($customerIds);
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $encrypted = Database::instance()->all(
-            'SELECT id, mobile_enc FROM customers WHERE id IN (' . $placeholders . ')',
+            'SELECT id, mobile_enc, alt_mobile_enc FROM customers WHERE id IN (' . $placeholders . ')',
             $ids
         );
 
         $byId = [];
         foreach ($encrypted as $row) {
-            $byId[(int) $row['id']] = Crypto::decrypt($row['mobile_enc'] ?? null);
+            $byId[(int) $row['id']] = [
+                Crypto::decrypt($row['mobile_enc'] ?? null),
+                Crypto::decrypt($row['alt_mobile_enc'] ?? null),
+            ];
         }
 
         foreach ($rows as $index => $row) {
-            $rows[$index]['mobile'] = $byId[(int) ($row['customer_id'] ?? 0)] ?? null;
+            [$mobile, $altMobile] = $byId[(int) ($row['customer_id'] ?? 0)] ?? [null, null];
+            $rows[$index]['mobile'] = $mobile;
+            $rows[$index]['alt_mobile'] = $altMobile;
         }
 
         return $rows;
@@ -223,7 +234,12 @@ final class LoanAccount
             // name search does not pay for two extra index lookups.
             if ($mobileHash !== null) {
                 $conditions[] = 'c.mobile_hash = ?';
+                // The alternate number too. Somebody searching a phone number is usually
+                // searching the number that just called them, and the whole reason a second
+                // number exists on the record is that the first one does not answer.
+                $conditions[] = 'c.alt_mobile_hash = ?';
                 $conditions[] = 'c.aadhaar_hash = ?';
+                $params[] = $mobileHash;
                 $params[] = $mobileHash;
                 $params[] = $aadhaarHash;
             }
@@ -499,6 +515,19 @@ final class LoanAccount
         // A product name is not always a facility name, so the derived value has to be
         // correctable - and the correction has to survive the next import like any other.
         'facility_type'         => 'Facility (KCC / OD-2)',
+        // The sanction side of the passbook, and a free-text note.
+        //
+        // These were import-owned and unreachable, which made a passbook the borrower was
+        // holding out at the door unusable: the agent could read the sanction limit off it
+        // and had nowhere to put it. `remarks` is the one that gets used most - what an
+        // agent learns at a doorstep is rarely a number ("shifted to Delhi, brother works
+        // the land") and a field for it is the difference between that reaching the branch
+        // and staying in somebody's notebook.
+        'sanction_date'         => 'Sanction date',
+        'sanction_limit'        => 'Sanction limit',
+        'drawing_power'         => 'Drawing power',
+        'interest_overdue'      => 'Interest overdue',
+        'remarks'               => 'Notes on this account',
     ];
 
     /** The facilities that have their own renewal queue. */

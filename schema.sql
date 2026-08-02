@@ -219,6 +219,28 @@ CREATE TABLE `customers` (
   `aadhaar_enc`         VARBINARY(255) DEFAULT NULL,
   `aadhaar_hash`        CHAR(64)     DEFAULT NULL,
   `aadhaar_masked`      VARCHAR(20)  DEFAULT NULL,
+
+  -- A second number, and whose it is.
+  --
+  -- The borrower's own phone is dead more often than not, and the number that actually
+  -- reaches them belongs to a son, a brother or the shop at the crossroads. Without a
+  -- place to put it, an agent standing at the door either overwrites the number on record
+  -- - destroying the one the bank was given at sanction - or writes it in a remarks field
+  -- where nothing can dial it.
+  --
+  -- The label is not decoration: a bare second number tells the next agent nothing about
+  -- who will pick up, and "who am I speaking to" is the whole of a recovery call's first
+  -- ten seconds. Encrypted and hashed like the primary, so it is searchable without being
+  -- readable in the database.
+  --
+  -- No importer writes these columns, by construction rather than by an override flag:
+  -- the bank's export has no such field, so what an agent collects at a doorstep cannot
+  -- be flattened by tomorrow's file.
+  `alt_mobile_enc`      VARBINARY(255) DEFAULT NULL,
+  `alt_mobile_hash`     CHAR(64)     DEFAULT NULL,
+  `alt_mobile_masked`   VARCHAR(20)  DEFAULT NULL,
+  `alt_mobile_label`    VARCHAR(60)  DEFAULT NULL COMMENT 'whose number it is - son, brother, shop',
+
   `village`             VARCHAR(150) DEFAULT NULL,
   `address`             VARCHAR(500) DEFAULT NULL,
   `created_at`          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -228,6 +250,7 @@ CREATE TABLE `customers` (
   KEY `idx_customers_name` (`name`),
   KEY `idx_customers_village` (`village`),
   KEY `idx_customers_mobile_hash` (`mobile_hash`),
+  KEY `idx_customers_alt_mobile_hash` (`alt_mobile_hash`),
   KEY `idx_customers_aadhaar_hash` (`aadhaar_hash`),
   KEY `idx_customers_branch_village` (`branch_id`, `village`),
   CONSTRAINT `fk_customers_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`)

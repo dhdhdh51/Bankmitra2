@@ -104,6 +104,12 @@ abstract class Controller
             'address'             => $lead['address'] === null ? null : (string) $lead['address'],
             'mobile'              => $withPii ? ($lead['mobile'] ?? null) : null,
             'mobile_masked'       => $lead['mobile_masked'] === null ? null : (string) $lead['mobile_masked'],
+            // The second number goes to the app under the same PII gate as the first. The
+            // agent holding the phone is the one who needs a number that answers, and the
+            // label with it - a call that opens "who is this?" is a call that ends there.
+            'alt_mobile'          => $withPii ? ($lead['alt_mobile'] ?? null) : null,
+            'alt_mobile_masked'   => ($lead['alt_mobile_masked'] ?? null) === null ? null : (string) $lead['alt_mobile_masked'],
+            'alt_mobile_label'    => ($lead['alt_mobile_label'] ?? null) === null ? null : (string) $lead['alt_mobile_label'],
             'aadhaar'             => $withPii ? ($lead['aadhaar'] ?? null) : null,
             'aadhaar_masked'      => $lead['aadhaar_masked'] === null ? null : (string) $lead['aadhaar_masked'],
             'bc_code'             => $lead['bc_code'] === null ? null : (string) $lead['bc_code'],

@@ -202,6 +202,37 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                             <?php endif; ?>
                         </dd>
                     </div>
+                    <?php
+                    /*
+                     * The second number sits next to the first, dialable and labelled.
+                     *
+                     * Shown even when empty, with a prompt: a blank row is how the next
+                     * agent finds out this is a thing they can fill in. Hiding it until it
+                     * has a value means the field exists for whoever already knew about it.
+                     */
+                    ?>
+                    <div>
+                        <dt>Second mobile</dt>
+                        <dd class="font-mono">
+                            <?php if ($showPii && !empty($lead['alt_mobile'])): ?>
+                                <a href="tel:<?= e((string) $lead['alt_mobile']) ?>"><?= e((string) $lead['alt_mobile']) ?></a>
+                            <?php elseif (!empty($lead['alt_mobile_masked'])): ?>
+                                <?= e((string) $lead['alt_mobile_masked']) ?>
+                            <?php else: ?>
+                                <span class="text-muted" style="font-family:var(--bs-body-font-family)">
+                                    Not recorded
+                                    <?php if (can('customers.update')): ?>
+                                        &mdash; <a href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit') . '#borrower') ?>">add one</a>
+                                    <?php endif; ?>
+                                </span>
+                            <?php endif; ?>
+                            <?php if (!empty($lead['alt_mobile_label'])): ?>
+                                <span class="lrms-badge badge-pending" style="font-family:var(--bs-body-font-family)">
+                                    <?= e((string) $lead['alt_mobile_label']) ?>
+                                </span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
                     <div>
                         <dt>Aadhaar</dt>
                         <dd class="font-mono">
@@ -419,12 +450,55 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                             <dd><?= e(fmt_date((string) $lead['next_followup_date'])) ?></dd>
                         </div>
                     <?php endif; ?>
-                    <?php if (!empty($lead['remarks'])): ?>
-                        <div style="grid-column:1/-1">
-                            <dt>Remarks from import</dt>
-                            <dd style="font-weight:400"><?= e($lead['remarks']) ?></dd>
+                    <?php
+                    /*
+                     * The sanction side of the passbook, shown only when there is something
+                     * to show: three empty rows on every account would push the figures
+                     * people came here for off the first screen.
+                     */
+                    ?>
+                    <?php foreach ([
+                        'sanction_limit'   => 'Sanction limit',
+                        'drawing_power'    => 'Drawing power',
+                        'interest_overdue' => 'Interest overdue',
+                    ] as $column => $label): ?>
+                        <?php if (($lead[$column] ?? null) !== null): ?>
+                            <div>
+                                <dt><?= e($label) ?></dt>
+                                <dd><?= e(money($lead[$column])) ?></dd>
+                            </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                    <?php if (($lead['sanction_date'] ?? null) !== null): ?>
+                        <div>
+                            <dt>Sanction date</dt>
+                            <dd><?= e(fmt_date((string) $lead['sanction_date'])) ?></dd>
                         </div>
                     <?php endif; ?>
+                    <?php
+                    /*
+                     * Was "Remarks from import", which stopped being true when this became
+                     * editable - it is now the standing note on the account, and mostly what
+                     * an agent learned at the door. Shown empty with a prompt for the same
+                     * reason as the second mobile: a field nobody can see is a field nobody
+                     * fills in.
+                     */
+                    ?>
+                    <div style="grid-column:1/-1">
+                        <dt>Notes on this account</dt>
+                        <dd style="font-weight:400">
+                            <?php if (!empty($lead['remarks'])): ?>
+                                <?= nl2br(e((string) $lead['remarks'])) ?>
+                            <?php else: ?>
+                                <span class="text-muted">
+                                    Nothing recorded
+                                    <?php if (can('customers.update')): ?>
+                                        &mdash; <a href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit') . '#loan') ?>">add a note</a>
+                                    <?php endif; ?>
+                                </span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
                 </dl>
             </div>
         </div>

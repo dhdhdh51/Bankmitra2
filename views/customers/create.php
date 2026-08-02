@@ -89,6 +89,34 @@ $action = url('/customers/create') . ($existing !== null ? '?customer_id=' . (in
                             </div>
 
                             <div class="col-md-6">
+                                <label class="form-label" for="alt_mobile">Second mobile</label>
+                                <input type="tel" class="form-control<?= has_error($errors, 'alt_mobile') ?>"
+                                       id="alt_mobile" name="alt_mobile" maxlength="13" inputmode="numeric"
+                                       value="<?= $value('alt_mobile') ?>">
+                                <?= field_error($errors, 'alt_mobile') ?>
+                                <div class="form-text">The number that actually reaches them, if it is not theirs.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label" for="alt_mobile_label">Whose number is it</label>
+                                <input type="text" class="form-control<?= has_error($errors, 'alt_mobile_label') ?>"
+                                       id="alt_mobile_label" name="alt_mobile_label" maxlength="60"
+                                       list="alt_mobile_label_options" placeholder="Son, brother, shop&hellip;"
+                                       value="<?= $value('alt_mobile_label') ?>">
+                                <datalist id="alt_mobile_label_options">
+                                    <option value="Son"></option>
+                                    <option value="Daughter"></option>
+                                    <option value="Wife"></option>
+                                    <option value="Husband"></option>
+                                    <option value="Brother"></option>
+                                    <option value="Neighbour"></option>
+                                    <option value="Shop"></option>
+                                    <option value="Guarantor"></option>
+                                </datalist>
+                                <?= field_error($errors, 'alt_mobile_label') ?>
+                            </div>
+
+                            <div class="col-md-6">
                                 <label class="form-label" for="aadhaar">Aadhaar</label>
                                 <input type="text" class="form-control<?= has_error($errors, 'aadhaar') ?>"
                                        id="aadhaar" name="aadhaar" maxlength="14" inputmode="numeric"
@@ -302,6 +330,29 @@ $action = url('/customers/create') . ($existing !== null ? '?customer_id=' . (in
                                    id="guarantor_name" name="guarantor_name" maxlength="150"
                                    value="<?= $value('guarantor_name') ?>">
                             <?= field_error($errors, 'guarantor_name') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="sanction_date">Sanction date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'sanction_date') ?>"
+                                   id="sanction_date" name="sanction_date" value="<?= $value('sanction_date') ?>">
+                            <?= field_error($errors, 'sanction_date') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="sanction_limit">Sanction limit (&#8377;)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'sanction_limit') ?>"
+                                   id="sanction_limit" name="sanction_limit" min="0" step="0.01" inputmode="decimal"
+                                   value="<?= $value('sanction_limit') ?>">
+                            <?= field_error($errors, 'sanction_limit') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="drawing_power">Drawing power (&#8377;)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'drawing_power') ?>"
+                                   id="drawing_power" name="drawing_power" min="0" step="0.01" inputmode="decimal"
+                                   value="<?= $value('drawing_power') ?>">
+                            <?= field_error($errors, 'drawing_power') ?>
                         </div>
 
                         <div class="col-md-6">
