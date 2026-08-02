@@ -75,6 +75,7 @@ HEADINGS = [
     '### Removing captured signatures on an existing install',
     '### Fixing the two on/off settings that were dropdowns',
     '### Letting the panel add a borrower by hand',
+    '### Recording what the agent finds out at the door',
 ]
 
 chunks = []
@@ -133,6 +134,15 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- There was nowhere to record a second contact number, so an agent either overwrote the
+-- number the bank was given at sanction or wrote it into a note nothing can dial.
+ALTER TABLE `customers`
+  DROP KEY `idx_customers_alt_mobile_hash`,
+  DROP COLUMN `alt_mobile_enc`,
+  DROP COLUMN `alt_mobile_hash`,
+  DROP COLUMN `alt_mobile_masked`,
+  DROP COLUMN `alt_mobile_label`;
+
 -- Leads could only arrive from an Excel import, so there was no customers.create
 -- permission and no 'lead_created' timeline event.
 DELETE FROM `role_permissions`

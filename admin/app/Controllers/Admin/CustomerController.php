@@ -182,6 +182,9 @@ final class CustomerController extends Controller
             'guarantor_name'      => 'nullable|max:150',
             'purpose'             => 'nullable|max:150',
             'remarks'             => 'nullable|max:1000',
+            'sanction_date'       => 'nullable|date',
+            'sanction_limit'      => 'nullable|numeric|min_value:0',
+            'drawing_power'       => 'nullable|numeric|min_value:0',
         ];
 
         // The borrower's own fields are only asked for when there is no borrower yet.
@@ -190,6 +193,8 @@ final class CustomerController extends Controller
                 'name'                => 'required|max:150',
                 'father_husband_name' => 'nullable|max:150',
                 'mobile'              => 'nullable|mobile',
+                'alt_mobile'          => 'nullable|mobile',
+                'alt_mobile_label'    => 'nullable|max:60',
                 'aadhaar'             => 'nullable|aadhaar',
                 'village'             => 'nullable|max:150',
                 'address'             => 'nullable|max:500',
@@ -200,6 +205,8 @@ final class CustomerController extends Controller
             'loan_account_number' => 'Loan account number',
             'father_husband_name' => 'Father / husband name',
             'ckcc_renewal_due_date' => 'CKCC renewal due date',
+            'alt_mobile'          => 'Second mobile',
+            'alt_mobile_label'    => 'Whose number it is',
         ]);
 
         $errors = $validator->fails() ? $validator->errors() : [];
@@ -268,7 +275,10 @@ final class CustomerController extends Controller
                             'father_husband_name' => $request->nullableStr('father_husband_name'),
                             'village'             => $request->nullableStr('village'),
                             'address'             => $request->nullableStr('address'),
-                        ], $request->nullableStr('mobile'), $request->nullableStr('aadhaar'));
+                        ] + Customer::altMobileColumns(
+                            $request->nullableStr('alt_mobile'),
+                            $request->nullableStr('alt_mobile_label')
+                        ), $request->nullableStr('mobile'), $request->nullableStr('aadhaar'));
                     }
 
                     $loanId = LoanAccount::create([
@@ -380,6 +390,9 @@ final class CustomerController extends Controller
             'guarantor_name'        => 'str',
             'purpose'               => 'str',
             'remarks'               => 'str',
+            'sanction_date'         => 'date',
+            'sanction_limit'        => 'money',
+            'drawing_power'         => 'money',
         ];
 
         $out = [];
@@ -426,6 +439,9 @@ final class CustomerController extends Controller
             'name'                => 'required|max:150',
             'father_husband_name' => 'nullable|max:150',
             'mobile'              => 'nullable|mobile',
+            // The number that actually reaches them, and whose it is.
+            'alt_mobile'          => 'nullable|mobile',
+            'alt_mobile_label'    => 'nullable|max:60',
             'aadhaar'             => 'nullable|aadhaar',
             'village'             => 'nullable|max:150',
             'address'             => 'nullable|max:500',
@@ -452,9 +468,17 @@ final class CustomerController extends Controller
             'maturity_date'       => 'nullable|date',
             'purpose'             => 'nullable|max:150',
             'facility_type'       => 'nullable|in:kcc,od2,other',
+            'sanction_date'       => 'nullable|date',
+            'sanction_limit'      => 'nullable|numeric|min_value:0',
+            'drawing_power'       => 'nullable|numeric|min_value:0',
+            'interest_overdue'    => 'nullable|numeric|min_value:0',
+            'remarks'             => 'nullable|max:1000',
         ], [
             'father_husband_name' => 'Father / husband name',
             'ckcc_renewal_due_date' => 'CKCC renewal due date',
+            'alt_mobile'          => 'Second mobile',
+            'alt_mobile_label'    => 'Whose number it is',
+            'remarks'             => 'Notes on this account',
         ]);
 
         if ($validator->fails()) {
@@ -466,19 +490,43 @@ final class CustomerController extends Controller
             'father_husband_name' => $lead['father_husband_name'],
             'village'             => $lead['village'],
             'address'             => $lead['address'],
+            // The masked form, not the number: an audit row is read by people who may not
+            // hold customers.view_pii, and a diff that spells out a phone number hands it
+            // to all of them.
+            'alt_mobile'          => $lead['alt_mobile_masked'],
+            'alt_mobile_label'    => $lead['alt_mobile_label'],
         ];
 
         $mobile = $request->nullableStr('mobile');
         $aadhaar = $request->nullableStr('aadhaar');
+
+        $altMobile = $request->nullableStr('alt_mobile');
+        $altColumns = Customer::altMobileColumns($altMobile, $request->nullableStr('alt_mobile_label'));
 
         $after = [
             'name'                => $request->str('name'),
             'father_husband_name' => $request->nullableStr('father_husband_name'),
             'village'             => $request->nullableStr('village'),
             'address'             => $request->nullableStr('address'),
+            'alt_mobile'          => $altColumns['alt_mobile_masked'],
+            'alt_mobile_label'    => $altColumns['alt_mobile_label'],
         ];
 
-        Customer::update((int) $lead['customer_id'], $after, $mobile, $aadhaar, true);
+        // $after is the shape the AUDIT reads; the write needs real columns. `alt_mobile`
+        // is not one - the number lives in three (enc, hash, masked) plus its label - so
+        // passing $after straight through would fail on "unknown column alt_mobile".
+        Customer::update(
+            (int) $lead['customer_id'],
+            [
+                'name'                => $after['name'],
+                'father_husband_name' => $after['father_husband_name'],
+                'village'             => $after['village'],
+                'address'             => $after['address'],
+            ] + $altColumns,
+            $mobile,
+            $aadhaar,
+            true
+        );
 
         Logger::auditDiff(
             'customer',
@@ -517,6 +565,11 @@ final class CustomerController extends Controller
             'maturity_date'         => 'date',
             'purpose'               => 'str',
             'facility_type'         => 'str',
+            'sanction_date'         => 'date',
+            'sanction_limit'        => 'money',
+            'drawing_power'         => 'money',
+            'interest_overdue'      => 'money',
+            'remarks'               => 'str',
         ] as $column => $kind) {
             if (!$request->has($column)) {
                 continue;

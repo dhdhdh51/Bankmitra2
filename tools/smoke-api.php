@@ -306,6 +306,12 @@ check('GET /customers/{id} returns 200', $profile['status'] === 200, 'HTTP ' . $
 foreach (['lead', 'promises', 'visits', 'timeline', 'photos', 'documents', 'other_accounts'] as $key) {
     check("profile includes {$key}", array_key_exists($key, (array) $profile['json']['data']));
 }
+// The second number goes to the app under the same gate as the first: the agent holding
+// the phone is the one who needs a number that answers, and the label with it.
+check('the profile carries the second number and whose it is',
+    array_key_exists('alt_mobile', (array) $profile['json']['data']['lead'])
+    && array_key_exists('alt_mobile_label', (array) $profile['json']['data']['lead']));
+
 check('agent receives the real mobile number for calling',
     !empty($profile['json']['data']['lead']['mobile']), 'mobile was null');
 
@@ -316,6 +322,9 @@ check('agent receives the real mobile number for calling',
 // contract test, because that test reads committed fixtures and would keep
 // passing against a regressed server.
 $listLead = (array) $firstLead;
+check('the lead list carries the second number too, so the call can start from the row',
+    array_key_exists('alt_mobile', (array) $firstLead));
+
 check('the lead list carries a dialable mobile for an agent',
     !empty($listLead['mobile']), 'mobile was ' . var_export($listLead['mobile'] ?? null, true));
 check('the lead list still carries the masked mobile for display',

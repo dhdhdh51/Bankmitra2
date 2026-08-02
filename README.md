@@ -74,6 +74,18 @@ never processes a payment** — repayment always happens through the bank's own 
   alone. A duplicate account number is refused with the name and branch of the borrower who
   already holds it, and the timeline records **"Lead created by hand"** so a typed account
   is never mistaken for one the core banking system produced.
+- **What the agent finds out at the door has somewhere to go.** The edit form was there to
+  fix a mistake; it is now also where the things nobody knew when the file was built get
+  recorded. A **second phone number with a label** — the borrower's own phone is dead more
+  often than not and the number that reaches them belongs to a son, a brother or the shop at
+  the crossroads, so recording it used to mean overwriting the number the bank was given at
+  sanction, or writing it into a note nothing can dial. It is encrypted and hashed like the
+  primary, so it is **searchable** (somebody with a missed call is searching the number that
+  called them) and **no importer can touch it**, because the bank's export has no such
+  column. Plus the sanction side of the passbook — sanction date, sanction limit, drawing
+  power, interest overdue — and a standing **note on the account**, which is what an agent
+  usually comes back with: "shifted to Delhi, brother works the land" is not a number and
+  had nowhere to live.
 - An account an agent creates is **assigned to that agent, in that agent's branch**,
   whatever the form posts — the panel shows an agent only their own leads, so an unassigned
   new lead would vanish the moment they saved it.
@@ -644,9 +656,9 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Core unit tests | `php tools/selftest-core.php` | **249** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **28** — 34 tables, 54 FKs, seeds, bcrypt login hash, and every dropdown setting checked for choices it can actually offer (including a deliberately broken row, to prove the check fails) |
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **757** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, and a lead typed in by hand which the next import then owns |
+| Integration | `sh tools/integration-test.sh` | **780** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, and a second phone number that no import can flatten |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **373** panel + **226** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
+| Panel smoke | `sh tools/smoke-panel.sh` | **390** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -665,7 +677,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,046 assertions total** — the sum of the bold counts above, counting the seven
+**2,088 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

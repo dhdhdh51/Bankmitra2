@@ -2910,6 +2910,127 @@ check('and the file says why',
     json_encode($orphanResult['errors']));
 
 // ---------------------------------------------------------------------------
+section('What an agent finds out at the door, and where it goes');
+
+// The edit form exists so a mistake can be fixed. It also has to be somewhere to ADD what
+// nobody knew when the file was built: a working phone number, the sanction figures off the
+// passbook the borrower is holding, and a note about what is actually going on.
+// Its own borrower and account, not one an earlier section has already edited. Reusing a
+// shared fixture is how the first version of this block failed: the lead it picked already
+// carried outstanding_amount as a hand-edit from another section, so "the figures nobody
+// touched still track the file" was asserted against a figure somebody had touched.
+$doorCustomerId = \App\Models\Customer::create([
+    'branch_id' => $branchAId,
+    'name'      => 'Doorstep Findings',
+    'village'   => 'Kotri',
+], '9800000001', null);
+$doorLeadId = LoanAccount::create([
+    'loan_account_number' => 'DOOR0001',
+    'customer_id'         => $doorCustomerId,
+    'branch_id'           => $branchAId,
+    'current_status'      => 'pending',
+    'outstanding_amount'  => 30000.00,
+    'overdue_amount'      => 5000.00,
+    'assigned_agent_id'   => $agent1Id,
+]);
+$doorLead = LoanAccount::find($doorLeadId);
+
+// The borrower's own number is dead and the son's answers. Recording the son's must not
+// destroy the number the bank was given at sanction - which is what happens when the only
+// field available is the one already filled in.
+$primaryBefore = \App\Models\Customer::findWithPii($doorCustomerId)['mobile'];
+\App\Models\Customer::update(
+    $doorCustomerId,
+    \App\Models\Customer::altMobileColumns('9812345678', 'Son'),
+);
+$withAlt = \App\Models\Customer::findWithPii($doorCustomerId);
+
+check('a second number can be recorded', $withAlt['alt_mobile'] === '9812345678');
+check('and it does not overwrite the number on record', $withAlt['mobile'] === $primaryBefore,
+    var_export($withAlt['mobile'], true));
+check('it says whose number it is', (string) $withAlt['alt_mobile_label'] === 'Son');
+check('it is masked for display like the first',
+    (string) $withAlt['alt_mobile_masked'] !== '' && !str_contains((string) $withAlt['alt_mobile_masked'], '9812'),
+    (string) $withAlt['alt_mobile_masked']);
+check('and it is encrypted at rest, not stored as digits',
+    !str_contains((string) $db->scalar('SELECT HEX(alt_mobile_enc) FROM customers WHERE id = ?', [$doorCustomerId]),
+        bin2hex('9812345678')));
+
+// Searchable, because somebody with a missed call is searching the number that called them.
+check('the borrower is findable by the second number',
+    (\App\Models\Customer::findByMobile('9812345678')['id'] ?? 0) === $doorCustomerId);
+check('and still by the first', (\App\Models\Customer::findByMobile((string) $primaryBefore)['id'] ?? 0) === $doorCustomerId);
+$altSearch = LoanAccount::paginate(['search' => '9812345678'], 'created_at', 'DESC', 1, 20);
+check('and the borrower list finds them by it too',
+    in_array($doorLeadId, array_map(static fn (array $r): int => (int) $r['id'], $altSearch->items), true),
+    'ids: ' . implode(',', array_map(static fn (array $r): int => (int) $r['id'], $altSearch->items)));
+
+// Clearing the number clears the label with it: "the son's number is on file" is worse
+// than nothing when no number is.
+\App\Models\Customer::update($doorCustomerId, \App\Models\Customer::altMobileColumns(null, 'Son'));
+$cleared = \App\Models\Customer::findWithPii($doorCustomerId);
+check('clearing the number clears its label', $cleared['alt_mobile'] === null && $cleared['alt_mobile_label'] === null);
+\App\Models\Customer::update($doorCustomerId, \App\Models\Customer::altMobileColumns('9812345678', 'Son'));
+
+// The five columns that were import-owned and unreachable. A passbook held out at a door
+// is only useful if there is somewhere to copy it to.
+foreach (['sanction_date', 'sanction_limit', 'drawing_power', 'interest_overdue', 'remarks'] as $column) {
+    check("{$column} can be edited by hand",
+        array_key_exists($column, LoanAccount::MANUALLY_EDITABLE));
+}
+
+$doorEdits = LoanAccount::applyManualEdit($doorLeadId, [
+    'sanction_limit'   => 150000.00,
+    'drawing_power'    => 120000.00,
+    'interest_overdue' => 4500.00,
+    'sanction_date'    => '2023-06-15',
+    'remarks'          => "Shifted to Delhi; brother works the land.\nWife says he returns after harvest.",
+], $agent1Id);
+check('all five are accepted in one edit', count($doorEdits) === 5, implode(',', array_keys($doorEdits)));
+
+$afterDoor = LoanAccount::find($doorLeadId);
+check('the sanction limit is stored', abs((float) $afterDoor['sanction_limit'] - 150000.0) < 0.01);
+check('the note is stored whole, newlines and all',
+    str_contains((string) $afterDoor['remarks'], 'brother works the land')
+    && str_contains((string) $afterDoor['remarks'], "\n"));
+check('and every one of them is stamped as hand-edited',
+    count(array_intersect(
+        ['sanction_limit', 'drawing_power', 'interest_overdue', 'sanction_date', 'remarks'],
+        LoanAccount::overriddenColumns($afterDoor['manual_overrides'] ?? null)
+    )) === 5,
+    implode(',', LoanAccount::overriddenColumns($afterDoor['manual_overrides'] ?? null)));
+
+// Which is the point: the file the branch sends tomorrow carries a remarks column of its
+// own, and it must not flatten what the agent found out.
+$doorCsv = $workDir . '/door.csv';
+file_put_contents($doorCsv, implode("\n", [
+    'Loan Account Number,Customer Name,Outstanding Amount,Remarks,Sanction Limit',
+    (string) $doorLead['loan_account_number'] . ',' . (string) $doorLead['customer_name'] . ',60000,Routine follow-up,999999',
+]));
+$doorImport = ImportService::run(
+    ['name' => 'door.csv', 'tmp_name' => $doorCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($doorCsv)],
+    (int) $doorLead['branch_id'], null, 1, 'System Administrator', [], false, null, false
+);
+check('the import matched the account rather than creating another',
+    $doorImport['updated'] === 1 && $doorImport['inserted'] === 0,
+    json_encode($doorImport) . ' | acct=' . (string) $doorLead['loan_account_number']);
+$afterDoorImport = LoanAccount::find($doorLeadId);
+check('an import does not flatten the note the agent wrote',
+    str_contains((string) $afterDoorImport['remarks'], 'brother works the land'),
+    (string) $afterDoorImport['remarks']);
+check('nor the sanction limit they copied off the passbook',
+    abs((float) $afterDoorImport['sanction_limit'] - 150000.0) < 0.01,
+    (string) $afterDoorImport['sanction_limit']);
+check('while the figures nobody hand-edited still track the file',
+    abs((float) $afterDoorImport['outstanding_amount'] - 60000.0) < 0.01,
+    (string) $afterDoorImport['outstanding_amount']);
+
+// And no importer can touch the second number at all - not because of an override flag,
+// but because the export has no such column and nothing maps to it.
+check('the second number survives an import by construction',
+    \App\Models\Customer::findWithPii($doorCustomerId)['alt_mobile'] === '9812345678');
+
+// ---------------------------------------------------------------------------
 section('A lead typed in by hand, and what the next import does to it');
 
 // The panel can now create a borrower and a loan account without a spreadsheet, for the

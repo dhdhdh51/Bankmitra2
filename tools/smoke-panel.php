@@ -1084,6 +1084,82 @@ check('deleting warns about destroying answers',
     || str_contains($cfListFinal['body'], 'Nothing has been recorded'));
 
 // ---------------------------------------------------------------------------
+section('What the agent finds out at the door has somewhere to go');
+
+// The edit form is there so a mistake can be fixed. It also has to be somewhere to ADD
+// what nobody knew when the file was built - which until now it was not.
+$doorForm = request($base . '/customers/' . $leadId . '/edit');
+foreach ([
+    'alt_mobile'       => 'a second phone number',
+    'alt_mobile_label' => 'whose number it is',
+    'sanction_date'    => 'the sanction date off the passbook',
+    'sanction_limit'   => 'the sanction limit',
+    'drawing_power'    => 'the drawing power',
+    'interest_overdue' => 'the interest overdue',
+    'remarks'          => 'a standing note on the account',
+] as $field => $what) {
+    check("the edit form takes {$what}", str_contains($doorForm['body'], 'name="' . $field . '"'));
+}
+
+$doorSaved = request($base . '/customers/' . $leadId . '/edit', [
+    '_csrf'            => csrfToken($doorForm['body']),
+    'name'             => formValue($doorForm['body'], 'name'),
+    'alt_mobile'       => '9765400011',
+    'alt_mobile_label' => 'Son',
+    'sanction_limit'   => '250000',
+    'drawing_power'    => '200000',
+    'interest_overdue' => '7250.50',
+    'sanction_date'    => '2022-08-01',
+    'remarks'          => 'Shifted to Delhi; brother works the land.',
+]);
+check('and saves all of it in one go', $doorSaved['status'] === 200, 'HTTP ' . $doorSaved['status']);
+
+$doorProfile = request($base . '/customers/' . $leadId);
+check('the second number is shown, masked or dialable',
+    str_contains($doorProfile['body'], 'Second mobile')
+    && (str_contains($doorProfile['body'], '9765400011') || str_contains($doorProfile['body'], '400011')));
+check('with the label saying who answers it', str_contains($doorProfile['body'], 'Son'));
+check('the note is shown on the profile',
+    str_contains($doorProfile['body'], 'brother works the land'));
+check('and it is no longer labelled as coming from the import',
+    !str_contains($doorProfile['body'], 'Remarks from import'));
+check('the sanction figures are shown', str_contains($doorProfile['body'], 'Sanction limit')
+    && str_contains($doorProfile['body'], '2,50,000'));
+
+// The borrower has to be findable by the number that answers, because that is the number
+// somebody has a missed call from.
+$altSearch = request($base . '/customers?search=9765400011');
+check('the borrower list finds them by the second number',
+    str_contains($altSearch['body'], '/customers/' . $leadId . '"'), 'HTTP ' . $altSearch['status']);
+
+// Recording the second number must not have touched the first.
+check('the number on record is untouched',
+    str_contains($doorProfile['body'], 'Mobile')
+    && !str_contains($doorProfile['body'], 'Not recorded</span></dd>'));
+
+// Everything typed here is a hand-edit, which is what makes it survive tomorrow's file.
+$doorAgain = request($base . '/customers/' . $leadId . '/edit');
+check('and every one of them is marked as hand-edited',
+    substr_count($doorAgain['body'], 'Hand-edited') >= 5,
+    substr_count($doorAgain['body'], 'Hand-edited') . ' marked');
+
+// An empty second number offers itself rather than hiding: a field nobody can see is a
+// field nobody fills in.
+$freshLead = null;
+foreach (range(1, 30) as $candidate) {
+    if ($candidate === $leadId) {
+        continue;
+    }
+    $page = request($base . '/customers/' . $candidate);
+    if ($page['status'] === 200 && str_contains($page['body'], 'Second mobile')) {
+        $freshLead = $page['body'];
+        break;
+    }
+}
+check('a borrower with no second number is invited to add one', $freshLead !== null
+    && (str_contains($freshLead, 'add one') || str_contains($freshLead, 'Second mobile')));
+
+// ---------------------------------------------------------------------------
 section('BC performance: targets, SSS, scorecard');
 
 $targetsPage = page('GET /bc/targets', '/bc/targets', 200, 'BC targets');

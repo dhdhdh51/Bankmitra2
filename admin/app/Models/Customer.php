@@ -29,8 +29,9 @@ final class Customer
         }
 
         $row['mobile'] = Crypto::decrypt($row['mobile_enc'] ?? null);
+        $row['alt_mobile'] = Crypto::decrypt($row['alt_mobile_enc'] ?? null);
         $row['aadhaar'] = Crypto::decrypt($row['aadhaar_enc'] ?? null);
-        unset($row['mobile_enc'], $row['aadhaar_enc']);
+        unset($row['mobile_enc'], $row['alt_mobile_enc'], $row['aadhaar_enc']);
 
         return $row;
     }
@@ -98,7 +99,44 @@ final class Customer
         return $columns;
     }
 
-    /** Exact-match lookup by mobile, used by API search. */
+    /**
+     * Encrypted + hashed + masked columns for the second contact number.
+     *
+     * Separate from piiColumns() on purpose. piiColumns() is called by the importer, which
+     * blanks whatever the spreadsheet did not carry - and the spreadsheet never carries an
+     * alternate number, because the bank's export has no such field. Folding these in there
+     * would mean every nightly import quietly wiped the number an agent collected at a
+     * doorstep. Keeping them apart makes that impossible rather than merely unlikely.
+     *
+     * @return array<string,string|null>
+     */
+    public static function altMobileColumns(?string $altMobile, ?string $label): array
+    {
+        if ($altMobile === null || trim($altMobile) === '') {
+            // The label goes with it. A label left behind after the number is cleared reads
+            // as "the son's number is on file" when no number is.
+            return [
+                'alt_mobile_enc'    => null,
+                'alt_mobile_hash'   => null,
+                'alt_mobile_masked' => null,
+                'alt_mobile_label'  => null,
+            ];
+        }
+
+        return [
+            'alt_mobile_enc'    => Crypto::encrypt($altMobile),
+            'alt_mobile_hash'   => Crypto::searchHash($altMobile),
+            'alt_mobile_masked' => Crypto::maskMobile($altMobile),
+            'alt_mobile_label'  => $label === null || trim($label) === '' ? null : mb_substr(trim($label), 0, 60),
+        ];
+    }
+
+    /**
+     * Exact-match lookup by mobile, used by API search.
+     *
+     * Matches the alternate number too: an agent searching a number is searching the one
+     * they were called from, and that is exactly the one the borrower does not answer on.
+     */
     public static function findByMobile(string $mobile, ?int $branchId = null): ?array
     {
         $hash = Crypto::searchHash($mobile);
@@ -106,8 +144,8 @@ final class Customer
             return null;
         }
 
-        $sql = 'SELECT * FROM customers WHERE mobile_hash = ?';
-        $params = [$hash];
+        $sql = 'SELECT * FROM customers WHERE (mobile_hash = ? OR alt_mobile_hash = ?)';
+        $params = [$hash, $hash];
 
         if ($branchId !== null) {
             $sql .= ' AND branch_id = ?';
