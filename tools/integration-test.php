@@ -2109,10 +2109,10 @@ check('only closure_amount is overridden so far',
     LoanAccount::overriddenColumns(LoanAccount::find($leadId)['manual_overrides'] ?? null) === ['closure_amount'],
     json_encode(LoanAccount::overriddenColumns(LoanAccount::find($leadId)['manual_overrides'] ?? null)));
 
-// closure_amount, ots_amount and deposit_amount are panel-only: an NPA statement
-// carries neither, and ImportService never writes them. So the override guard can
-// only be observed on a column the importer does write - correct the outstanding
-// balance, which is exactly the figure a branch rings up about.
+// The override guard is observed on the outstanding balance, which is the figure a
+// branch actually rings up about. (An earlier version of this comment claimed the
+// settlement figures were panel-only; ots_amount and deposit_amount were always
+// written by the importer, and closure_amount is now too.)
 LoanAccount::applyManualEdit($leadId, ['outstanding_amount' => '147250.00'], 1);
 check('the outstanding balance is corrected by hand',
     abs((float) LoanAccount::find($leadId)['outstanding_amount'] - 147250.0) < 0.01);
@@ -2163,12 +2163,80 @@ check('the hand-set NPA date is reported too',
     in_array('npa_date', $overrideResult['skipped_overrides']['LN1001'] ?? [], true),
     json_encode($overrideResult['skipped_overrides']['LN1001'] ?? []));
 check('and nothing the file never carried is claimed as skipped',
-    !in_array('closure_amount', $overrideResult['skipped_overrides']['LN1001'] ?? [], true));
+    !in_array('closure_amount', $overrideResult['skipped_overrides']['LN1001'] ?? [], true),
+    'this file has no Closure Amount column, so there is nothing to skip');
 check('untouched accounts are not listed',
     !array_key_exists('LN1002', $overrideResult['skipped_overrides']),
     json_encode(array_keys($overrideResult['skipped_overrides'])));
-check('the panel-only closure figure is untouched either way',
+check('a column the file omits is left alone entirely',
     abs((float) $afterImport['closure_amount'] - 161500.0) < 0.01, (string) $afterImport['closure_amount']);
+
+// closure_amount IS importable now, so the guard has to hold for it as well - and a
+// file that does carry the column must be reported as skipped rather than silently
+// declined.
+$closureCsv = $workDir . '/closure.csv';
+file_put_contents($closureCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Closure Amount,Asset Classification,DPD,'
+        . 'Rate of Interest,EMI,Last Paid Date,Last Paid Amount,Security Value,Guarantor,'
+        . 'Maturity Date,Purpose',
+    'BR001,LN1001,Ramesh Kumar,999999,DOUBTFUL-II,412,7.25,12500,12/08/2024,5000,450000,'
+        . 'Mohan Lal,31/03/2027,Wheat cultivation',
+    'BR001,LN1002,Sita Devi,88000,SS,95,9.5,4000,01/07/2024,2500,120000,Radha Bai,'
+        . '30/06/2026,Dairy',
+]));
+
+$closureResult = ImportService::run(
+    ['name' => 'closure.csv', 'tmp_name' => $closureCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($closureCsv)],
+    null, null, 1, 'System Administrator'
+);
+
+$afterClosure = LoanAccount::find($leadId);
+check('a hand-set closure amount survives a file that carries the column',
+    abs((float) $afterClosure['closure_amount'] - 161500.0) < 0.01,
+    (string) $afterClosure['closure_amount']);
+check('and the skip is reported for it',
+    in_array('closure_amount', $closureResult['skipped_overrides']['LN1001'] ?? [], true),
+    json_encode($closureResult['skipped_overrides']['LN1001'] ?? []));
+
+// The lead nobody hand-edited takes every column from the file, which is the point of
+// widening the importer in the first place.
+$fresh = LoanAccount::findByNumber('LN1002');
+check('an un-edited lead takes the closure amount from the file',
+    abs((float) $fresh['closure_amount'] - 88000.0) < 0.01, (string) $fresh['closure_amount']);
+check('the asset classification is normalised from the bank\'s spelling',
+    (string) $fresh['asset_classification'] === 'Sub-Standard', (string) $fresh['asset_classification']);
+check('and a different spelling normalises to the same canonical set',
+    (string) $afterClosure['asset_classification'] === 'Doubtful-2',
+    (string) $afterClosure['asset_classification']);
+check('days past due is stored as the bank gave it',
+    (int) $fresh['days_past_due'] === 95, (string) $fresh['days_past_due']);
+check('the interest rate keeps its decimals',
+    abs((float) $fresh['interest_rate'] - 9.5) < 0.0001, (string) $fresh['interest_rate']);
+check('the instalment lands', abs((float) $fresh['installment_amount'] - 4000.0) < 0.01);
+check('the last payment date is parsed as d/m/Y',
+    (string) $fresh['last_payment_date'] === '2024-07-01', (string) $fresh['last_payment_date']);
+check('the last payment amount lands', abs((float) $fresh['last_payment_amount'] - 2500.0) < 0.01);
+check('the security value lands', abs((float) $fresh['security_value'] - 120000.0) < 0.01);
+check('the guarantor lands', (string) $fresh['guarantor_name'] === 'Radha Bai');
+check('the maturity date lands', (string) $fresh['maturity_date'] === '2026-06-30',
+    (string) $fresh['maturity_date']);
+check('the purpose lands', (string) $fresh['purpose'] === 'Dairy');
+
+// A spelling nobody anticipated is kept verbatim rather than thrown away - it is the
+// most useful prioritisation column in the file, and a NULL would be worse than an
+// unfamiliar string somebody can read.
+$oddCsv = $workDir . '/odd-classification.csv';
+file_put_contents($oddCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Asset Classification',
+    'BR001,LN1002,Sita Devi,Watch Category B',
+]));
+ImportService::run(
+    ['name' => 'odd.csv', 'tmp_name' => $oddCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($oddCsv)],
+    null, null, 1, 'System Administrator'
+);
+check('an unrecognised classification is stored, not discarded',
+    (string) LoanAccount::findByNumber('LN1002')['asset_classification'] === 'Watch Category B',
+    (string) LoanAccount::findByNumber('LN1002')['asset_classification']);
 
 // ---------------------------------------------------------------------------
 section('Corrections to a filed report');
@@ -2554,6 +2622,185 @@ $futurePhoto = VisitReport::photos((int) $futureVisit['visit_id'])[0] ?? [];
 check('a capture time from tomorrow is clamped to now',
     ($futurePhoto['captured_at'] ?? '') <= date('Y-m-d H:i:s', time() + 5),
     (string) ($futurePhoto['captured_at'] ?? 'null'));
+
+// ---------------------------------------------------------------------------
+section('Leads spread evenly across a branch, and stay that way');
+
+// Branch A has agent1 and agent2 seeded on it. The whole point of this section is the
+// second import: dealing rows out in turn looks fair within one file and is not, because
+// two files both start at the same agent.
+$distBranch = $branchAId;
+$before = \App\Services\AssignmentService::agentWorkload($distBranch);
+check('the branch has more than one active agent to spread across', count($before) >= 2,
+    'agents=' . count($before));
+
+$distCsv = $workDir . '/distribute.csv';
+$rows = ['Branch,Loan Account Number,Customer Name,Village,Outstanding Amount'];
+for ($i = 1; $i <= 8; $i++) {
+    $rows[] = sprintf('BR001,DIST%04d,Distributed Borrower %d,Kotri,%d', $i, $i, 10000 * $i);
+}
+file_put_contents($distCsv, implode("\n", $rows));
+
+$distResult = ImportService::run(
+    ['name' => 'distribute.csv', 'tmp_name' => $distCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($distCsv)],
+    null, null, 1, 'System Administrator', [], false, null,
+    true // distribute
+);
+
+check('all eight rows imported', $distResult['inserted'] === 8, 'inserted=' . $distResult['inserted']);
+check('the import reports who got what', $distResult['distribution'] !== [],
+    json_encode($distResult['distribution']));
+
+$firstSpread = $distResult['distribution'];
+check('every agent in the branch received some',
+    count($firstSpread) === count($before),
+    'agents=' . count($before) . ' received=' . count($firstSpread));
+
+// The promise is about TOTAL open workload, not about the shares inside one file. Those
+// are different numbers whenever the agents did not start level, and the file shares are
+// the wrong thing to measure: an agent who already held four leads SHOULD receive fewer
+// from the next import. Balancing the totals is the whole reason this beats round-robin.
+$openAfter = array_map(
+    static fn (array $a): int => $a['open'],
+    \App\Services\AssignmentService::agentWorkload($distBranch)
+);
+check('open leads per agent are level after the import',
+    max($openAfter) - min($openAfter) <= 1, json_encode($openAfter));
+
+// Nothing was left unassigned, which is the failure mode where a "distribute" that
+// found no agent quietly imports the whole file to nobody.
+$unassignedAfter = (int) $db->scalar(
+    "SELECT COUNT(*) FROM loan_accounts WHERE loan_account_number LIKE 'DIST%' AND assigned_agent_id IS NULL"
+);
+check('no distributed lead was left unassigned', $unassignedAfter === 0, (string) $unassignedAfter);
+
+// The second file. This is the assertion the whole feature exists for.
+$distCsv2 = $workDir . '/distribute2.csv';
+$rows2 = ['Branch,Loan Account Number,Customer Name,Village,Outstanding Amount'];
+for ($i = 9; $i <= 16; $i++) {
+    $rows2[] = sprintf('BR001,DIST%04d,Distributed Borrower %d,Kotri,%d', $i, $i, 10000 * $i);
+}
+file_put_contents($distCsv2, implode("\n", $rows2));
+
+ImportService::run(
+    ['name' => 'distribute2.csv', 'tmp_name' => $distCsv2, 'error' => UPLOAD_ERR_OK, 'size' => filesize($distCsv2)],
+    null, null, 1, 'System Administrator', [], false, null,
+    true
+);
+
+$openAfterTwo = array_map(
+    static fn (array $a): int => $a['open'],
+    \App\Services\AssignmentService::agentWorkload($distBranch)
+);
+check('a second import continues the spread instead of restarting it',
+    max($openAfterTwo) - min($openAfterTwo) <= 1, json_encode($openAfterTwo));
+
+// Round-robin would have given the first agent in the branch every other lead across
+// both files. This is that failure expressed as a number.
+$distTotals = [];
+foreach ($db->all(
+    "SELECT assigned_agent_id, COUNT(*) AS n
+       FROM loan_accounts WHERE loan_account_number LIKE 'DIST%'
+      GROUP BY assigned_agent_id"
+) as $row) {
+    $distTotals[(int) $row['assigned_agent_id']] = (int) $row['n'];
+}
+check('no single agent took more than three quarters of the two files',
+    max($distTotals) <= 12, json_encode($distTotals));
+
+// An import that names one agent still does exactly that - the mode is a choice, not a
+// replacement, because assigning a specific village to a specific agent is a real need.
+$namedCsv = $workDir . '/named.csv';
+file_put_contents($namedCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Village,Outstanding Amount',
+    'BR001,NAMED0001,Named Borrower,Kotri,50000',
+]));
+ImportService::run(
+    ['name' => 'named.csv', 'tmp_name' => $namedCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($namedCsv)],
+    null, $agent1Id, 1, 'System Administrator'
+);
+check('naming a single agent still assigns the whole file to them',
+    (int) LoanAccount::findByNumber('NAMED0001')['assigned_agent_id'] === $agent1Id);
+
+// Distribution must never steal a lead somebody is already working.
+$workedLead = LoanAccount::findByNumber('DIST0001');
+$workedAgent = (int) $workedLead['assigned_agent_id'];
+$otherAgent = $workedAgent === $agent1Id ? $agent2Id : $agent1Id;
+\App\Services\AssignmentService::assign([(int) $workedLead['id']], $otherAgent, true);
+
+ImportService::run(
+    ['name' => 'distribute.csv', 'tmp_name' => $distCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($distCsv)],
+    null, null, 1, 'System Administrator', [], false, null,
+    true
+);
+check('a re-import does not move a lead that is already assigned',
+    (int) LoanAccount::findByNumber('DIST0001')['assigned_agent_id'] === $otherAgent,
+    (string) LoanAccount::findByNumber('DIST0001')['assigned_agent_id']);
+
+// The panel's bulk action, on leads that are deliberately lopsided to begin with.
+$lopsided = array_map(
+    static fn (array $r): int => (int) $r['id'],
+    $db->all("SELECT id FROM loan_accounts WHERE loan_account_number LIKE 'DIST%' ORDER BY id")
+);
+$db->query(
+    'UPDATE loan_accounts SET assigned_agent_id = ? WHERE loan_account_number LIKE ?',
+    [$agent1Id, 'DIST%']
+);
+$piled = (int) $db->scalar(
+    'SELECT COUNT(*) FROM loan_accounts WHERE assigned_agent_id = ? AND loan_account_number LIKE ?',
+    [$agent1Id, 'DIST%']
+);
+check('the fixture really is lopsided to start with', $piled === count($lopsided), (string) $piled);
+
+$spreadResult = \App\Services\AssignmentService::distribute($lopsided);
+check('the bulk distribution reports what it moved', $spreadResult['updated'] > 0,
+    json_encode($spreadResult));
+
+$afterSpread = array_map(
+    static fn (array $a): int => $a['open'],
+    \App\Services\AssignmentService::agentWorkload($distBranch)
+);
+check('a lopsided branch is evened out',
+    count($afterSpread) >= 2 && max($afterSpread) - min($afterSpread) <= 1,
+    json_encode($afterSpread));
+check('and the result is reported per agent',
+    str_contains(implode(' ', $spreadResult['messages']), 'Open leads per agent'),
+    json_encode($spreadResult['messages']));
+
+// A closed lead is finished work and is not redistributed onto somebody's plate.
+$closedId = $lopsided[0];
+$db->update('loan_accounts', ['current_status' => 'closed'], ['id' => $closedId]);
+$closedOwner = (int) LoanAccount::find($closedId)['assigned_agent_id'];
+$closedRun = \App\Services\AssignmentService::distribute([$closedId]);
+check('a closed lead is skipped, not redistributed', $closedRun['updated'] === 0
+    && (int) LoanAccount::find($closedId)['assigned_agent_id'] === $closedOwner,
+    json_encode($closedRun));
+check('and the reason is stated',
+    str_contains(implode(' ', $closedRun['messages']), 'closed'),
+    json_encode($closedRun['messages']));
+
+// A branch with no active agent cannot receive a distribution, and says so rather than
+// silently importing to nobody.
+$emptyBranchId = Branch::create([
+    'branch_code' => 'BR900', 'name' => 'No Agents Branch', 'status' => 'active',
+]);
+$orphanCsv = $workDir . '/orphan.csv';
+file_put_contents($orphanCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Outstanding Amount',
+    'BR900,ORPH0001,Orphan Borrower,1000',
+]));
+$orphanResult = ImportService::run(
+    ['name' => 'orphan.csv', 'tmp_name' => $orphanCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($orphanCsv)],
+    null, null, 1, 'System Administrator', [], true, null,
+    true
+);
+check('a lead in an agentless branch still imports',
+    LoanAccount::findByNumber('ORPH0001') !== null);
+check('but is left unassigned rather than given to another branch\'s agent',
+    LoanAccount::findByNumber('ORPH0001')['assigned_agent_id'] === null);
+check('and the file says why',
+    str_contains(implode(' ', array_column($orphanResult['errors'], 'message')), 'no active BC/DC agent'),
+    json_encode($orphanResult['errors']));
 
 // ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";

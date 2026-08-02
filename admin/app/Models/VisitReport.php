@@ -484,6 +484,57 @@ final class VisitReport
         );
     }
 
+    /**
+     * Attach a signature image uploaded from the panel.
+     *
+     * Written as `capture_method = 'panel_upload'` with no coordinates at all. The only
+     * position available at upload time is wherever the person uploading is sitting,
+     * and putting that under a borrower's signature would be a fact about a clerk
+     * dressed up as a fact about a doorstep.
+     *
+     * `captured_at` is likewise left null rather than set to now: the signature was made
+     * at some earlier point nobody recorded, and "now" would be the upload time.
+     *
+     * @param array{file_path:string,signed_name:?string,uploaded_note:?string,uploaded_by:int} $data
+     */
+    public static function attachUploadedSignature(
+        int $visitReportId,
+        int $loanAccountId,
+        string $type,
+        array $data
+    ): void {
+        // One of each type per report is a unique key, so an upload that replaces a
+        // previous upload updates in place rather than failing on the constraint.
+        Database::instance()->query(
+            'INSERT INTO signatures
+                (visit_report_id, loan_account_id, signature_type, file_path, signed_name,
+                 captured_at, gps_source, capture_method, uploaded_note, uploaded_by)
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                file_path      = VALUES(file_path),
+                signed_name    = VALUES(signed_name),
+                captured_at    = NULL,
+                gps_latitude   = NULL,
+                gps_longitude  = NULL,
+                gps_accuracy_m = NULL,
+                gps_source     = VALUES(gps_source),
+                capture_method = VALUES(capture_method),
+                uploaded_note  = VALUES(uploaded_note),
+                uploaded_by    = VALUES(uploaded_by)',
+            [
+                $visitReportId,
+                $loanAccountId,
+                $type,
+                $data['file_path'],
+                $data['signed_name'],
+                'unavailable',
+                'panel_upload',
+                $data['uploaded_note'],
+                $data['uploaded_by'],
+            ]
+        );
+    }
+
     /** Every photo ever captured for a loan account (profile gallery). @return list<array<string,mixed>> */
     public static function photosForLoanAccount(int $loanAccountId): array
     {

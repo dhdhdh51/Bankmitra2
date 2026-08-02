@@ -682,13 +682,13 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 225 checks — crypto, JWT, XLSX, PDF (including image embedding), geo wording, validator, paginator, key validation |
+| `php tools/selftest-core.php` | 236 checks — crypto, JWT, XLSX, PDF (including image embedding), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 24 checks — 35 tables, 57 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
-| `sh tools/integration-test.sh` | 675 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
+| `sh tools/integration-test.sh` | 709 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
 | `sh tools/verify-upgrade-sql.sh` | 14 checks — **runs the migration chain in section 10 of this document** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 266 panel + 221 API checks over real HTTP |
+| `sh tools/smoke-panel.sh` | 287 panel + 221 API checks over real HTTP |
 | `sh tools/verify-android.sh` | 220 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
@@ -1345,6 +1345,96 @@ Two notes:
   rows, because the only timestamp available for them is when the upload arrived, and
   writing that into a column labelled "captured at" would turn a missing fact into a
   wrong one.
+
+### Adding the full banking columns, panel signatures and agent access to an existing install
+
+Four unrelated things in one release: the importer now carries a complete recovery
+statement, a signature can be uploaded from the panel, staff portraits are gone, and BC
+agents get a narrow panel surface.
+
+> **One statement here is destructive.** Dropping `users.photo_path` and
+> `users.signature_path` deletes the only reference to any staff portrait or signature
+> image you uploaded. The files themselves stay on disk under `uploads/staff/`, but
+> nothing will serve them any more. If you want to keep them, copy that directory
+> somewhere before you run this — or run everything except step 3, which is optional and
+> changes no behaviour.
+
+```sql
+-- 1. How a signature got here. 'device_pad' was drawn on the phone at the visit and can
+--    therefore carry a position; 'panel_upload' is an image attached from a desk
+--    afterwards, usually a photographed paper signature. Both are legitimate, and the
+--    printed report labels the second as an upload rather than presenting it as the
+--    first. Existing rows are all pad signatures, which is what the default says.
+ALTER TABLE `signatures`
+  ADD COLUMN `capture_method` ENUM('device_pad','panel_upload') NOT NULL DEFAULT 'device_pad' AFTER `gps_source`,
+  ADD COLUMN `uploaded_note`  VARCHAR(255) DEFAULT NULL COMMENT 'why a panel upload was needed' AFTER `capture_method`;
+
+-- 2. The rest of a core banking NPA / recovery statement. All nullable: NULL means the
+--    file did not carry the column, which is a different fact from a zero.
+ALTER TABLE `loan_accounts`
+  ADD COLUMN `asset_classification` VARCHAR(40)   DEFAULT NULL COMMENT 'Standard / SMA-1 / Doubtful 2 / Loss ...',
+  ADD COLUMN `interest_rate`        DECIMAL(6,3)  DEFAULT NULL COMMENT 'percent per annum',
+  ADD COLUMN `installment_amount`   DECIMAL(15,2) DEFAULT NULL COMMENT 'EMI / instalment due per period',
+  ADD COLUMN `last_payment_date`    DATE          DEFAULT NULL,
+  ADD COLUMN `last_payment_amount`  DECIMAL(15,2) DEFAULT NULL,
+  ADD COLUMN `days_past_due`        SMALLINT UNSIGNED DEFAULT NULL,
+  ADD COLUMN `security_value`       DECIMAL(15,2) DEFAULT NULL COMMENT 'value of collateral held',
+  ADD COLUMN `guarantor_name`       VARCHAR(150)  DEFAULT NULL,
+  ADD COLUMN `maturity_date`        DATE          DEFAULT NULL,
+  ADD COLUMN `purpose`              VARCHAR(150)  DEFAULT NULL COMMENT 'crop / activity the loan was for',
+  -- Recovery work is prioritised by classification within a branch.
+  ADD KEY `idx_loan_classification` (`branch_id`, `asset_classification`);
+
+-- 3. OPTIONAL AND DESTRUCTIVE - read the warning above.
+--    Staff portraits and signatures are no longer held against a person: an image now
+--    belongs to the thing it evidences, so an agent's photograph belongs to the visit it
+--    was taken at and a signature to the report it signs. Skipping this leaves two
+--    unused columns and changes nothing.
+ALTER TABLE `users`
+  DROP COLUMN `photo_path`,
+  DROP COLUMN `signature_path`;
+
+-- 4. BC/DC agents can now correct their own borrowers in the panel and add fields to
+--    them. The panel restricts them to leads assigned to them - branch scope is not
+--    enough, because a branch holds several agents - and every figure they change is
+--    stamped into loan_accounts.manual_overrides, so the correction is attributed and
+--    the next import leaves it alone.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 3, `id` FROM `permissions` WHERE `code` IN ('customers.update', 'custom_fields.manage')
+   AND `id` NOT IN (SELECT `permission_id` FROM `role_permissions` WHERE `role_id` = 3);
+```
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM `role_permissions` WHERE `role_id` = 3;   -- 9
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'loan_accounts';   -- 45
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'signatures';       -- 16
+
+-- And, only if you ran the optional step 3:
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'users'
+   AND column_name IN ('photo_path', 'signature_path');                -- 0
+```
+
+Afterwards:
+
+- **The Excel import needs no configuration to use the new columns.** Column detection
+  reads the headings, so a file carrying "Asset Classification", "DPD", "ROI",
+  "Last Paid Date", "Security Value" or "Guarantor" now lands whole. The mapping screen
+  still lets you override any of it.
+- **Choose "Distribute equally among the branch's agents"** on the import screen if the
+  branch has more than one BC. Naming a single agent hands them the entire file, and the
+  reassignment that would fix it afterwards is work nobody does. Distribution balances
+  what each agent is *already* carrying, so a second import continues the spread instead
+  of restarting at the same person. The same thing is available on the borrower list as a
+  bulk action, so an existing pile-up can be evened out.
+- **Agents sign in to the panel with their existing credentials.** They land on their own
+  borrower list and can reach nothing else — no dashboard, no visits, no reports, no other
+  agent's borrowers.
+- No new APK is needed for any of this.
 
 ### Renaming to D2 Recovery on an existing install
 

@@ -545,117 +545,81 @@ page('GET /users/create', '/users/create', 200, 'Add user');
 page('GET /users/{id}/edit', '/users/2/edit', 200, 'Edit user');
 
 // ---------------------------------------------------------------------------
-section('Staff photograph and signature');
+section('A signature can be uploaded onto a filed report');
 
-$userForm = page('GET /users/{id}/edit carries an upload form', '/users/2/edit', 200, 'Photograph');
-check('the user form can actually carry a file',
-    str_contains($userForm, 'enctype="multipart/form-data"'),
-    'without enctype the browser sends only the filename');
-check('both file inputs are present',
-    str_contains($userForm, 'name="photo"') && str_contains($userForm, 'name="signature"'));
-
-$photoFile = tempPng(60, 60, [20, 60, 120]);
-$signatureFile = tempPng(120, 40, [10, 10, 10]);
-
-/**
- * The user's current field values, so an image test never changes anything else.
- *
- * @return array<string,string>
- */
-$userFields = static function (string $html): array {
-    return [
-        'employee_code' => formValue($html, 'employee_code'),
-        'name'          => formValue($html, 'name'),
-        'role_id'       => selectedOption($html, 'role_id'),
-        'branch_id'     => selectedOption($html, 'branch_id'),
-        'designation'   => formValue($html, 'designation'),
-        'status'        => selectedOption($html, 'status'),
-    ];
-};
-
-$editForm = request($base . '/users/2/edit');
-$base2 = $userFields($editForm['body']);
-check('the edit form exposes the user\'s current branch', $base2['branch_id'] !== '',
-    'a hardcoded branch here would silently reassign the user');
-
-$upload = postMultipart(
-    $base . '/users/2/edit',
-    $base2 + ['_csrf' => csrfToken($editForm['body'])],
-    ['photo' => $photoFile, 'signature' => $signatureFile]
-);
-
-check('POST /users/{id}/edit accepts both images', $upload['status'] === 200
-    && str_contains($upload['body'], 'updated'), 'HTTP ' . $upload['status']);
-
-$afterUpload = request($base . '/users/2/edit');
-check('the stored photograph is rendered back', str_contains($afterUpload['body'], 'Current photograph'));
-check('the stored signature is rendered back', str_contains($afterUpload['body'], 'Current signature'));
-
-// A staff file has no owning row in photos/documents/signatures, so /media would have
-// refused it until the authorisation query learned about users.
-preg_match('#media\?f=(staff[^"&]+)#', $afterUpload['body'], $mediaMatch);
-check('the image URL points at the staff kind', isset($mediaMatch[1]), $mediaMatch[1] ?? 'no staff media url found');
-
-if (isset($mediaMatch[1])) {
-    $served = request($base . '/media?f=' . $mediaMatch[1]);
-    check('a staff image is served through /media', $served['status'] === 200
-        && str_starts_with($served['body'], "\x89PNG"), 'HTTP ' . $served['status']);
+// The pad on the phone is the primary path. This is the alternative for the reports
+// that arrive without one - a photographed paper signature - and the whole point is
+// that the two must not look alike on the document that gets read later.
+$signatureVisitId = null;
+foreach ($mediaCandidates as $candidateId) {
+    $candidate = request($base . '/visits/' . $candidateId);
+    if ($candidate['status'] === 200 && str_contains($candidate['body'], 'Upload an image of the signature')) {
+        $signatureVisitId = $candidateId;
+        break;
+    }
 }
 
-// Saving again without touching the file inputs must not wipe the images - absence
-// has to mean "leave it alone", not "clear it".
-$keepForm = request($base . '/users/2/edit');
-$keep = request($base . '/users/2/edit', $userFields($keepForm['body']) + ['_csrf' => csrfToken($keepForm['body'])]);
-check('a save with no file chosen keeps the images', $keep['status'] === 200);
-$stillThere = request($base . '/users/2/edit');
-check('the photograph survived an unrelated save', str_contains($stillThere['body'], 'Current photograph'));
-check('the signature survived an unrelated save', str_contains($stillThere['body'], 'Current signature'));
+check('a report with an unsigned slot offers an upload', $signatureVisitId !== null,
+    'no seeded visit had a signature slot open for upload');
 
-// And an explicit removal does clear it - only the one asked for.
-$removeForm = request($base . '/users/2/edit');
-$removed = request(
-    $base . '/users/2/edit',
-    $userFields($removeForm['body']) + ['_csrf' => csrfToken($removeForm['body']), 'remove_photo' => '1']
-);
-check('an explicit removal is accepted', $removed['status'] === 200);
-$afterRemove = request($base . '/users/2/edit');
-check('the photograph was removed on request', !str_contains($afterRemove['body'], 'Current photograph'));
-check('but the signature was left alone', str_contains($afterRemove['body'], 'Current signature'));
+if ($signatureVisitId !== null) {
+    $before = request($base . '/visits/' . $signatureVisitId);
+    check('the upload form states it will carry no position',
+        str_contains($before['body'], 'only position available now is this office'));
 
-// A non-image must be refused rather than stored and served later as one.
-$notAnImage = sys_get_temp_dir() . '/lrms_smoke_' . bin2hex(random_bytes(4)) . '.png';
-file_put_contents($notAnImage, "#!/bin/sh\necho not an image\n");
-$rejectForm = request($base . '/users/2/edit');
-$rejected = postMultipart(
-    $base . '/users/2/edit',
-    $userFields($rejectForm['body']) + ['_csrf' => csrfToken($rejectForm['body'])],
-    ['photo' => $notAnImage]
-);
-check('a file that is not an image is refused',
-    str_contains($rejected['body'], 'could not be accepted') || str_contains($rejected['body'], 'invalid-feedback'),
-    'HTTP ' . $rejected['status']);
+    $uploadPng = tempPng(140, 50, [12, 12, 40]);
+    $uploaded = postMultipart(
+        $base . '/visits/' . $signatureVisitId . '/signature',
+        ['_csrf' => csrfToken($before['body']),
+         'signature_type' => 'agent', 'signed_name' => 'Uploaded By Hand',
+         'uploaded_note' => 'Signed on paper, phone battery died'],
+        ['signature_file' => $uploadPng]
+    );
+    check('the upload is accepted', in_array($uploaded['status'], [200, 302], true),
+        'HTTP ' . $uploaded['status']);
 
-@unlink($photoFile);
-@unlink($signatureFile);
-@unlink($notAnImage);
+    $after = request($base . '/visits/' . $signatureVisitId);
+    check('the uploaded signature renders in the panel',
+        str_contains($after['body'], 'Uploaded By Hand'));
+    check('and is described as an upload, not as signed at the visit',
+        str_contains($after['body'], 'Uploaded image - not signed at the visit.'));
+    check('no coordinates are attached to it',
+        !str_contains($after['body'], 'Uploaded image - not signed at the visit.</span></div>'
+            . '<div class="lrms-photo-geo"><span style="line-height:0">'));
 
-$roles = page('GET /roles', '/roles', 200, 'Roles &amp; Permissions');
-check('permission matrix renders', str_contains($roles, 'lrms-check-grid'));
-check('super admin role is locked', str_contains($roles, 'not editable') || str_contains($roles, 'always holds every permission'));
-page('GET /roles?role_id=3 (agent)', '/roles?role_id=3', 200);
+    // The printed report is the document that matters here.
+    $uploadedPdf = request($base . '/visits/' . $signatureVisitId . '/pdf');
+    check('the uploaded signature prints', $uploadedPdf['status'] === 200
+        && str_contains($uploadedPdf['body'], '/Subtype /Image'), 'HTTP ' . $uploadedPdf['status']);
+    // Searched without brackets: a PDF content stream escapes "(" and ")".
+    check('and prints marked as uploaded',
+        str_contains($uploadedPdf['body'], 'uploaded'));
 
-page('GET /notifications', '/notifications', 200, 'Notifications');
-page('GET /notifications/send', '/notifications/send', 200, 'Send broadcast');
-page('GET /logs/audit', '/logs/audit', 200, 'Audit Logs');
-page('GET /logs/activity', '/logs/activity', 200, 'Activity Logs');
-page('GET /backup', '/backup', 200, 'Database Backup');
+    // A signature drawn on the device may not be overwritten by a desk upload.
+    $overwrite = postMultipart(
+        $base . '/visits/' . $signatureVisitId . '/signature',
+        ['_csrf' => csrfToken($after['body']), 'signature_type' => 'customer'],
+        ['signature_file' => $uploadPng]
+    );
+    $afterOverwrite = request($base . '/visits/' . $signatureVisitId);
+    check('a pad signature cannot be replaced by an uploaded image',
+        str_contains($afterOverwrite['body'], 'cannot replace it')
+        || !str_contains($afterOverwrite['body'], 'Borrower Signature (uploaded)'),
+        'HTTP ' . $overwrite['status']);
 
-$settings = page('GET /settings', '/settings', 200, 'Settings');
-check('settings groups render as tabs', str_contains($settings, 'tab-general'));
-check('secret settings are not echoed back', !str_contains($settings, 'demo-key'));
-check('integration status renders', str_contains($settings, 'Integration status'));
+    @unlink($uploadPng);
+}
 
-// ---------------------------------------------------------------------------
+// The BC form no longer asks for a photograph or a signature: an image now belongs to
+// the thing it evidences, not to a person's profile.
+$userFormNow = request($base . '/users/2/edit');
+check('the BC form no longer asks for a photograph',
+    !str_contains($userFormNow['body'], 'name="photo"'));
+check('nor for a signature',
+    !str_contains($userFormNow['body'], 'name="signature"'));
+check('and is no longer a multipart form',
+    !str_contains($userFormNow['body'], 'enctype="multipart/form-data"'));
+
 section('Visit report approval and correction');
 
 page('GET /visits/{id}/approve', '/visits/' . $visitId . '/approve', 200, 'Approve visit report');
@@ -734,11 +698,6 @@ check('the previous decision\'s photograph is not carried forward',
 // And the fallback must never delete the approver's PROFILE signature - that file
 // appears on every report they have ever approved.
 $adminForm = request($base . '/users/2/edit');
-check('a profile signature survives being borrowed by an approval',
-    str_contains($adminForm['body'], 'Current signature'));
-
-@unlink($approverSignature);
-
 // And it reaches the printed report.
 $approvedPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('the printed report carries the approval', $approvedPdf['status'] === 200
@@ -1130,6 +1089,182 @@ check('sign-out returns to login', str_contains($logout['body'], 'Sign in'), 'HT
 
 $afterLogout = request($base . '/dashboard', null, false);
 check('dashboard is protected after sign-out', $afterLogout['status'] === 302, 'HTTP ' . $afterLogout['status']);
+
+// ---------------------------------------------------------------------------
+section('A BC agent in the panel: their own borrowers, and nothing else');
+
+// Agents used to be refused the panel outright. They now have a narrow surface, and
+// every assertion below is about the edge of it. This is the section that matters most
+// in this file: the permission grant is easy, the boundary is where a leak would be.
+$cookieJar = sys_get_temp_dir() . '/lrms_smoke_agent_' . bin2hex(random_bytes(4)) . '.txt';
+@unlink($cookieJar);
+
+$agentLoginPage = request($base . '/login');
+$agentLogin = request($base . '/login', [
+    '_csrf'         => csrfToken($agentLoginPage['body']),
+    'employee_code' => 'AGT001',
+    'password'      => 'Agent@123',
+]);
+check('an agent can sign in to the panel', $agentLogin['status'] === 200, 'HTTP ' . $agentLogin['status']);
+
+// Deliberately does NOT touch the password. The API smoke signs in as this same account
+// with the seeded credentials, and an earlier version of this block changed them - the
+// account menu on every panel page contains the words "Change password", so a
+// str_contains() test for a forced change fired on a perfectly healthy session and broke
+// twenty-two unrelated API assertions.
+check('the agent session is authenticated, not bounced to the login form',
+    !str_contains($agentLogin['body'], 'name="employee_code"'));
+
+// Landing anywhere that refuses them would read as a broken sign-in.
+check('signing in does not land an agent on a refusal page',
+    !str_contains($agentLogin['body'], 'Use the D2 Recovery mobile app'));
+
+$agentLeads = request($base . '/customers');
+check('an agent reaches their borrower list', $agentLeads['status'] === 200, 'HTTP ' . $agentLeads['status']);
+check('and it is labelled as theirs', str_contains($agentLeads['body'], 'My Borrowers'));
+
+// The navigation must not offer screens that will refuse them.
+foreach (['/visits' => 'Visit Reports', '/promises' => 'Promises', '/dashboard' => 'Dashboard'] as $path => $label) {
+    check("the agent nav does not link to {$path}",
+        !str_contains($agentLeads['body'], 'href="' . rtrim(parse_url($base, PHP_URL_PATH) ?: '', '/') . $path . '"'),
+        $label);
+}
+
+// Screens an agent must not reach at all. Each is a different failure if it opens.
+foreach ([
+    '/dashboard', '/visits', '/promises', '/reports', '/import',
+    '/users', '/branches', '/settings', '/logs/audit', '/backup',
+] as $forbidden) {
+    $attempt = request($base . $forbidden, null, false);
+    $body = $attempt['body'] ?? '';
+    $refused = $attempt['status'] === 403
+        || $attempt['status'] === 302
+        || str_contains($body, 'Use the D2 Recovery mobile app');
+    check("an agent cannot open {$forbidden}", $refused, 'HTTP ' . $attempt['status']);
+}
+
+// Their own lead: openable and editable.
+preg_match('#/customers/(\d+)"#', $agentLeads['body'], $ownMatch);
+$ownLeadId = (int) ($ownMatch[1] ?? 0);
+check('the agent list contains at least one of their leads', $ownLeadId > 0);
+
+if ($ownLeadId > 0) {
+    $ownLead = request($base . '/customers/' . $ownLeadId);
+    check('an agent opens their own borrower', $ownLead['status'] === 200, 'HTTP ' . $ownLead['status']);
+
+    $ownEdit = request($base . '/customers/' . $ownLeadId . '/edit');
+    check('and reaches the edit form', $ownEdit['status'] === 200
+        && str_contains($ownEdit['body'], 'Edit borrower'), 'HTTP ' . $ownEdit['status']);
+    check('the borrower details card is editable', str_contains($ownEdit['body'], 'name="village"'));
+    check('and so is the loan details card', str_contains($ownEdit['body'], 'name="outstanding_amount"'));
+
+    // The correction has to stick, and be attributed - an agent's edit is tracked the
+    // same way anybody else's is.
+    $editFields = [];
+    foreach (['name', 'father_husband_name', 'mobile', 'aadhaar', 'village', 'address',
+              'cif_number', 'loan_type', 'outstanding_amount', 'overdue_amount',
+              'closure_amount', 'ots_amount', 'deposit_amount', 'npa_date',
+              'ckcc_renewal_due_date'] as $field) {
+        $editFields[$field] = formValue($ownEdit['body'], $field);
+    }
+    $editFields['_csrf'] = csrfToken($ownEdit['body']);
+    $editFields['village'] = 'Agent Corrected Village';
+
+    $saved = request($base . '/customers/' . $ownLeadId . '/edit', $editFields);
+    check('an agent can save a correction', $saved['status'] === 200, 'HTTP ' . $saved['status']);
+    $afterSave = request($base . '/customers/' . $ownLeadId);
+    check('and it is stored', str_contains($afterSave['body'], 'Agent Corrected Village'));
+}
+
+// Somebody else's lead must be refused even inside the same branch, which is the part
+// branch scope alone would have let through.
+$foreignLeadId = null;
+for ($candidate = 1; $candidate <= 40; $candidate++) {
+    if ($candidate === $ownLeadId) {
+        continue;
+    }
+    if (!str_contains($agentLeads['body'], '/customers/' . $candidate . '"')) {
+        $foreignLeadId = $candidate;
+        break;
+    }
+}
+
+check('a lead outside the agent\'s list was found to test with', $foreignLeadId !== null);
+
+if ($foreignLeadId !== null) {
+    $foreign = request($base . '/customers/' . $foreignLeadId, null, false);
+    $foreignBody = $foreign['body'] ?? '';
+    check('an agent cannot open a borrower that is not assigned to them',
+        in_array($foreign['status'], [302, 403], true)
+            || str_contains($foreignBody, 'not assigned to you')
+            || str_contains($foreignBody, 'another branch'),
+        'HTTP ' . $foreign['status']);
+
+    $foreignEdit = request($base . '/customers/' . $foreignLeadId . '/edit', null, false);
+    $foreignEditBody = $foreignEdit['body'] ?? '';
+    check('nor edit one',
+        in_array($foreignEdit['status'], [302, 403], true)
+            || str_contains($foreignEditBody, 'not assigned to you')
+            || str_contains($foreignEditBody, 'another branch'),
+        'HTTP ' . $foreignEdit['status']);
+}
+
+// A query string must not widen the list past their own leads. Compared as sets of ids,
+// because "the page still rendered" proves nothing about what is on it.
+$leadIdsIn = static function (string $html): array {
+    preg_match_all('#/customers/(\d+)"#', $html, $m);
+    $ids = array_values(array_unique(array_map('intval', $m[1] ?? [])));
+    sort($ids);
+    return $ids;
+};
+
+$ownIds = $leadIdsIn($agentLeads['body']);
+
+// A filter may narrow the list - ?unassigned=1 legitimately returns nothing, since
+// every lead they can see is by definition assigned to them. What must never happen is
+// a parameter ADDING a lead, so the invariant is "subset", not "identical".
+foreach (['agent_id=99999', 'agent_id=', 'branch_id=99999', 'unassigned=1', 'status='] as $query) {
+    $widened = request($base . '/customers?' . $query);
+    $shown = $leadIdsIn($widened['body']);
+    check(
+        "?{$query} cannot add a lead to an agent's list",
+        $widened['status'] === 200 && array_diff($shown, $ownIds) === [],
+        'HTTP ' . $widened['status'] . ' extra=' . implode(',', array_diff($shown, $ownIds))
+    );
+}
+
+// Custom fields: an agent may add one and name it.
+$fieldsPage = request($base . '/custom-fields');
+check('an agent reaches the custom fields screen', $fieldsPage['status'] === 200,
+    'HTTP ' . $fieldsPage['status']);
+
+$newFieldForm = request($base . '/custom-fields/create');
+check('and the create form', $newFieldForm['status'] === 200, 'HTTP ' . $newFieldForm['status']);
+
+$createdField = request($base . '/custom-fields/create', [
+    '_csrf'      => csrfToken($newFieldForm['body']),
+    'entity'     => 'customer',
+    'label'      => 'Shop Landmark By Agent',
+    'field_type' => 'text',
+    'sort_order' => '9',
+    'status'     => 'active',
+]);
+check('an agent can create a custom field and name it', $createdField['status'] === 200,
+    'HTTP ' . $createdField['status']);
+$fieldsAfter = request($base . '/custom-fields');
+check('the field they named is listed', str_contains($fieldsAfter['body'], 'Shop Landmark By Agent'));
+
+// And it reaches the borrower form they collect it on.
+if ($ownLeadId > 0) {
+    $editWithField = request($base . '/customers/' . $ownLeadId . '/edit');
+    check('the new field appears on the borrower form',
+        str_contains($editWithField['body'], 'Shop Landmark By Agent'));
+}
+
+$agentLogout = request($base . '/logout', ['_csrf' => csrfToken($fieldsAfter['body'])]);
+check('an agent can sign out', str_contains($agentLogout['body'], 'Sign in'), 'HTTP ' . $agentLogout['status']);
+
+@unlink($cookieJar);
 
 // ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";

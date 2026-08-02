@@ -38,9 +38,26 @@ never processes a payment** — repayment always happens through the bank's own 
 **Lead management**
 - Bulk import of loan accounts from bank Excel/CSV exports, with column mapping,
   dry-run preview, per-row validation and a downloadable error CSV.
-- Auto-assignment of leads to agents by branch and village, plus manual
-  assign / reassign / transfer.
-- Duplicate detection on loan account number.
+- **35 columns are recognised from their headings**, which is everything a core banking
+  NPA or recovery statement carries: the balances and the settlement position, plus asset
+  classification, DPD, rate of interest, instalment, last payment date and amount,
+  security value, guarantor, maturity date, purpose and the closure figure. Each has a
+  synonym list — `dpd`, `days past due`, `ageing days` and `अतिदेय दिन` are the same
+  column — so a real export usually needs no mapping at all. Asset classification is
+  stored as text rather than an enum: banks write it twenty ways (`SS`, `D-2`,
+  `DOUBTFUL-II`, `SMA 2`, `LOSS ASSET`), the recognised spellings collapse to one
+  canonical label, and anything unrecognised is kept verbatim rather than becoming a
+  `NULL` — it is the most useful prioritisation column in the file.
+- **Leads spread evenly across a branch's agents**, on import or as a bulk action. This
+  balances what each agent is *already* carrying rather than dealing the rows out in
+  turn: round-robin looks fair inside one file and isn't, because two imports both start
+  at the same agent and one person ends up with every other lead. Naming a single agent
+  is still available for when a specific village should go to a specific person, and
+  reassignment afterwards works either way. An import never moves a lead somebody is
+  already working, and a branch with no active agent leaves its leads unassigned and says
+  so rather than importing them to nobody.
+- Manual assign / reassign / transfer / unassign, and duplicate detection on loan account
+  number.
 
 **Field reports — three types**
 - **Recovery visit** — the standard call: contact, verification, recovery
@@ -71,10 +88,18 @@ never processes a payment** — repayment always happens through the bank's own 
   taken at an unknown time in an unknown place. Both signatures record the position the
   pad was signed at, which is a different fact from where the report was submitted: a
   borrower signs in their courtyard and the agent may well press send from the road.
-  The portrait held on the agent's user record is used only when no doorstep photograph
-  exists, and then it is labelled "photo on file" and explicitly captioned as an office
-  portrait — never stamped with the visit's coordinates, which would have the document
-  assert that the picture was taken at the borrower's house.
+- **Only photographs taken at the visit are printed.** There is no fallback to a stored
+  portrait. No image is held against a person at all any more — an image belongs to the
+  thing it evidences, so a photograph belongs to the visit it was taken at and a signature
+  to the report it signs. When a report has no doorstep photograph the printed copy says so
+  in words, which is a weaker claim than a portrait and a true one.
+- **A signature can be uploaded from the panel** for the reports that arrive without one —
+  a photographed paper signature, usually, because the borrower signed an acknowledgement
+  or the phone died. It is stored and printed as an *uploaded image* with no position, and
+  labelled that way, because the only coordinate available at upload time is the office the
+  file came from. A signature drawn on the device **cannot** be overwritten by one: that
+  swaps something signed in front of the signer for a picture attached from a desk, and the
+  server refuses it rather than doing it quietly.
 - Submissions are **multipart and idempotent** — a `client_uuid` makes a retry on a
   flaky rural connection return the original report instead of creating a duplicate.
 - **Visit history is append-only.** The `visit_history` table is written by trigger-free
@@ -113,13 +138,11 @@ never processes a payment** — repayment always happens through the bank's own 
 
 **Administration**
 - Branch, user and role/permission management with a real permission matrix.
-- **Staff photograph and signature** on every BC/DC agent record, both uploaded images.
-  The agent's photograph prints beside their signature on every visit report they file.
-  The signature is an uploaded image rather than a pad redrawn per report: an agent signs
-  one sheet, it is photographed once, and the same mark appears on every report — which
-  is what makes two reports comparable. A form saved without touching the file inputs
-  leaves both alone; clearing one is an explicit checkbox, because saving a phone-number
-  change should not delete somebody's signature.
+- **No photograph or signature is held against a person.** Creating a BC asks for neither.
+  There were both, printed at the foot of every report that person filed, and they were
+  removed: a stored image says nothing about the visit it gets printed on. An image now
+  belongs to the thing it evidences — a photograph to the visit it was taken at, with its
+  own fix, and a signature to the report it signs, with where and how it was captured.
 - **Borrower and loan figures are fully editable**, and every hand-correction is
   recorded in `manual_overrides` with who and when. The next import **skips** the columns
   a human corrected and reports which accounts and fields it left alone. Without that the
@@ -258,7 +281,7 @@ admin/                      web root for the panel and the API
     routes/api.php          /api/v1 routes
   views/                    43 server-rendered view files
   assets/                   app.css + app.js (Bootstrap itself comes from CDN)
-  uploads/                  photos, signatures, staff, approvals, documents — denied to the web
+  uploads/                  photos, signatures, approvals, documents — denied to the web
   storage/                  logs, backups, import files, tmp
   cron/
     backup.php              nightly database backup + retention
@@ -334,15 +357,38 @@ php -S 127.0.0.1:8080 -t admin tools/router-dev.php
 |---|---|
 | **Super Admin** | Everything, all branches, role editing, backups, settings |
 | **Branch Manager** | Own branch: leads, agents, assignment, promises, reports |
-| **Agent** | Own assigned leads only: view, visit, upload, promise history |
+| **Agent** | Own assigned leads only: view, visit, upload, promise history, and correcting their own borrowers |
 | **Auditor** | Read-only: reports, audit and activity logs. No edits, no PII |
 
 44 permissions across the four seeded roles, including the BC performance group.
 
 `visits.approve` and `visits.revise` are held by branch managers and super admins, not
 agents: an agent approving their own report, or correcting the name on it after filing,
-would make both the approval and the revision log worthless. `custom_fields.manage` is
-super-admin only — a field definition is schema, and every borrower record answers to it.
+would make both the approval and the revision log worthless.
+
+**Agents have a narrow panel surface**, which they did not have before. They were refused
+the web panel outright, and the effect was that an agent who noticed a wrong father's name
+or a dead phone number at a doorstep either got it fixed by ringing somebody at the branch,
+or it stayed wrong. They can now sign in and correct **their own** borrowers, and add
+custom fields to collect what they keep being asked for. Everything else refuses them: no
+dashboard, no visit screens, no reports, no import, no other agent's borrowers.
+
+Three things make that boundary hold rather than depend on remembering it:
+
+- The panel gate is **fail-closed per route**. `Auth::requirePanel($request, $allowAgent)`
+  defaults to `false`, so a new screen is shut to agents until somebody decides otherwise.
+  Forgetting the flag hides a page; forgetting to *add* a check would expose one.
+- **Branch scope is not enough**, because a branch holds several agents. Opening or editing
+  a single lead runs `assertOwnLead()`, which requires it to be assigned to the caller.
+- **The list query is pinned before the request is read.** `agentFilter()` returns the
+  caller's own id and never consults `?agent_id=`, so the parameter cannot widen it. There
+  is a smoke assertion for each of five query strings that the set of visible leads is a
+  *subset* of their own — narrowing is fine, adding is not.
+
+The navigation mirrors those flags rather than the permission list, because they are
+different things: an agent holds `visits.view` so the Android app can list their visits,
+while the panel's visit screens are not scoped to one agent and stay shut. A link to a page
+that refuses you is worse than no link.
 
 Permissions are rows in `permissions`, joined to roles through `role_permissions`, so
 the matrix is editable in the panel rather than hard-coded. Two decisions worth knowing:
@@ -524,12 +570,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Harness | Command | Checks |
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **225** — includes column detection against real bank-export shapes, the PDF image encoder and how a recorded position is worded |
+| Core unit tests | `php tools/selftest-core.php` | **236** — includes column detection against real bank-export shapes, the PDF image encoder and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **24** — 35 tables, 57 FKs, seeds, bcrypt login hash |
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **14** — the migration in `DEPLOYMENT.md` is extracted from the document and run on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **675** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, and the agent's own geo-tagged photograph and signature |
+| Integration | `sh tools/integration-test.sh` | **709** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph and signature, every banking column a recovery statement carries, and leads spread evenly across a branch |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **266** panel + **221** API |
+| Panel smoke | `sh tools/smoke-panel.sh` | **287** panel + **221** API |
 | Android | `sh tools/verify-android.sh` | **220** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -548,7 +594,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,811 assertions total** — the sum of the bold counts above, counting the seven
+**1,877 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -958,6 +1004,36 @@ Kept here because they are the reason the tests exist:
     structural comparison was skipped and the summary said everything passed. It now
     asserts the expected number of comparisons actually ran. A harness that passes while
     doing nothing is worse than one that fails, because it is believed.
+65. **An expired session produced "Method Not Allowed".** `Csrf::enforce()` redirected a
+    rejected request back to `$request->path()`. For a route registered with both verbs
+    that is the page the form was on, which is fine — but a POST-only route has no `GET`
+    handler, so the redirect landed on nothing and the router correctly answered `405`.
+    The flash message explaining what had happened was written and then never shown,
+    because 405 is not a page. It now returns to the referring page when it is
+    same-origin — checked, because Referer is attacker-controlled and this path is reached
+    exactly when a request looks like a cross-site post — and never to the route just
+    refused, which would loop. Found because the first POST-only route in the codebase was
+    added in the same change.
+66. **The even distribution overshot, by counting the same leads twice.** Balancing total
+    workload means starting from what each agent already holds — but the leads being placed
+    are *inside* that count. A lead that kept its agent had that agent's tally incremented
+    a second time, so the holder looked busier than they were, the run pushed the next lead
+    elsewhere, and a branch that should have ended level ended 8 against 13. Every in-scope
+    lead is now subtracted from the tally before placement begins, which makes a placement
+    a plain increment for the lead that moves *and* the lead that stays. Caught because the
+    test asserted the resulting spread rather than that the code ran.
+67. **A test that asserted the wrong invariant about fairness.** The first version of the
+    distribution test checked that the shares *inside one imported file* differed by at
+    most one. That is round-robin's promise, not this one: an agent already carrying four
+    leads **should** receive fewer from the next import, so the correct assertion is that
+    total open workload per agent comes out level. The test was measuring the behaviour
+    that was deliberately rejected.
+68. **Two documented facts that were not true.** The README claimed "auto-assignment of
+    leads to agents by branch and village" — a repo-wide search for any such code returns
+    nothing, and never did. And the new migration's own confirmation query said
+    `loan_accounts` would have 47 columns when the answer is 45, which would have had an
+    operator conclude a successful migration had failed. Both were found by checking the
+    documentation against the database rather than against memory.
 
 ---
 

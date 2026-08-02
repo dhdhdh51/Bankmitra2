@@ -91,6 +91,37 @@ final class Auth
         return self::role() === 'branch_manager';
     }
 
+    /**
+     * The agent the current user is limited to their own records of, or null.
+     *
+     * Branch scope is not enough for an agent. A branch has several of them, and one
+     * agent reading - let alone editing - a colleague's borrower is not something the
+     * job needs. Returns null for everyone else, so callers can use it as "add this
+     * predicate if there is one".
+     */
+    public static function scopedAgentId(): ?int
+    {
+        if (!self::isAgent()) {
+            return null;
+        }
+
+        $id = self::$user['id'] ?? null;
+
+        return $id === null ? null : (int) $id;
+    }
+
+    /**
+     * Where this user lands after signing in.
+     *
+     * An agent has no dashboard in the panel - theirs is in the app - so sending them
+     * to /dashboard would show them the refusal page immediately after a successful
+     * login, which reads as a broken sign-in rather than a deliberate boundary.
+     */
+    public static function panelHome(): string
+    {
+        return self::isAgent() ? '/customers' : '/dashboard';
+    }
+
     /** Branch the current user is limited to, or null for unrestricted. */
     public static function scopedBranchId(): ?int
     {
@@ -238,8 +269,22 @@ final class Auth
     // Guards
     // -----------------------------------------------------------------------
 
-    /** Admin panel guard: redirect to login when unauthenticated. */
-    public static function requirePanel(Request $request): void
+    /**
+     * Admin panel guard: redirect to login when unauthenticated.
+     *
+     * @param bool $allowAgent Whether a BC/DC agent may reach this route.
+     *
+     * Agents used to be refused the whole panel. They now have a deliberately narrow
+     * surface - their own leads, and the custom fields they collect against them -
+     * because the alternative was worse: an agent who spots a wrong father's name at a
+     * doorstep either gets it corrected by ringing somebody at the branch, or it stays
+     * wrong. Neither of those is better than letting them fix their own record.
+     *
+     * The flag defaults to false so a new route is closed to agents until somebody
+     * decides otherwise. Fail-closed is the only safe default here: forgetting the flag
+     * hides a screen, forgetting to *add* a check would expose one.
+     */
+    public static function requirePanel(Request $request, bool $allowAgent = false): void
     {
         self::resolve($request);
 
@@ -248,8 +293,7 @@ final class Auth
             Response::redirect('/login');
         }
 
-        // Agents have no admin panel surface at all.
-        if (self::isAgent()) {
+        if (self::isAgent() && !$allowAgent) {
             Response::html(self::agentBlockedPage(), 403);
         }
 
@@ -283,13 +327,15 @@ final class Auth
     }
 
     /** Panel variant: flash + redirect instead of a bare JSON 403. */
-    public static function requirePermissionPanel(string $permission, string $redirectTo = '/dashboard'): void
+    public static function requirePermissionPanel(string $permission, ?string $redirectTo = null): void
     {
         if (self::can($permission)) {
             return;
         }
         Session::flash('danger', 'You do not have permission to access that section.');
-        Response::redirect($redirectTo);
+        // Defaults to wherever this user is allowed to be. Hard-coding /dashboard sent
+        // a refused agent to a page that refuses agents.
+        Response::redirect($redirectTo ?? self::panelHome());
     }
 
     /**
@@ -529,8 +575,12 @@ final class Auth
             . '<title>Mobile app only</title></head><body style="margin:0;font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f7fa;color:#1c2128">'
             . '<div style="max-width:520px;margin:14vh auto;padding:32px;background:#fff;border:1px solid #e2e5ea;border-radius:10px;box-shadow:0 1px 3px rgba(28,33,40,.06)">'
             . '<h1 style="margin:0 0 10px;font-size:19px;color:#071d40">Use the D2 Recovery mobile app</h1>'
-            . '<p style="margin:0 0 16px;color:#4b5563">BC/DC Agent accounts work in the Android app only. '
-            . 'The web admin panel is reserved for administrators and branch managers.</p>'
+            . '<p style="margin:0 0 16px;color:#4b5563">This section is for administrators and branch '
+            . 'managers. As a BC/DC agent you can open <strong>your own borrowers</strong> here to correct '
+            . 'their details and add fields, and everything else - visits, photographs, signatures, '
+            . 'promises - is in the Android app.</p>'
+            . '<a href="' . htmlspecialchars(Url::path('/customers'), ENT_QUOTES, 'UTF-8') . '" '
+            . 'style="display:inline-block;background:#0b2a5b;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:600;margin-right:8px">My borrowers</a>'
             . '<a href="' . htmlspecialchars(Url::path('/logout'), ENT_QUOTES, 'UTF-8') . '" '
             . 'style="display:inline-block;background:#0b2a5b;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:600">Sign out</a>'
             . '</div></body></html>';

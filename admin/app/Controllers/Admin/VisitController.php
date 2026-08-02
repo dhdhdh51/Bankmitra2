@@ -84,11 +84,6 @@ final class VisitController extends Controller
             'documents'  => VisitReport::documents((int) $report['id']),
             'signatures' => VisitReport::signatures((int) $report['id']),
             'revisions'  => VisitReport::revisions((int) $report['id']),
-            // The agent's record, so the panel can show the same on-file photograph
-            // and signature fallbacks the PDF prints. Without it the screen said
-            // "Not captured" for a report whose printed copy shows a signature, and
-            // the screen is what somebody looks at before approving.
-            'agentOnFile' => User::find((int) $report['agent_id']) ?? [],
         ]);
     }
 
@@ -142,20 +137,16 @@ final class VisitController extends Controller
                 !Uploader::hasUpload('approval_photo')
             );
 
-            // The signature needs more care. The stored path may be one BORROWED from
-            // the approver's user record by the fallback below, and deleting that
-            // would destroy their profile signature - which appears on every report
-            // they have ever approved. Only a file that was uploaded here is ours to
-            // remove.
-            $previousSignature = $report['approval_signature_path'] ?? null;
-            $signatureIsOurs = is_string($previousSignature)
-                && str_starts_with($previousSignature, 'approvals/');
-
+            // Same rule for the signature. It used to be more delicate, because the
+            // stored path could be one borrowed from the approver's user record and
+            // deleting that would have destroyed their profile signature. There is no
+            // profile signature any more - a signature is uploaded against the thing it
+            // signs - so this is now simply the approver's own upload for this decision.
             $signaturePath = $this->optionalImage(
                 'approval_signature',
                 'approvals',
-                $signatureIsOurs ? $previousSignature : null,
-                $signatureIsOurs && !Uploader::hasUpload('approval_signature')
+                $report['approval_signature_path'] ?? null,
+                !Uploader::hasUpload('approval_signature')
             );
         } catch (\Throwable $e) {
             $this->backWithErrors(
@@ -166,13 +157,7 @@ final class VisitController extends Controller
             );
         }
 
-        // Falls back to the signature already on the approver's record. Somebody who
-        // signed a sheet once should not have to re-upload it for every report.
         $approver = Auth::user();
-        if ($signaturePath === null && ($approver['signature_path'] ?? null) !== null) {
-            $signaturePath = (string) $approver['signature_path'];
-        }
-
         $position = $this->submittedPosition($request);
 
         VisitReport::recordApproval($id, [
@@ -494,7 +479,7 @@ final class VisitController extends Controller
             $signedName = trim((string) ($customerSignature['signed_name'] ?? ''));
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $customerSignature['file_path']),
-                'label'   => 'Borrower Signature',
+                'label'   => self::signatureLabel($customerSignature, 'Borrower Signature'),
                 'caption' => ($signedName !== '' ? $signedName : (string) $report['customer_name'])
                     . "\n" . Geo::signature($customerSignature),
             ];
@@ -503,14 +488,12 @@ final class VisitController extends Controller
         // The agent's photograph next to their signature: a report a borrower signed
         // should show who was standing there, and a name in a text field does not.
         //
-        // Two different photographs can fill this cell and the difference is the whole
-        // point. A photograph taken at the door during this visit carries its own fix
-        // and is captioned with it. The portrait on the agent's user record was
-        // uploaded once in a branch office - so it is labelled "on file" and is NEVER
-        // captioned with this visit's coordinates. Stamping the visit's position onto
-        // an office portrait would have the document assert that this picture was
-        // taken at the borrower's house, which is exactly the kind of claim a printed
-        // report gets believed for.
+        // ONLY a photograph taken at this visit is printed here. There is deliberately
+        // no fallback to a portrait held on the agent's record: on a document that
+        // geo-captions every other photograph, an uncaptioned photograph of the agent
+        // reads as one more piece of field evidence, and an office portrait is not
+        // evidence of anything except that the agent has a face. An absence is stated
+        // in words below instead, which is a weaker claim and a true one.
         $agentIdentity = (string) $report['agent_name']
             . "\n" . (string) ($report['bc_code'] ?? $agent['employee_code'] ?? '');
 
@@ -520,31 +503,15 @@ final class VisitController extends Controller
                 'label'   => 'BC / DC Agent (at the visit)',
                 'caption' => $agentIdentity . "\n" . Geo::photo($agentPhoto),
             ];
-        } elseif ($agent !== null && ($agent['photo_path'] ?? null) !== null) {
-            $signatureCells[] = [
-                'path'    => Uploader::absolutePath((string) $agent['photo_path']),
-                'label'   => 'BC / DC Agent (photo on file)',
-                'caption' => $agentIdentity . "\nOffice portrait - not taken at this visit.",
-            ];
         }
 
         $agentSignature = $this->signatureOf($signatures, 'agent');
         if ($agentSignature !== null) {
             $signatureCells[] = [
                 'path'    => Uploader::absolutePath((string) $agentSignature['file_path']),
-                'label'   => 'Agent Signature',
+                'label'   => self::signatureLabel($agentSignature, 'Agent Signature'),
                 'caption' => (string) ($agentSignature['signed_name'] ?? $report['agent_name'])
                     . "\n" . Geo::signature($agentSignature),
-            ];
-        } elseif ($agent !== null && ($agent['signature_path'] ?? null) !== null) {
-            // Falls back to the signature held on the agent's record. An agent who
-            // signed a sheet once should not have to redraw it per report - and the
-            // same mark on every report is what makes two of them comparable. But it
-            // was not signed here, so it gets no position either.
-            $signatureCells[] = [
-                'path'    => Uploader::absolutePath((string) $agent['signature_path']),
-                'label'   => 'Agent Signature (on file)',
-                'caption' => (string) $report['agent_name'] . "\nHeld on file - not signed at this visit.",
             ];
         }
 
@@ -552,6 +519,23 @@ final class VisitController extends Controller
             $pdf->paragraph('No signatures were captured for this visit.', 9.0, '#1c2128');
         } else {
             $pdf->imageStrip($signatureCells, 84.0);
+        }
+
+        // What is missing, said out loud. A silent gap where a photograph should be
+        // reads as an oversight in the layout; a sentence reads as a fact about the
+        // visit, which is what it is.
+        $absent = [];
+        if ($agentPhoto === null) {
+            $absent[] = 'no photograph of the agent was taken at this visit';
+        }
+        if ($agentSignature === null) {
+            $absent[] = 'the agent did not sign this report';
+        }
+        if ($customerSignature === null) {
+            $absent[] = 'the borrower did not sign this report';
+        }
+        if ($absent !== [] && $signatureCells !== []) {
+            $pdf->paragraph(ucfirst(implode('; ', $absent)) . '.', 8.4, '#8a5a00');
         }
 
         // ---- Approval -------------------------------------------------------
@@ -677,6 +661,110 @@ final class VisitController extends Controller
     }
 
     /** @param list<array<string,mixed>> $signatures */
+    /**
+     * Attach a signature to a filed report by uploading an image of it.
+     *
+     * The pad on the phone is the primary path and always will be - it is signed in
+     * front of the person signing. But plenty of reports arrive without one: the
+     * borrower signed a paper acknowledgement, the phone died, the agent forgot. The
+     * alternative to accepting a photographed signature is a report that prints with a
+     * blank where a signature belongs while the signed paper sits in a branch file,
+     * which is a worse record of the same event.
+     *
+     * What this must not do is let the two look alike. An upload is stored as
+     * `capture_method = 'panel_upload'` with no position, and both the panel and the
+     * printed report say so. A coordinate here could only mean the office the file was
+     * uploaded from, which would be a fact about a clerk, not about a doorstep.
+     */
+    public function uploadSignature(Request $request): void
+    {
+        // Uploading a signature onto somebody else's filed report is a change to
+        // evidence, so it sits behind the same permission as correcting one.
+        $this->guard($request, 'visits.revise');
+
+        $report = $this->load($request);
+        $id = (int) $report['id'];
+
+        $type = $request->str('signature_type') === 'agent' ? 'agent' : 'customer';
+
+        if (!Uploader::hasUpload('signature_file')) {
+            $this->back('/visits/' . $id, 'error', 'Choose an image of the signature to upload.');
+        }
+
+        $existing = null;
+        foreach (VisitReport::signatures($id) as $row) {
+            if ((string) $row['signature_type'] === $type) {
+                $existing = $row;
+                break;
+            }
+        }
+
+        // Replacing a signature drawn on the phone with a desk upload is a downgrade in
+        // evidence, so it is refused rather than done quietly. Removing the pad
+        // signature first is a deliberate act and leaves a trail; overwriting it here
+        // would leave none.
+        if ($existing !== null && (string) ($existing['capture_method'] ?? '') === 'device_pad') {
+            $this->back(
+                '/visits/' . $id,
+                'error',
+                'This report already carries a signature drawn on the device at the visit. '
+                . 'An uploaded image cannot replace it.'
+            );
+        }
+
+        try {
+            $path = $this->optionalImage(
+                'signature_file',
+                'signatures',
+                $existing === null ? null : (string) $existing['file_path']
+            );
+        } catch (\Throwable $e) {
+            $this->back('/visits/' . $id, 'error', $e->getMessage());
+        }
+
+        VisitReport::attachUploadedSignature($id, (int) $report['loan_account_id'], $type, [
+            'file_path'      => (string) $path,
+            'signed_name'    => $request->nullableStr('signed_name'),
+            'uploaded_note'  => $request->nullableStr('uploaded_note'),
+            'uploaded_by'    => (int) Auth::id(),
+        ]);
+
+        Logger::audit(
+            'update',
+            'visit_report',
+            $id,
+            null,
+            ['signature_type' => $type, 'capture_method' => 'panel_upload'],
+            sprintf('Uploaded a %s signature image onto visit report #%d', $type, $id)
+        );
+
+        $this->back(
+            '/visits/' . $id,
+            'success',
+            sprintf(
+                'The %s signature image was attached. It prints as an uploaded image, not as one signed at the visit.',
+                $type === 'agent' ? 'agent' : 'borrower'
+            )
+        );
+    }
+
+    /**
+     * The label a signature prints under.
+     *
+     * An image attached from a desk is marked as one. Somebody reading the report has
+     * to be able to tell "this person signed in front of the agent" from "somebody
+     * later attached a picture of a signature", because those support very different
+     * conclusions about what happened at the door.
+     *
+     * @param array<string,mixed> $signature
+     */
+    public static function signatureLabel(array $signature, string $base): string
+    {
+        return (string) ($signature['capture_method'] ?? 'device_pad') === 'panel_upload'
+            ? $base . ' (uploaded)'
+            : $base;
+    }
+
     /**
      * The printed and on-screen name for a photo_type.
      *

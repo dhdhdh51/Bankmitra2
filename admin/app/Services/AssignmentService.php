@@ -157,6 +157,261 @@ final class AssignmentService
     }
 
     /**
+     * The active agents of a branch and how much each is already carrying.
+     *
+     * Returned as `[agentId => ['name' => ..., 'open' => int]]`, ordered by id so the
+     * result is stable. Agents with nothing assigned are included with a zero, which is
+     * the whole point - they are exactly who the next lead should go to.
+     *
+     * "Carrying" counts open leads, not every lead they have ever touched. Closed
+     * accounts are finished work, and counting them would keep punishing whoever
+     * recovered the most.
+     *
+     * @return array<int,array{name:string,open:int}>
+     */
+    public static function agentWorkload(int $branchId): array
+    {
+        $db = Database::instance();
+
+        $agents = $db->all(
+            "SELECT u.id, u.name
+               FROM users u JOIN roles r ON r.id = u.role_id
+              WHERE u.branch_id = ? AND r.slug = 'agent' AND u.status = 'active'
+              ORDER BY u.id",
+            [$branchId]
+        );
+
+        if ($agents === []) {
+            return [];
+        }
+
+        $workload = [];
+        foreach ($agents as $agent) {
+            $workload[(int) $agent['id']] = ['name' => (string) $agent['name'], 'open' => 0];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($workload), '?'));
+        $counts = $db->all(
+            "SELECT assigned_agent_id, COUNT(*) AS open_leads
+               FROM loan_accounts
+              WHERE assigned_agent_id IN ({$placeholders})
+                AND current_status <> 'closed'
+              GROUP BY assigned_agent_id",
+            array_keys($workload)
+        );
+
+        foreach ($counts as $row) {
+            $id = (int) $row['assigned_agent_id'];
+            if (isset($workload[$id])) {
+                $workload[$id]['open'] = (int) $row['open_leads'];
+            }
+        }
+
+        return $workload;
+    }
+
+    /**
+     * Whoever in this workload is carrying the least, or null if there is nobody.
+     *
+     * Ties break on the lowest agent id, which makes a distribution run reproducible -
+     * important when somebody re-imports the same file to check what it would do.
+     *
+     * @param array<int,array{name:string,open:int}> $workload
+     */
+    public static function lightestAgent(array $workload): ?int
+    {
+        $pick = null;
+        $lowest = PHP_INT_MAX;
+
+        foreach ($workload as $agentId => $agent) {
+            if ($agent['open'] < $lowest) {
+                $lowest = $agent['open'];
+                $pick = $agentId;
+            }
+        }
+
+        return $pick;
+    }
+
+    /**
+     * Spreads leads evenly across the active agents of each lead's own branch.
+     *
+     * Balances TOTAL open workload rather than dealing the selected rows out in turn.
+     * Round-robin within one batch looks fair and is not: import fifty leads on Monday
+     * and fifty on Tuesday and both batches start at the same agent, so the first agent
+     * in the branch ends up carrying every other lead in the branch. Starting from what
+     * each agent already holds is the only version of "equally" that is still true after
+     * the second import.
+     *
+     * Leads are grouped by branch because a branch's agents can only take that branch's
+     * leads - a mixed selection is several independent distributions, not one.
+     *
+     * @param  list<int> $leadIds
+     * @return array{updated:int,skipped:int,messages:list<string>}
+     */
+    public static function distribute(array $leadIds): array
+    {
+        $db = Database::instance();
+        $leads = LoanAccount::findManyForAction($leadIds);
+        $actorId = Auth::id();
+        $actorName = (string) (Auth::user()['name'] ?? 'System');
+
+        $updated = 0;
+        $skipped = 0;
+        $messages = [];
+        $notify = [];
+
+        /** @var array<int,array<int,array{name:string,open:int}>> $workloadByBranch */
+        $workloadByBranch = [];
+
+        $db->transaction(static function () use (
+            $db,
+            $leads,
+            $actorId,
+            $actorName,
+            &$updated,
+            &$skipped,
+            &$messages,
+            &$notify,
+            &$workloadByBranch
+        ): void {
+            foreach ($leads as $lead) {
+                $leadId = (int) $lead['id'];
+                $branchId = (int) $lead['branch_id'];
+
+                if (!Auth::canAccessBranch($branchId)) {
+                    $skipped++;
+                    continue;
+                }
+
+                if ((string) $lead['current_status'] === 'closed') {
+                    $skipped++;
+                    $messages[] = sprintf('%s is closed and was not distributed.', (string) $lead['loan_account_number']);
+                    continue;
+                }
+
+                if (!isset($workloadByBranch[$branchId])) {
+                    $workloadByBranch[$branchId] = self::agentWorkload($branchId);
+
+                    // The leads about to be placed are already inside that count, and
+                    // leaving them there double-counts every one that stays where it is:
+                    // the holder looks busier than they are, the run pushes the next lead
+                    // to somebody else, and it overshoots. Taking them out first makes
+                    // the tally mean "everything except what we are placing", which is
+                    // the only reading that is consistent for a lead that moves AND a
+                    // lead that keeps its agent.
+                    foreach ($leads as $pending) {
+                        if ((int) $pending['branch_id'] !== $branchId
+                            || (string) $pending['current_status'] === 'closed') {
+                            continue;
+                        }
+
+                        $holder = $pending['assigned_agent_id'] === null
+                            ? null
+                            : (int) $pending['assigned_agent_id'];
+
+                        if ($holder !== null && isset($workloadByBranch[$branchId][$holder])) {
+                            $workloadByBranch[$branchId][$holder]['open'] = max(
+                                0,
+                                $workloadByBranch[$branchId][$holder]['open'] - 1
+                            );
+                        }
+                    }
+                }
+
+                if ($workloadByBranch[$branchId] === []) {
+                    $skipped++;
+                    $messages[] = sprintf(
+                        '%s was not distributed: its branch has no active BC/DC agent.',
+                        (string) $lead['loan_account_number']
+                    );
+                    continue;
+                }
+
+                $agentId = self::lightestAgent($workloadByBranch[$branchId]);
+                if ($agentId === null) {
+                    $skipped++;
+                    continue;
+                }
+
+                $previousAgentId = $lead['assigned_agent_id'] === null ? null : (int) $lead['assigned_agent_id'];
+
+                // Every placement is a plain increment now, because the lead was taken
+                // out of the tally before the run started.
+                $workloadByBranch[$branchId][$agentId]['open']++;
+
+                if ($previousAgentId === $agentId) {
+                    // Already with the right person. Counted as done rather than skipped:
+                    // the caller asked for an even spread, and this lead is part of one.
+                    $updated++;
+                    continue;
+                }
+
+                $db->update('loan_accounts', [
+                    'assigned_agent_id' => $agentId,
+                    'assigned_at'       => date('Y-m-d H:i:s'),
+                    'assigned_by'       => $actorId,
+                ], ['id' => $leadId]);
+
+                Timeline::record(
+                    $leadId,
+                    $previousAgentId === null ? 'assigned' : 'reassigned',
+                    $previousAgentId === null ? 'Assigned to agent' : 'Reassigned to another agent',
+                    sprintf(
+                        'Now with %s, by even distribution across the branch.',
+                        $workloadByBranch[$branchId][$agentId]['name']
+                    ),
+                    $actorId,
+                    $actorName,
+                    null,
+                    null,
+                    ['agent_id' => $agentId, 'previous_agent_id' => $previousAgentId, 'mode' => 'even_distribution']
+                );
+
+                $notify[$agentId][] = (string) $lead['loan_account_number'];
+                $updated++;
+            }
+        });
+
+        foreach ($notify as $agentId => $accounts) {
+            $count = count($accounts);
+            Notification::send(
+                (int) $agentId,
+                'new_lead_assigned',
+                $count === 1 ? 'New lead assigned' : "{$count} leads assigned",
+                $count === 1
+                    ? sprintf('Loan account %s has been assigned to you.', $accounts[0])
+                    : sprintf('%d leads have been assigned to you.', $count),
+                null,
+                ['count' => $count],
+                $actorId
+            );
+        }
+
+        if ($updated > 0) {
+            $spread = [];
+            foreach ($workloadByBranch as $branchWorkload) {
+                foreach ($branchWorkload as $agent) {
+                    $spread[] = $agent['name'] . ': ' . $agent['open'];
+                }
+            }
+
+            $messages[] = 'Open leads per agent after distribution - ' . implode(', ', $spread) . '.';
+
+            Logger::audit(
+                'assign',
+                'loan_account',
+                null,
+                null,
+                ['lead_count' => $updated, 'mode' => 'even_distribution'],
+                sprintf('Distributed %d lead(s) evenly across their branch agents', $updated)
+            );
+        }
+
+        return ['updated' => $updated, 'skipped' => $skipped, 'messages' => array_values(array_unique($messages))];
+    }
+
+    /**
      * Moves leads to another branch. Only a super admin can do this, because it
      * crosses the branch isolation boundary by definition.
      *

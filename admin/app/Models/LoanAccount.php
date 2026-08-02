@@ -25,26 +25,40 @@ final class LoanAccount
      * Base SELECT joining the borrower, branch and agent.
      * Masked PII only - nothing here needs the decryption key.
      */
-    private const SELECT = "SELECT la.id, la.loan_account_number, la.bc_code, la.loan_type,
+    /**
+     * Every loan_accounts column any screen reads, in one place.
+     *
+     * This used to be spelled out twice - once here and once in findWithPii() - and a
+     * column added to only one of them was written correctly and invisible everywhere
+     * else. That is bug 42 in the README, and it happened AGAIN with closure_amount and
+     * manual_overrides, which is what finally earned this constant. Two hand-maintained
+     * lists of the same table will keep diverging; one will not.
+     */
+    private const LOAN_COLUMNS = "la.id, la.loan_account_number, la.bc_code, la.loan_type,
                    la.outstanding_amount, la.overdue_amount, la.npa_date, la.is_npa,
                    la.current_status, la.assigned_agent_id, la.assigned_at, la.last_visit_at,
                    la.visit_count, la.next_followup_date, la.remarks, la.created_at, la.updated_at,
                    la.customer_id, la.branch_id, la.closed_at, la.last_promise_id,
                    la.cif_number, la.sanction_date, la.sanction_limit, la.drawing_power,
                    la.interest_overdue, la.ckcc_renewal_due_date,
-                    la.ots_eligible, la.krm_eligible, la.ots_amount, la.deposit_amount,
-                    -- Both projections are spelled out by hand, so a new column is
-                    -- invisible until it is added in BOTH places. That is bug 42 in the
-                    -- README, and closure_amount walked straight into it.
-                    la.closure_amount, la.manual_overrides,
-                   c.name AS customer_name, c.father_husband_name, c.village, c.address,
+                   la.ots_eligible, la.krm_eligible, la.ots_amount, la.deposit_amount,
+                   la.closure_amount, la.manual_overrides,
+                   la.asset_classification, la.interest_rate, la.installment_amount,
+                   la.last_payment_date, la.last_payment_amount, la.days_past_due,
+                   la.security_value, la.guarantor_name, la.maturity_date, la.purpose";
+
+    /** The joined borrower / branch / agent columns every screen also reads. */
+    private const JOINED_COLUMNS = "c.name AS customer_name, c.father_husband_name, c.village, c.address,
                    c.mobile_masked, c.aadhaar_masked,
                    b.name AS branch_name, b.branch_code,
-                   ag.name AS agent_name, ag.employee_code AS agent_code
-              FROM loan_accounts la
+                   ag.name AS agent_name, ag.employee_code AS agent_code";
+
+    private const FROM = "FROM loan_accounts la
               JOIN customers c ON c.id = la.customer_id
               JOIN branches  b ON b.id = la.branch_id
               LEFT JOIN users ag ON ag.id = la.assigned_agent_id";
+
+    private const SELECT = "SELECT " . self::LOAN_COLUMNS . ", " . self::JOINED_COLUMNS . " " . self::FROM;
 
     public static function find(int $id): ?array
     {
@@ -67,30 +81,12 @@ final class LoanAccount
      */
     public static function findWithPii(int $id): ?array
     {
-        // The encrypted columns must be added to the projection, not appended
-        // after the JOIN clauses of self::SELECT, so this query is spelled out.
+        // The encrypted columns have to sit inside the projection rather than be
+        // appended after the JOINs, so this builds its own SELECT - but from the SAME
+        // column constants, so it can no longer fall behind.
         $row = Database::instance()->first(
-            'SELECT la.id, la.loan_account_number, la.bc_code, la.loan_type,
-                    la.outstanding_amount, la.overdue_amount, la.npa_date, la.is_npa,
-                    la.current_status, la.assigned_agent_id, la.assigned_at, la.last_visit_at,
-                    la.visit_count, la.next_followup_date, la.remarks, la.created_at, la.updated_at,
-                    la.customer_id, la.branch_id, la.closed_at,
-                    la.cif_number, la.sanction_date, la.sanction_limit, la.drawing_power,
-                    la.interest_overdue, la.ckcc_renewal_due_date,
-                    la.ots_eligible, la.krm_eligible, la.ots_amount, la.deposit_amount,
-                    -- Both projections are spelled out by hand, so a new column is
-                    -- invisible until it is added in BOTH places. That is bug 42 in the
-                    -- README, and closure_amount walked straight into it.
-                    la.closure_amount, la.manual_overrides,
-                    c.name AS customer_name, c.father_husband_name, c.village, c.address,
-                    c.mobile_masked, c.aadhaar_masked, c.mobile_enc, c.aadhaar_enc,
-                    b.name AS branch_name, b.branch_code,
-                    ag.name AS agent_name, ag.employee_code AS agent_code
-               FROM loan_accounts la
-               JOIN customers c ON c.id = la.customer_id
-               JOIN branches  b ON b.id = la.branch_id
-               LEFT JOIN users ag ON ag.id = la.assigned_agent_id
-              WHERE la.id = ? LIMIT 1',
+            'SELECT ' . self::LOAN_COLUMNS . ', ' . self::JOINED_COLUMNS
+                . ', c.mobile_enc, c.aadhaar_enc ' . self::FROM . ' WHERE la.id = ? LIMIT 1',
             [$id]
         );
         if ($row === null) {
@@ -485,6 +481,20 @@ final class LoanAccount
         'deposit_amount'        => 'Deposit amount',
         'npa_date'              => 'NPA date',
         'ckcc_renewal_due_date' => 'CKCC renewal due date',
+        // The rest of the statement. Editable for the same reason the figures above
+        // are: the person standing at the door is the one who finds out the guarantor
+        // died or the security was sold, and the alternative to letting them record it
+        // is a note in a notebook nobody else can read.
+        'asset_classification'  => 'Asset classification',
+        'interest_rate'         => 'Interest rate',
+        'installment_amount'    => 'Instalment amount',
+        'last_payment_date'     => 'Last payment date',
+        'last_payment_amount'   => 'Last payment amount',
+        'days_past_due'         => 'Days past due',
+        'security_value'        => 'Security value',
+        'guarantor_name'        => 'Guarantor name',
+        'maturity_date'         => 'Maturity date',
+        'purpose'               => 'Purpose',
     ];
 
     /** Which columns on this row a human has overridden. @return list<string> */

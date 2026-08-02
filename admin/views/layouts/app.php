@@ -74,25 +74,36 @@ $unread = $unreadNotifications ?? 0;
         </div>
 
         <nav class="lrms-nav">
-            <a class="lrms-nav-item<?= active_nav('/dashboard', $currentPath) ?>" href="<?= e(url('/dashboard')) ?>">
-                <?= icon('dashboard') ?> Dashboard
-            </a>
+            <?php
+            /*
+             * The navigation mirrors the allowAgent flags on the controllers, which is
+             * a narrower thing than the permissions an agent holds. An agent holds
+             * visits.view so the Android app can list their visits; the panel's visit
+             * screens are not scoped to one agent, so they stay shut here. A link to a
+             * page that refuses you is worse than no link at all.
+             */
+            ?>
+            <?php if (!is_agent()): ?>
+                <a class="lrms-nav-item<?= active_nav('/dashboard', $currentPath) ?>" href="<?= e(url('/dashboard')) ?>">
+                    <?= icon('dashboard') ?> Dashboard
+                </a>
+            <?php endif; ?>
 
             <div class="lrms-nav-label">Recovery</div>
 
             <?php if (can('customers.view')): ?>
                 <a class="lrms-nav-item<?= active_nav('/customers', $currentPath) ?>" href="<?= e(url('/customers')) ?>">
-                    <?= icon('customers') ?> Customers &amp; Leads
+                    <?= icon('customers') ?> <?= is_agent() ? 'My Borrowers' : 'Customers &amp; Leads' ?>
                 </a>
             <?php endif; ?>
 
-            <?php if (can('promises.view')): ?>
+            <?php if (can('promises.view') && !is_agent()): ?>
                 <a class="lrms-nav-item<?= active_nav('/promises', $currentPath) ?>" href="<?= e(url('/promises')) ?>">
                     <?= icon('handshake') ?> Promises
                 </a>
             <?php endif; ?>
 
-            <?php if (can('visits.view')): ?>
+            <?php if (can('visits.view') && !is_agent()): ?>
                 <a class="lrms-nav-item<?= active_nav('/visits', $currentPath) ?>" href="<?= e(url('/visits')) ?>">
                     <?= icon('clipboard') ?> Visit Reports
                 </a>

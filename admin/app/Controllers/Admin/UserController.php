@@ -98,22 +98,6 @@ final class UserController extends Controller
             'created_by'          => Auth::id(),
         ];
 
-        // Stored under their own kind rather than with borrower photos. Staff images
-        // outlive every lead they appear on and are governed differently: a borrower's
-        // photo is evidence attached to one visit, a BC's is their identity on every
-        // report they will ever file.
-        try {
-            $data['photo_path'] = $this->optionalImage('photo', 'staff');
-            $data['signature_path'] = $this->optionalImage('signature', 'staff');
-        } catch (\Throwable $e) {
-            $this->backWithErrors(
-                '/users/create',
-                ['photo' => [$e->getMessage()]],
-                $request->all(),
-                'The image could not be accepted.'
-            );
-        }
-
         $id = User::create($data, $password, $request->nullableStr('mobile'));
 
         Logger::audit('create', 'user', $id, null, $data, sprintf('Created user %s (%s)', $data['name'], $data['employee_code']));
@@ -173,30 +157,6 @@ final class UserController extends Controller
             'designation'   => $request->nullableStr('designation'),
             'status'        => $request->str('status') === 'suspended' ? 'suspended' : 'active',
         ];
-
-        // Absent file input means "leave it alone", not "clear it" - saving the form
-        // after changing a phone number must not silently delete somebody's signature.
-        try {
-            $data['photo_path'] = $this->optionalImage(
-                'photo',
-                'staff',
-                $user['photo_path'] ?? null,
-                $request->bool('remove_photo')
-            );
-            $data['signature_path'] = $this->optionalImage(
-                'signature',
-                'staff',
-                $user['signature_path'] ?? null,
-                $request->bool('remove_signature')
-            );
-        } catch (\Throwable $e) {
-            $this->backWithErrors(
-                '/users/' . $id . '/edit',
-                ['photo' => [$e->getMessage()]],
-                $request->all(),
-                'The image could not be accepted.'
-            );
-        }
 
         User::update($id, $data, $request->nullableStr('mobile'), true);
 

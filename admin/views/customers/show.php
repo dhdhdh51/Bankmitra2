@@ -269,6 +269,68 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                             <?php endif; ?>
                         </dd>
                     </div>
+                    <?php
+                    /*
+                     * The rest of the bank's statement. Rendered only when the file
+                     * actually carried the column: a dash against "Security value" is
+                     * information, but eleven dashes in a row is just noise that pushes
+                     * the figures people came for off the screen.
+                     */
+                    $classification = $lead['asset_classification'] ?? null;
+                    ?>
+                    <?php if ($classification !== null && $classification !== ''): ?>
+                        <div>
+                            <dt>Asset classification</dt>
+                            <dd><span class="lrms-badge badge-pending"><?= e((string) $classification) ?></span></dd>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (($lead['days_past_due'] ?? null) !== null): ?>
+                        <div>
+                            <dt>Days past due</dt>
+                            <dd><?= e((string) (int) $lead['days_past_due']) ?>
+                                <span class="text-muted" style="font-size:.75rem">as the bank computed it</span></dd>
+                        </div>
+                    <?php endif; ?>
+                    <?php foreach ([
+                        'installment_amount'  => 'Instalment / EMI',
+                        'last_payment_amount' => 'Last payment',
+                        'security_value'      => 'Security value',
+                    ] as $moneyColumn => $moneyLabel): ?>
+                        <?php if (($lead[$moneyColumn] ?? null) !== null): ?>
+                            <div>
+                                <dt><?= e($moneyLabel) ?></dt>
+                                <dd><?= e(rupees($lead[$moneyColumn])) ?></dd>
+                            </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                    <?php if (($lead['interest_rate'] ?? null) !== null): ?>
+                        <div>
+                            <dt>Interest rate</dt>
+                            <dd><?= e(rtrim(rtrim(number_format((float) $lead['interest_rate'], 3), '0'), '.')) ?>% p.a.</dd>
+                        </div>
+                    <?php endif; ?>
+                    <?php foreach ([
+                        'last_payment_date' => 'Last payment date',
+                        'maturity_date'     => 'Maturity date',
+                    ] as $dateColumn => $dateLabel): ?>
+                        <?php if (($lead[$dateColumn] ?? null) !== null): ?>
+                            <div>
+                                <dt><?= e($dateLabel) ?></dt>
+                                <dd><?= e(fmt_date((string) $lead[$dateColumn])) ?></dd>
+                            </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+                    <?php foreach ([
+                        'guarantor_name' => 'Guarantor',
+                        'purpose'        => 'Purpose / activity',
+                    ] as $textColumn => $textLabel): ?>
+                        <?php if (!empty($lead[$textColumn])): ?>
+                            <div>
+                                <dt><?= e($textLabel) ?></dt>
+                                <dd><?= e((string) $lead[$textColumn]) ?></dd>
+                            </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
                     <div>
                         <dt>NPA date</dt>
                         <dd>

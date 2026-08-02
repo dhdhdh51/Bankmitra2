@@ -209,7 +209,10 @@ final class ImportController extends Controller
         }
 
         $branchId = $this->resolveDefaultBranch($request);
-        $agentId = $request->nullableInt('default_agent_id');
+
+        // "distribute" is a mode, not an agent id, so it is read before the id is.
+        $assignMode = $request->str('default_agent_id') === 'distribute' ? 'distribute' : 'agent';
+        $agentId = $assignMode === 'distribute' ? null : $request->nullableInt('default_agent_id');
 
         // The bulk-assignment target must be inside the caller's scope.
         if ($agentId !== null && $agentId > 0) {
@@ -238,6 +241,7 @@ final class ImportController extends Controller
                 // conjure branches outside their own scope through a spreadsheet.
                 Auth::scopedBranchId() === null,
                 $reuseStoredPath,
+                $assignMode === 'distribute',
             );
         } catch (\Throwable $e) {
             $this->back('/import', 'danger', 'Import failed: ' . e($e->getMessage()));

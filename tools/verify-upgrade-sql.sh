@@ -70,6 +70,7 @@ text = open(doc, encoding='utf-8').read()
 HEADINGS = [
     '### Adding staff photographs, report approval and custom fields to an existing install',
     '### Adding geo-tagged agent photographs and signatures to an existing install',
+    '### Adding the full banking columns, panel signatures and agent access to an existing install',
 ]
 
 chunks = []
@@ -126,6 +127,36 @@ db lrms_upg < "$ROOT/schema.sql"
 # The downgrade. Deliberately hand-written: it is the inverse of the documented
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
+-- Undo of the newest release, applied first because it is the newest.
+DELETE FROM `role_permissions`
+ WHERE `role_id` = 3
+   AND `permission_id` IN (
+     SELECT `id` FROM `permissions` WHERE `code` IN ('customers.update', 'custom_fields.manage')
+   );
+
+-- The pre-release users table still carried the staff portrait columns, so they have to
+-- come back for the migration's DROP to have something to drop.
+ALTER TABLE `users`
+  ADD COLUMN `photo_path`     VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed on visit reports' AFTER `status_changed_at`,
+  ADD COLUMN `signature_path` VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed beside the photo'  AFTER `photo_path`;
+
+ALTER TABLE `loan_accounts`
+  DROP KEY `idx_loan_classification`,
+  DROP COLUMN `asset_classification`,
+  DROP COLUMN `interest_rate`,
+  DROP COLUMN `installment_amount`,
+  DROP COLUMN `last_payment_date`,
+  DROP COLUMN `last_payment_amount`,
+  DROP COLUMN `days_past_due`,
+  DROP COLUMN `security_value`,
+  DROP COLUMN `guarantor_name`,
+  DROP COLUMN `maturity_date`,
+  DROP COLUMN `purpose`;
+
+ALTER TABLE `signatures`
+  DROP COLUMN `capture_method`,
+  DROP COLUMN `uploaded_note`;
+
 ALTER TABLE `signatures`
   DROP COLUMN `gps_latitude`,
   DROP COLUMN `gps_longitude`,

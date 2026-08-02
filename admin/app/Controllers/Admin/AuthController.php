@@ -23,7 +23,7 @@ final class AuthController extends Controller
     public function root(Request $request): void
     {
         Auth::resolve($request);
-        Response::redirect(Auth::check() ? '/dashboard' : '/login');
+        Response::redirect(Auth::check() ? Auth::panelHome() : '/login');
     }
 
     // -----------------------------------------------------------------------
@@ -34,7 +34,7 @@ final class AuthController extends Controller
     {
         Auth::resolve($request);
         if (Auth::check()) {
-            Response::redirect('/dashboard');
+            Response::redirect(Auth::panelHome());
         }
 
         if (!$request->isPost()) {
@@ -63,17 +63,11 @@ final class AuthController extends Controller
 
         $user = $attempt['user'];
 
-        // BC/DC agents are app-only; say so instead of a bare permission error.
-        if (($user['role_slug'] ?? '') === 'agent') {
-            Logger::activity('login_blocked', 'Auth', 'Agent attempted web panel sign-in', (int) $user['id']);
-            Session::flashInput(['employee_code' => $identifier], []);
-            $this->back(
-                '/login',
-                'warning',
-                'BC/DC Agent accounts sign in through the D2 Recovery Android app, not the web panel.'
-            );
-        }
-
+        // Agents used to be turned away here outright. They are not any more: they have
+        // a narrow surface in the panel - their own borrowers, and the fields they
+        // collect against them - because an agent who spots a wrong father's name at a
+        // doorstep is the only person who will ever be standing there. Everything else
+        // is still refused, route by route, by the allowAgent flag on each controller.
         Auth::loginSession($user);
 
         if ($remember) {
@@ -87,7 +81,10 @@ final class AuthController extends Controller
             Response::redirect('/change-password');
         }
 
-        Response::redirect('/dashboard');
+        // An agent has no dashboard in the panel, so sending everybody to /dashboard
+        // showed them the refusal page immediately after a successful sign-in - which
+        // reads as a broken login rather than a deliberate boundary.
+        Response::redirect(Auth::panelHome());
     }
 
     public function logout(Request $request): void
@@ -117,7 +114,7 @@ final class AuthController extends Controller
     {
         Auth::resolve($request);
         if (Auth::check()) {
-            Response::redirect('/dashboard');
+            Response::redirect(Auth::panelHome());
         }
 
         if (!$request->isPost()) {
@@ -186,7 +183,7 @@ final class AuthController extends Controller
     {
         Auth::resolve($request);
         if (Auth::check()) {
-            Response::redirect('/dashboard');
+            Response::redirect(Auth::panelHome());
         }
 
         $userId = Session::get('_reset_user_id');
@@ -301,7 +298,7 @@ final class AuthController extends Controller
         Logger::audit('update', 'user', (int) $user['id'], null, null, 'Changed own password');
         Logger::activity('password_change', 'Auth', 'Changed own password');
 
-        $this->back('/dashboard', 'success', 'Your password has been updated.');
+        $this->back(Auth::panelHome(), 'success', 'Your password has been updated.');
     }
 
     // -----------------------------------------------------------------------
