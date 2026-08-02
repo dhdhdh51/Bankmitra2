@@ -396,6 +396,137 @@ final class VisitController extends Controller
         }
         $pdf->paragraph($recommendations === [] ? 'None recorded.' : implode(', ', $recommendations), 9.0, '#1c2128');
 
+        // ---- The section that makes this report the type it is ---------------
+        //
+        // These were missing from the printout entirely, which quietly made the printed
+        // copy of a settlement or a renewal a lie by omission: it carried the recovery-visit
+        // fields every report has and dropped the settlement arithmetic or the renewal
+        // paperwork the visit actually existed to collect. The screen had them all along, so
+        // the gap was invisible to anybody who checked the report before printing it.
+        $ots = VisitReport::otsDetails((int) $report['id']);
+        if ($ots !== null) {
+            $pdf->heading('KRM / OTS Settlement');
+
+            $pdf->keyValueBlock([
+                'Eligible for KRM / OTS' => ((int) $ots['eligible_for_ots'] === 1) ? 'Yes' : 'No',
+                'Scheme'          => VisitReport::OTS_SCHEMES[$ots['scheme'] ?? ''] ?? '-',
+                'Approval status' => VisitReport::OTS_APPROVAL_STATUSES[$ots['approval_status'] ?? ''] ?? '-',
+                'Borrower'        => $ots['borrower_name'] ?? $report['customer_name'],
+                'NPA date'        => $ots['npa_date'] === null ? 'Not classified' : fmt_date((string) $ots['npa_date']),
+                'Outstanding at visit' => self::pdfMoney($ots['outstanding_amount']),
+            ], 2);
+
+            // The arithmetic, in the order the sanction letter reads. Percentages travel
+            // with the amounts they produced: a settlement figure without the percentage it
+            // came from cannot be checked by whoever approves it.
+            $pdf->keyValueBlock([
+                'Relief / waiver'      => self::pdfPercent($ots['relief_waiver_percent']),
+                'Residual loan balance' => self::pdfMoney($ots['rlb_amount']),
+                'Payable percent'      => self::pdfPercent($ots['payable_percent']),
+                'Borrower payable'     => self::pdfMoney($ots['borrower_payable_amount']),
+                'Total settlement'     => self::pdfMoney($ots['total_settlement_amount']),
+                'Balance payable'      => self::pdfMoney($ots['balance_payable']),
+            ], 3);
+
+            // The deposit is the part an auditor looks for, and the one place this system
+            // touches money at all - so it prints with the bank's own receipt reference and
+            // says plainly that the agent never handled it.
+            $pdf->keyValueBlock([
+                'Initial deposit required' => self::pdfMoney($ots['required_deposit_amount'])
+                    . ' ' . self::pdfPercent($ots['initial_deposit_percent'], true),
+                'Deposit received'   => ((int) $ots['deposit_received'] === 1) ? 'Yes' : 'No',
+                'Deposit paid'       => self::pdfMoney($ots['deposit_amount']),
+                'Deposit date'       => $ots['deposit_date'] === null ? '-' : fmt_date((string) $ots['deposit_date']),
+                "Bank's receipt / txn" => $ots['deposit_reference'] ?? '-',
+                'Proposed final payment' => $ots['proposed_final_payment_date'] === null
+                    ? '-' : fmt_date((string) $ots['proposed_final_payment_date']),
+            ], 3);
+            $pdf->paragraph(
+                'Any deposit shown here was paid by the borrower at the bank. The agent does '
+                . 'not collect money and this system records no cash handled by an agent.',
+                8.0,
+                '#6b7280'
+            );
+
+            $pdf->keyValueBlock([
+                'Validity'              => ($ots['validity_from'] === null ? '-' : fmt_date((string) $ots['validity_from']))
+                    . ' to ' . ($ots['validity_to'] === null ? '-' : fmt_date((string) $ots['validity_to'])),
+                'Expected closure'      => $ots['expected_closure_date'] === null
+                    ? '-' : fmt_date((string) $ots['expected_closure_date']),
+                'Borrower accepted'     => ((int) $ots['borrower_accepted'] === 1) ? 'Yes' : 'No',
+            ], 3);
+
+            if (($ots['rejection_reason'] ?? '') !== '') {
+                $pdf->paragraph('Why the borrower declined: ' . (string) $ots['rejection_reason'], 8.6, '#8a5a00');
+            }
+        }
+
+        $ckcc = VisitReport::ckccDetails((int) $report['id']);
+        if ($ckcc !== null) {
+            $pdf->heading('CKCC OD-2 Renewal');
+
+            // The deadline and what happens if it is missed, together and first. That pair
+            // is the entire reason this report type exists.
+            $pdf->keyValueBlock([
+                'Renewal due'      => $ckcc['renewal_due_date'] === null
+                    ? '-' : fmt_date((string) $ckcc['renewal_due_date']),
+                'Due window'       => VisitReport::CKCC_DUE_BUCKETS[$ckcc['renewal_due_bucket'] ?? ''] ?? '-',
+                'Days remaining'   => $ckcc['days_remaining'] === null
+                    ? '-'
+                    : ((int) $ckcc['days_remaining'] < 0
+                        ? abs((int) $ckcc['days_remaining']) . ' day(s) overdue'
+                        : (int) $ckcc['days_remaining'] . ' day(s)'),
+                'Expected NPA date if not renewed' => $ckcc['expected_npa_date'] === null
+                    ? '-' : fmt_date((string) $ckcc['expected_npa_date']),
+            ], 2);
+
+            $pdf->keyValueBlock([
+                'CIF number'       => $ckcc['cif_number'] ?? '-',
+                'Sanction date'    => $ckcc['sanction_date'] === null ? '-' : fmt_date((string) $ckcc['sanction_date']),
+                'Sanction limit'   => self::pdfMoney($ckcc['sanction_limit']),
+                'Drawing power'    => self::pdfMoney($ckcc['drawing_power']),
+                'Outstanding at visit' => self::pdfMoney($ckcc['outstanding_amount']),
+                'Interest overdue' => self::pdfMoney($ckcc['interest_overdue']),
+                'KYC status'       => VisitReport::CKCC_KYC_STATUSES[$ckcc['kyc_status'] ?? ''] ?? '-',
+            ], 3);
+
+            // The tick lists print as the ones that are TRUE, named. A printed grid of empty
+            // boxes takes half a page to say nothing, and a reader cannot tell an unticked
+            // box from a question nobody asked.
+            foreach ([
+                'Renewal readiness'  => VisitReport::CKCC_ELIGIBILITY_FLAGS,
+                'Documents the borrower had in hand' => VisitReport::CKCC_DOCUMENT_FLAGS,
+                'Renewal consent'    => VisitReport::CKCC_CONSENT_FLAGS,
+                'Agent recommendation' => VisitReport::CKCC_RECOMMENDATION_FLAGS,
+                'Report status'      => VisitReport::CKCC_STATUS_FLAGS,
+            ] as $label => $flags) {
+                $ticked = [];
+                foreach ($flags as $column => $flagLabel) {
+                    if ((int) ($ckcc[$column] ?? 0) === 1) {
+                        $ticked[] = $flagLabel;
+                    }
+                }
+
+                $extra = '';
+                if ($label === 'Documents the borrower had in hand' && ($ckcc['doc_other_text'] ?? '') !== '') {
+                    $extra = ' (' . (string) $ckcc['doc_other_text'] . ')';
+                }
+                if ($label === 'Agent recommendation' && ($ckcc['rec_other_text'] ?? '') !== '') {
+                    $extra = ' (' . (string) $ckcc['rec_other_text'] . ')';
+                }
+
+                $pdf->paragraph(
+                    $label . ': ' . ($ticked === [] ? 'none recorded' : implode('; ', $ticked) . $extra),
+                    8.6,
+                    $ticked === [] ? '#8a5a00' : '#1c2128'
+                );
+            }
+
+            if (($ckcc['agent_observation'] ?? '') !== '') {
+                $pdf->paragraph('Agent observation: ' . (string) $ckcc['agent_observation'], 8.6, '#1c2128');
+            }
+        }
+
         $pdf->heading('Remarks');
         $pdf->paragraph(($report['remarks'] ?? '') === '' ? 'No remarks recorded.' : (string) $report['remarks'], 9.0, '#1c2128');
 
@@ -628,6 +759,30 @@ final class VisitController extends Controller
         Auth::assertBranchAccess((int) $report['branch_id']);
 
         return $report;
+    }
+
+    /**
+     * A money figure for the printout, or a dash.
+     *
+     * Not `rupees()`: an empty settlement figure printed as "Rs.0.00" reads as a settlement
+     * of nothing rather than a figure nobody filled in, and on a document somebody approves
+     * those are different statements.
+     */
+    private static function pdfMoney(mixed $amount): string
+    {
+        return $amount === null || $amount === '' ? '-' : rupees($amount);
+    }
+
+    /** A percentage with its trailing zeros trimmed, or a dash. */
+    private static function pdfPercent(mixed $percent, bool $bracketed = false): string
+    {
+        if ($percent === null || $percent === '') {
+            return $bracketed ? '' : '-';
+        }
+
+        $text = rtrim(rtrim(number_format((float) $percent, 2), '0'), '.') . '%';
+
+        return $bracketed ? '(' . $text . ')' : $text;
     }
 
     /**

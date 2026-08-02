@@ -217,12 +217,14 @@ reminder that the person being measured against the deadline can move or silence
 doing the job it exists for, and the panel is responsive, so an operator can set it from
 their own phone anyway.
 
-Three settings, all under **Settings → Notifications**, all arriving on the phone through
-`/meta`:
+**Where it is set: Settings → Notifications, in the panel.** Nothing is set on the phone.
+Four settings, all arriving on the phone through `/meta` and cached so the alarm still
+fires with no network:
 
 | Setting | Default | What it does |
 |---|---|---|
-| `daily_report_due_time` | 17:00 | When the first nudge fires |
+| `daily_report_reminder_enabled` | On | The master switch, as a toggle |
+| `daily_report_due_time` | 17:00 | When the first nudge fires. A dropdown of half-hour steps, 15:00 to 20:00 |
 | `daily_report_reminder_repeat_minutes` | 15 | How often it comes back until the report is in. 0 means one reminder and no repeating |
 | `daily_report_reminder_until_hour` | 22 | When repeats stop for the night |
 
@@ -310,8 +312,27 @@ operator has since decided to record it, so the honest statement is now:
 - ✅ **It expires.** Points are deleted after the retention window (90 days by
   default) by `cron/purge-location-logs.php`. A permanent record of somebody's
   movements is a liability that grows.
+- ✅ **There is a map, and it is OpenStreetMap.** *Location Trail* in the sidebar draws an
+  agent's day as a line, with the visit reports they filed that day on the same map in a
+  different colour — because the question worth asking is not "where did they go" but "was
+  the report filed where the visit happened". Leaflet (BSD-2) against OSM's own tiles: **no
+  API key, no Google account, no billing**, SRI-pinned and checked against the real bytes by
+  `tools/verify-cdn-integrity.php`. This screen was missing for a long time, and its absence
+  made the whole feature dishonest: points were collected every four minutes and purged
+  after ninety days, and in between nobody could look at any of them.
+- ✅ **An empty day says what it means.** "Nothing was recorded" means the app was not open
+  with permission granted, *not* that the agent did no work, and the page says so in those
+  words. The distance is the sum of the legs, under-reports whenever the phone had no
+  signal, drops any jump over 20 km as a bad fix, prints how many it dropped, and states
+  that it is not a timesheet.
 - ✅ **Reading somebody else's trail is audited**, like any other access to
-  sensitive personal data. An agent reading their own is not.
+  sensitive personal data. An agent reading their own is not — and they can read their own,
+  which is the least a system that records somebody owes them.
+- ✅ **No Firebase anywhere in this.** Tracking is the phone's own `LocationManager` posting
+  to this server; the daily alarm is a local `AlarmManager` alarm that works with no
+  network; alerts are rows in `notifications`. Firebase is optional and buys exactly one
+  thing — an alert landing on a locked phone in seconds rather than at next app open. See
+  DEPLOYMENT.md §6.5.
 - ✅ **Off duty is off.** Points carry an `on_duty` flag and the app stops sending
   when a duty session ends — on sign-out, on **Stop**, or when the process dies. Nothing
   is collected in the background: `ACCESS_BACKGROUND_LOCATION` is never requested, so
@@ -528,6 +549,13 @@ The printed report carries:
   distinguishing "the device had no fix" from "the agent declined location",
 - **Field photographs**, each captioned with its own coordinates and whether it came from
   the camera or the gallery,
+- **KRM / OTS Settlement** or **CKCC OD-2 Renewal** when the report is one of those types —
+  the settlement arithmetic with the percentages each figure came from, the deposit with the
+  bank's own receipt reference, and the validity window; or the renewal deadline with the
+  expected NPA date if it is missed, the account snapshot, and every tick list printed as
+  the items that were actually ticked. These were missing from the printout for a long time:
+  the screen had them, so a settlement or a renewal printed as though it were a plain
+  recovery visit and dropped the very thing the visit existed to collect,
 - **Signatures** — the **agent's own photograph** from the visit, captioned with where it
   was taken, and directly beneath it **empty ruled boxes** for the borrower's and the
   agent's signature, each with a name and date line: they are signed by hand on the
@@ -658,7 +686,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
 | Integration | `sh tools/integration-test.sh` | **780** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, and a second phone number that no import can flatten |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **390** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
+| Panel smoke | `sh tools/smoke-panel.sh` | **417** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -673,11 +701,11 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Release signing | `sh tools/verify-signing.sh` | **21** — signs, verifies, proves the unsigned fallback, and proves the debug APK comes from the committed keystore so a new build installs as an update rather than demanding an uninstall |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
-| CDN integrity | `php tools/verify-cdn-integrity.php` | **5** — every SRI hash matches the file the browser fetches |
+| CDN integrity | `php tools/verify-cdn-integrity.php` | **7** — every SRI hash in every view, not just the layouts, matches the file the browser fetches |
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,088 assertions total** — the sum of the bold counts above, counting the seven
+**2,117 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

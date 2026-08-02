@@ -661,18 +661,53 @@ surprise: application ID `com.lrms.recovery.debug` (it installs alongside a
 release build rather than replacing it), version name suffixed `-debug`, no R8
 minification, and cleartext HTTP allowed so it can talk to a local dev server.
 
-### 6.5 Firebase push (optional)
+### 6.5 Firebase push — you do not need it
 
-In-app notifications work without Firebase. Push only makes them arrive sooner.
+Read this before setting anything up, because the honest answer is **nothing in this
+system requires Firebase**, and none of the three things people usually add it for
+needs it here:
 
-1. Create a Firebase project, add an Android app with the applicationId
+| What you might want it for | What actually happens today |
+|---|---|
+| The daily report alarm | A **local alarm on the phone**, set by `AlarmManager`. It fires with no network at all — which in these villages is the normal case — and a push could not be relied on to arrive. Firebase would make it *worse*. |
+| Alerts (promise due, renewal due, warnings) | Written by cron into `notifications` and shown in the app's Alerts tab, with an unread badge. They arrive when the agent opens the app or the app refreshes. |
+| Location tracking | Nothing to do with Firebase. It is the phone's own `LocationManager` posting to this server's API, and the map is OpenStreetMap. **No Google account, no billing, no key.** |
+
+The **only** thing Firebase buys you is that an alert arrives on a locked phone within
+seconds instead of when the agent next opens the app. It is optional, it costs an
+account and a `google-services.json` in the build, and the project deliberately ships
+without it so the APK builds in CI out of the box.
+
+If you decide you want it anyway:
+
+1. Create a Firebase project and add an Android app with the applicationId
    `com.lrms.recovery`
 2. Put the **server key** into Settings → Integrations → *Firebase server key*
-3. Add `google-services.json` to `android/app/`, then add the Google Services
-   plugin and `firebase-messaging` dependency
+3. Add `google-services.json` to `android/app/`, then add the Google Services plugin
+   and the `firebase-messaging` dependency, and build a new APK
 
-The app registers its device token at sign-in, so once the server key is set,
-push starts working without an app change.
+The app registers its device token at sign-in, so once the server key is set, push
+starts working without an app change.
+
+### 6.6 Where the daily alarm is set
+
+All of it is in the panel, under **Settings → Notifications**. Nothing is set on the
+phone and an agent cannot change any of it — that is the point of it being here.
+
+| Setting | Default | What it does |
+|---|---|---|
+| **Daily report due by** | 17:00 | When the first reminder fires. A dropdown of half-hour steps from 15:00 to 20:00. |
+| **Remind agents to submit** | On | The master switch. A toggle now, not a dropdown offering "1" and "0". |
+| **Repeat every (minutes)** | 15 | How often it comes back until the report is in. `0` means one reminder and no repeating. |
+| **Stop repeating after (hour)** | 22 | When repeats stop for the night. They resume at the deadline on the next working day. |
+
+Every agent picks up a change **the next time they open the app** — the values ride
+along on `/meta` and are cached, so the alarm still fires correctly with no network.
+The reminder stops the moment a visit report or the day's SSS figures are filed.
+
+If the "Daily report due by" dropdown looks empty on your install, its `options` column
+is blank — see §10, *Fixing the two on/off settings that were dropdowns*, which also
+carries the one-line fix for that.
 
 ---
 
@@ -688,11 +723,12 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 390 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
+| `sh tools/smoke-panel.sh` | 417 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
+| `php tools/verify-cdn-integrity.php` | 7 checks — every SRI hash in every view matches the bytes the browser fetches |
 
 The Docker-based scripts need Docker; the rest need only PHP.
 
@@ -1760,6 +1796,67 @@ Afterwards:
   APK ignores the new fields** — it does not know about them — so the next APK is what makes
   the second number dialable from the app. Nothing breaks in the meantime.
 - No new APK is required for the panel side, which is where the recording happens.
+
+### Seeing the location trail on a map
+
+**This one is worth reading even if you skip the rest.** The app has been recording a
+position every four minutes during a duty session, and `cron/purge-location-logs.php` has
+been deleting those points after the retention window — and in between, **nobody could look
+at any of it**. `TrackingService::trailFor()` existed, complete with its audit entry, and
+had no caller anywhere: no route, no page, no map. Recording somebody's movements and then
+never reading them is all of the intrusion and none of the use.
+
+There is now **Location Trail** in the sidebar: pick an agent and a date, and see the day
+as a line on a map, with the visit reports they filed that day drawn on the same map in a
+different colour — because the question worth asking is not "where did they go" but "was
+the report filed where the visit happened".
+
+**No paid map key, no account, nothing that expires.** The map is
+[Leaflet](https://leafletjs.com) (BSD-2) against OpenStreetMap's own tiles, which is the
+same choice already made for reverse geocoding. Both files are loaded from jsDelivr with an
+SRI hash that `tools/verify-cdn-integrity.php` checks against the real bytes. **You do not
+need Google Maps, Mapbox, or any billing account.** OpenStreetMap's attribution is printed
+on the map because their licence requires it — do not remove it.
+
+```sql
+INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
+  ('tracking.view', 'Tracking', "View an agent's location trail on a map");
+
+-- Branch managers, for their own branch's agents.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 2, `id` FROM `permissions` WHERE `code` = 'tracking.view';
+
+-- And agents, for THEMSELVES only - the page pins an agent to their own id and ignores a
+-- requested one. Somebody whose movements are recorded should be able to see what was
+-- recorded, and trailFor() already skips the audit entry when the viewer is the subject.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 3, `id` FROM `permissions` WHERE `code` = 'tracking.view';
+```
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM `permissions` WHERE `code` = 'tracking.view';           -- 1
+SELECT COUNT(*) FROM `role_permissions` rp JOIN `permissions` p ON p.id = rp.permission_id
+ WHERE p.code = 'tracking.view';                                            -- 2
+```
+
+Afterwards:
+
+- **Open Location Trail and pick yesterday.** If it says "Nothing was recorded", that means
+  the app was not open with location permission granted — *not* that the agent did no work,
+  and the page says so in those words. Visit reports are the record of work.
+- **A branch manager sees their own branch's agents only**, and an agent sees themselves and
+  nobody else. Reading somebody else's trail writes a `view_location` row to the audit log;
+  reading your own does not.
+- **The distance is the sum of the legs between recorded points**, so it under-reports
+  whenever the phone had no signal, and any jump over 20 km is dropped as a bad fix rather
+  than credited as travel — with the count of dropped jumps printed, because a total that
+  silently absorbed them is a number somebody could be judged on without knowing it was
+  partly invented. It is not a timesheet and the page says that too.
+- The points still expire on their own: `location_retention_days` (90 by default) and the
+  purge cron, both unchanged. The trail page prints the retention window at the top.
+- No new APK. The recording already worked; what was missing was the reading.
 
 ### Renaming to D2 Recovery on an existing install
 

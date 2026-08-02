@@ -24,7 +24,19 @@ declare(strict_types=1);
  */
 
 $root = dirname(__DIR__);
-$files = glob($root . '/admin/views/layouts/*.php') ?: [];
+
+// EVERY view, not just the layouts.
+//
+// It scanned only admin/views/layouts/*.php, which was true for as long as the CDN assets
+// were Bootstrap and nothing else. The moment a screen pinned its own library - the map on
+// the location trail - that asset was outside the one check that exists to catch a wrong
+// hash, and a wrong hash there is a blank grey box with nothing in the console naming the
+// cause. Widened rather than a second glob added: whatever a view pins, this reads.
+$files = array_merge(
+    glob($root . '/admin/views/*.php') ?: [],
+    glob($root . '/admin/views/*/*.php') ?: [],
+    glob($root . '/admin/views/*/*/*.php') ?: []
+);
 
 $checked = 0;
 $failed = 0;

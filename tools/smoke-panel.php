@@ -516,6 +516,8 @@ $candidateIds = array_slice(array_unique(array_map('intval', $allVisitMatches[1]
 
 $otsPage = null;
 $ckccPage = null;
+$otsVisitId = null;
+$ckccVisitId = null;
 foreach ($candidateIds as $candidateId) {
     $body = request($base . '/visits/' . $candidateId)['body'];
     // Match on something only the RENDERED card contains. Looking for the section
@@ -524,9 +526,11 @@ foreach ($candidateIds as $candidateId) {
     // own sub-checks - a false positive that pointed at the wrong bug entirely.
     if ($otsPage === null && str_contains($body, 'Residual loan balance')) {
         $otsPage = $body;
+        $otsVisitId = $candidateId;
     }
     if ($ckccPage === null && str_contains($body, 'Documents the borrower had')) {
         $ckccPage = $body;
+        $ckccVisitId = $candidateId;
     }
     if ($otsPage !== null && $ckccPage !== null) {
         break;
@@ -565,6 +569,59 @@ if ($ckccPage !== null) {
     check('CKCC card shows no GPS or location field',
         !str_contains($ckccPage, 'GPS') && !stripos($ckccPage, 'Latitude'));
 }
+
+// ---------------------------------------------------------------------------
+// And the same detail on the PRINTED report.
+//
+// It was not there. pdf() never loaded either section - only the screen did - so the
+// printed copy of a settlement or a renewal carried the recovery-visit fields every report
+// has and dropped the very thing the visit existed to collect. Invisible to anybody who
+// checked the report on screen before printing it, which is everybody.
+if ($otsVisitId !== null) {
+    $otsPdf = request($base . '/visits/' . $otsVisitId . '/pdf');
+    check('the printed settlement report has its own section',
+        $otsPdf['status'] === 200 && str_contains($otsPdf['body'], 'KRM / OTS Settlement'),
+        'HTTP ' . $otsPdf['status']);
+    check('and prints the settlement arithmetic',
+        str_contains($otsPdf['body'], 'Residual loan balance')
+        && str_contains($otsPdf['body'], 'Total settlement')
+        && str_contains($otsPdf['body'], 'Balance payable'));
+    check('with the percentages the figures came from',
+        str_contains($otsPdf['body'], 'Payable percent'));
+    check('the deposit prints with the bank\'s own receipt reference',
+        str_contains($otsPdf['body'], 'RCPT/2026/004417'));
+    check('and says the agent did not take the money',
+        str_contains($otsPdf['body'], 'does not collect money'));
+    check('the validity window prints', str_contains($otsPdf['body'], 'Validity'));
+}
+
+if ($ckccVisitId !== null) {
+    $ckccPdf = request($base . '/visits/' . $ckccVisitId . '/pdf');
+    check('the printed renewal report has its own section',
+        $ckccPdf['status'] === 200 && str_contains($ckccPdf['body'], 'CKCC OD-2 Renewal'),
+        'HTTP ' . $ckccPdf['status']);
+    check('it prints the deadline and what happens if it is missed',
+        str_contains($ckccPdf['body'], 'Renewal due')
+        && str_contains($ckccPdf['body'], 'Expected NPA date if not renewed'));
+    check('the account snapshot prints',
+        str_contains($ckccPdf['body'], 'Sanction limit') && str_contains($ckccPdf['body'], 'Drawing power'));
+    // The tick lists print as the ones that are true, named - a grid of empty boxes takes
+    // half a page to say nothing.
+    check('the tick lists print as the ones that were ticked',
+        str_contains($ckccPdf['body'], 'Documents the borrower had in hand')
+        && str_contains($ckccPdf['body'], 'Aadhaar Card'));
+    check('the agent observation prints',
+        str_contains($ckccPdf['body'], 'Land records in order'));
+    check('and the report status prints', str_contains($ckccPdf['body'], 'Report status'));
+}
+
+// A plain recovery visit must NOT grow either section: a heading with nothing under it
+// reads as a form somebody failed to fill in.
+$plainPdf = request($base . '/visits/' . $visitId . '/pdf');
+check('a plain recovery report prints neither section',
+    !str_contains($plainPdf['body'], 'KRM / OTS Settlement')
+    && !str_contains($plainPdf['body'], 'CKCC OD-2 Renewal'),
+    'HTTP ' . $plainPdf['status']);
 
 page('GET /promises', '/promises', 200, 'Promises');
 page('GET /promises pending', '/promises?status=pending', 200);
@@ -1453,6 +1510,80 @@ if ($handLeadId > 0) {
                 : substr(strip_tags($second['body']), 0, 200)));
     }
 }
+
+// ---------------------------------------------------------------------------
+section('The location trail is something somebody can actually look at');
+
+// bc_location_logs collected a point every four minutes and the purge cron deleted them
+// ninety days later, and in between NOBODY could look at any of it: TrackingService::
+// trailFor() existed, audit entry and all, with no caller anywhere in the codebase.
+// Recording somebody's movements and never reading them is all of the intrusion and none
+// of the use.
+$trail = request($base . '/tracking');
+check('the trail page opens', $trail['status'] === 200
+    && str_contains($trail['body'], 'Location trail'), 'HTTP ' . $trail['status']);
+check('it is reachable from the navigation', str_contains($customers, 'Location Trail'));
+check('it says how long the points are kept',
+    preg_match('/deleted automatically after \d+ days/', $trail['body']) === 1);
+// An empty day must say what it does and does not mean. "No points" is evidence about a
+// phone, not about a person, and a blank map in front of a branch manager will be read as
+// the second unless the page says otherwise.
+$emptyDay = request($base . '/tracking?agent_id=3&date=' . date('Y-m-d', strtotime('-300 days')));
+// Whitespace-normalised: the sentence wraps across two indented lines in the template, and
+// a bare str_contains() on the raw HTML fails for a reason that has nothing to do with what
+// is being asserted.
+$emptySquashed = preg_replace('/\s+/', ' ', $emptyDay['body']) ?? '';
+check('an empty day says the absence is not evidence of no work',
+    str_contains($emptySquashed, 'Nothing was recorded')
+    && str_contains($emptySquashed, 'not that the agent did no work'),
+    'HTTP ' . $emptyDay['status']);
+
+// The map is OpenStreetMap through Leaflet: no API key, no account, nothing that expires.
+check('the map library is pinned with an SRI hash',
+    substr_count($trail['body'], 'leaflet@1.9.4') === 2
+    && substr_count($trail['body'], 'integrity="sha384-') >= 2,
+    substr_count($trail['body'], 'leaflet@1.9.4') . ' leaflet tag(s)');
+check('and OpenStreetMap is credited, as its licence requires',
+    str_contains(file_get_contents(__DIR__ . '/../admin/assets/js/trail.js'), 'OpenStreetMap'));
+check('no API key or account is needed for the tiles',
+    str_contains(file_get_contents(__DIR__ . '/../admin/assets/js/trail.js'), 'tile.openstreetmap.org'));
+
+// A seeded agent has a day of points, so the map has something to draw and the summary has
+// something to add up.
+$trailDay = null;
+foreach ([0, 1, 2, 3, 4, 5, 6, 7] as $back) {
+    $day = date('Y-m-d', strtotime('-' . $back . ' days'));
+    $attempt = request($base . '/tracking?agent_id=3&date=' . $day);
+    if (str_contains($attempt['body'], 'data-trail')) {
+        $trailDay = $attempt['body'];
+        break;
+    }
+}
+check('a day with recorded points renders the map', $trailDay !== null,
+    'no seeded agent had a trail in the last week');
+
+if ($trailDay !== null) {
+    check('the points are handed over as data, not inlined into a script tag',
+        str_contains($trailDay, 'data-trail="') && preg_match('/<script>\s*var\s/', $trailDay) !== 1);
+    check('the day is summarised in kilometres', str_contains($trailDay, 'Distance covered'));
+    check('the first and last point are stated',
+        str_contains($trailDay, 'First point') && str_contains($trailDay, 'Last point'));
+    // A distance somebody could be judged on has to say what it is not.
+    check('and the summary says it is not a timesheet',
+        str_contains($trailDay, 'not a timesheet'));
+}
+
+// A future date has nothing to draw and must not read as a page that failed.
+$future = request($base . '/tracking?agent_id=3&date=' . date('Y-m-d', strtotime('+5 days')));
+check('a future date falls back to today rather than rendering an empty map',
+    str_contains($future['body'], date('d M Y')), 'HTTP ' . $future['status']);
+
+// Reading somebody else's trail is an event; the audit log is where it lands.
+$auditAfterTrail = request($base . '/logs/audit?action=view_location');
+check('viewing another person\'s trail is written to the audit log',
+    str_contains($auditAfterTrail['body'], 'location trail')
+    || str_contains($auditAfterTrail['body'], 'view_location'),
+    'HTTP ' . $auditAfterTrail['status']);
 
 // ---------------------------------------------------------------------------
 section('Every dropdown on every page');

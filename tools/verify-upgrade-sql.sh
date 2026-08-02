@@ -76,6 +76,7 @@ HEADINGS = [
     '### Fixing the two on/off settings that were dropdowns',
     '### Letting the panel add a borrower by hand',
     '### Recording what the agent finds out at the door',
+    '### Seeing the location trail on a map',
 ]
 
 chunks = []
@@ -134,6 +135,12 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- The recorded trail could not be looked at by anybody, so there was no permission for a
+-- screen to sit behind.
+DELETE FROM `role_permissions`
+ WHERE `permission_id` IN (SELECT `id` FROM `permissions` WHERE `code` = 'tracking.view');
+DELETE FROM `permissions` WHERE `code` = 'tracking.view';
+
 -- There was nowhere to record a second contact number, so an agent either overwrote the
 -- number the bank was given at sanction or wrote it into a note nothing can dial.
 ALTER TABLE `customers`
