@@ -163,6 +163,7 @@ final class CustomerController extends Controller
             'guarantor_name'      => 'nullable|max:150',
             'maturity_date'       => 'nullable|date',
             'purpose'             => 'nullable|max:150',
+            'facility_type'       => 'nullable|in:kcc,od2,other',
         ], [
             'father_husband_name' => 'Father / husband name',
             'ckcc_renewal_due_date' => 'CKCC renewal due date',
@@ -227,6 +228,7 @@ final class CustomerController extends Controller
             'guarantor_name'        => 'str',
             'maturity_date'         => 'date',
             'purpose'               => 'str',
+            'facility_type'         => 'str',
         ] as $column => $kind) {
             if (!$request->has($column)) {
                 continue;

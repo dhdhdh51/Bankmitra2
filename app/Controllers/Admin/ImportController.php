@@ -13,6 +13,7 @@ use App\Core\Session;
 use App\Core\Xlsx;
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\AssignmentService;
 use App\Services\ImportService;
 
 final class ImportController extends Controller
@@ -111,10 +112,135 @@ final class ImportController extends Controller
             $this->perPage($request)
         );
 
+        // How much of each batch is still unassigned, in one query rather than one per
+        // row. Shown because "assign this import again" is only a sensible thing to offer
+        // next to the number it would change.
+        $pending = [];
+        if ($imports->items !== []) {
+            $ids = array_map(static fn (array $i): int => (int) $i['id'], $imports->items);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $params2 = $ids;
+
+            $scopeSql = '';
+            if ($scoped !== null) {
+                $scopeSql = ' AND branch_id = ?';
+                $params2[] = $scoped;
+            }
+
+            foreach (Database::instance()->all(
+                "SELECT import_id,
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN assigned_agent_id IS NULL THEN 1 ELSE 0 END) AS unassigned
+                   FROM loan_accounts
+                  WHERE import_id IN ({$placeholders}){$scopeSql}
+                  GROUP BY import_id",
+                $params2
+            ) as $row) {
+                $pending[(int) $row['import_id']] = [
+                    'total'      => (int) $row['total'],
+                    'unassigned' => (int) $row['unassigned'],
+                ];
+            }
+        }
+
         $this->view($request, 'import/history', [
-            'title'   => 'Import history',
-            'imports' => $imports,
+            'title'     => 'Import history',
+            'imports'   => $imports,
+            'leadState' => $pending,
+            'agents'    => Auth::can('leads.assign') ? User::agents($scoped) : [],
+            'canAssign' => Auth::can('leads.assign'),
         ]);
+    }
+
+    /**
+     * Assign the leads of a past import, again, whenever.
+     *
+     * Assignment used to happen only in the same breath as the upload, which quietly made
+     * it a one-shot decision: whoever imported a file either picked the right agent at
+     * that moment or the leads sat unassigned until somebody selected them by hand off
+     * the borrower list. A file is not a one-time event - it is a batch that a branch
+     * works through, gets a second BC for, or has to rebalance when somebody goes on
+     * leave. So the batch stays addressable.
+     *
+     * Never steals work in progress: a lead somebody has already visited keeps its agent
+     * unless the caller explicitly asks to reassign.
+     */
+    public function assignBatch(Request $request): void
+    {
+        // Assigning is assigning, whichever screen it is started from.
+        $this->guard($request, 'leads.assign');
+
+        $id = $request->paramInt('id');
+        $import = Database::instance()->first('SELECT * FROM lead_imports WHERE id = ? LIMIT 1', [$id]);
+
+        if ($import === null) {
+            $this->back('/import/history', 'danger', 'That import could not be found.');
+        }
+
+        Auth::assertBranchAccess($import['branch_id'] === null ? null : (int) $import['branch_id']);
+
+        $mode = $request->str('assign_mode');
+        $onlyUnassigned = $request->bool('only_unassigned');
+
+        // Scoped in the query, not filtered afterwards: a branch manager acting on an
+        // all-branches import must only touch the rows that are theirs.
+        $scoped = Auth::scopedBranchId();
+        $sql = 'SELECT id FROM loan_accounts WHERE import_id = ?';
+        $params = [$id];
+
+        if ($scoped !== null) {
+            $sql .= ' AND branch_id = ?';
+            $params[] = $scoped;
+        }
+        if ($onlyUnassigned) {
+            $sql .= ' AND assigned_agent_id IS NULL';
+        }
+
+        $leadIds = array_map(
+            static fn (array $row): int => (int) $row['id'],
+            Database::instance()->all($sql . ' ORDER BY id', $params)
+        );
+
+        if ($leadIds === []) {
+            $this->back(
+                '/import/history',
+                'warning',
+                $onlyUnassigned
+                    ? 'Every lead from that import is already assigned.'
+                    : 'That import has no leads you can assign.'
+            );
+        }
+
+        if ($mode === 'distribute') {
+            $result = AssignmentService::distribute($leadIds);
+        } else {
+            $agentId = $request->nullableInt('agent_id');
+            if ($agentId === null || $agentId <= 0) {
+                $this->back('/import/history', 'danger', 'Choose an agent, or choose to distribute evenly.');
+            }
+
+            $agent = User::find($agentId);
+            if ($agent === null || !Auth::canAccessBranch($agent['branch_id'] === null ? null : (int) $agent['branch_id'])) {
+                $this->back('/import/history', 'danger', 'That agent is not available to you.');
+            }
+
+            // Reassign semantics, because these leads may well already have an owner -
+            // which is the whole reason somebody is on this screen a second time.
+            $result = AssignmentService::assign($leadIds, $agentId, true);
+        }
+
+        $message = sprintf(
+            '%d lead(s) from %s assigned, %d skipped.',
+            $result['updated'],
+            e((string) $import['original_name']),
+            $result['skipped']
+        );
+
+        if ($result['messages'] !== []) {
+            $message .= ' ' . e(implode(' ', array_slice($result['messages'], 0, 4)));
+        }
+
+        $this->back('/import/history', $result['updated'] > 0 ? 'success' : 'warning', $message);
     }
 
     /** Downloads the rejected-rows CSV for one import. */

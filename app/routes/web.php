@@ -77,6 +77,9 @@ return static function (Router $router): void {
     $router->get('/import/history', [ImportController::class, 'history']);
     $router->get('/import/template', [ImportController::class, 'template']);
     $router->get('/import/{id}/errors', [ImportController::class, 'errors']);
+    // Assigning a past batch again. Registered after the literal segments above so a
+    // path is never read as an id.
+    $router->post('/import/{id}/assign', [ImportController::class, 'assignBatch']);
 
     // ---- Branches --------------------------------------------------------
     $router->get('/branches', [BranchController::class, 'index']);

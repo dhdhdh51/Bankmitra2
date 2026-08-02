@@ -45,7 +45,8 @@ final class LoanAccount
                    la.closure_amount, la.manual_overrides,
                    la.asset_classification, la.interest_rate, la.installment_amount,
                    la.last_payment_date, la.last_payment_amount, la.days_past_due,
-                   la.security_value, la.guarantor_name, la.maturity_date, la.purpose";
+                   la.security_value, la.guarantor_name, la.maturity_date, la.purpose,
+                   la.facility_type";
 
     /** The joined borrower / branch / agent columns every screen also reads. */
     private const JOINED_COLUMNS = "c.name AS customer_name, c.father_husband_name, c.village, c.address,
@@ -495,6 +496,16 @@ final class LoanAccount
         'guarantor_name'        => 'Guarantor name',
         'maturity_date'         => 'Maturity date',
         'purpose'               => 'Purpose',
+        // A product name is not always a facility name, so the derived value has to be
+        // correctable - and the correction has to survive the next import like any other.
+        'facility_type'         => 'Facility (KCC / OD-2)',
+    ];
+
+    /** The facilities that have their own renewal queue. */
+    public const FACILITIES = [
+        'kcc'   => 'KCC',
+        'od2'   => 'OD-2',
+        'other' => 'Other',
     ];
 
     /** Which columns on this row a human has overridden. @return list<string> */

@@ -180,7 +180,31 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                <?php foreach ($fields as $field => $meta): ?>
+                                <?php
+                                /*
+                                 * Split before rendering: the rows that matter first.
+                                 *
+                                 * Detection knows 35 columns, and a real file carries eight
+                                 * or ten of them. Listing every field in one table meant
+                                 * twenty-five consecutive rows reading "not in this file",
+                                 * and the two or three that actually needed checking were
+                                 * lost somewhere in the middle of it. The full list is still
+                                 * reachable - manual mapping is the entire point of this
+                                 * screen - it is just no longer the first thing you wade
+                                 * through.
+                                 */
+                                $mappedFields = [];
+                                $unmappedFields = [];
+                                foreach ($fields as $field => $meta) {
+                                    if (isset($detected[$field])
+                                        || in_array($field, $result['missing_required'], true)) {
+                                        $mappedFields[$field] = $meta;
+                                        continue;
+                                    }
+                                    $unmappedFields[$field] = $meta;
+                                }
+                                ?>
+                                <?php foreach ($mappedFields as $field => $meta): ?>
                                     <?php
                                     $hit = $detected[$field] ?? null;
                                     $chosenIndex = $hit === null ? null : (int) $hit['index'];
@@ -205,7 +229,7 @@
                                             <select class="form-select form-select-sm"
                                                     name="column_map[<?= e($field) ?>]">
                                                 <option value="-1"<?= $chosenIndex === null ? ' selected' : '' ?>>
-                                                    &mdash; not in this file &mdash;
+                                                    not in this file
                                                 </option>
                                                 <?php foreach ($result['headings'] as $index => $heading): ?>
                                                     <option value="<?= e((string) $index) ?>"
@@ -228,8 +252,8 @@
                                                     static fn (string $v): string => mb_substr($v, 0, 24),
                                                     $columnSamples[$chosenIndex]
                                                 ))) ?>
-                                            <?php else: ?>
-                                                &mdash;
+                                            <?php elseif ($isMissing): ?>
+                                                <span class="text-danger">pick the column above</span>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -237,6 +261,61 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <?php if ($unmappedFields !== []): ?>
+                            <?php
+                            /*
+                             * The columns this file does not have.
+                             *
+                             * Closed by default and counted in the summary, because the
+                             * answer for every one of them is the same and an operator
+                             * does not need to read it twenty-five times. Still a real
+                             * form: anything picked in here maps exactly as it would
+                             * above, which matters when a heading is too unusual for
+                             * detection to recognise.
+                             */
+                            ?>
+                            <details class="mb-3">
+                                <summary style="cursor:pointer;font-size:.8125rem;color:var(--lrms-primary)">
+                                    <?= e((string) count($unmappedFields)) ?>
+                                    more field<?= count($unmappedFields) === 1 ? '' : 's' ?>
+                                    are not in this file &mdash; open to map one by hand
+                                </summary>
+
+                                <div class="lrms-table-wrap mt-2">
+                                    <table class="lrms-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:40%">Field</th>
+                                                <th>Column in your file</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        <?php foreach ($unmappedFields as $field => $meta): ?>
+                                            <tr>
+                                                <td><strong><?= e($meta['label']) ?></strong></td>
+                                                <td>
+                                                    <select class="form-select form-select-sm"
+                                                            name="column_map[<?= e($field) ?>]">
+                                                        <option value="-1" selected>
+                                                            not in this file
+                                                        </option>
+                                                        <?php foreach ($result['headings'] as $index => $heading): ?>
+                                                            <option value="<?= e((string) $index) ?>">
+                                                                <?= e(trim($heading) === ''
+                                                                    ? 'Column ' . ($index + 1)
+                                                                    : $heading) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        <?php endif; ?>
 
                         <?php if (($result['branches_to_create'] ?? []) !== []): ?>
                             <div class="alert alert-info">
