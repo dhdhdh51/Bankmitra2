@@ -1417,6 +1417,8 @@ INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
   ('roles.view',            'Roles',       'View roles and permissions'),
   ('roles.manage',          'Roles',       'Manage roles and permission sets'),
 
+  ('tracking.view',         'Tracking',    "View an agent's location trail on a map"),
+
   ('customers.view',        'Customers',   'View customers and leads'),
   ('customers.create',      'Customers',   'Add a borrower and loan account by hand'),
   ('customers.update',      'Customers',   'Update customer details'),
@@ -1468,6 +1470,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 2, `id` FROM `permissions` WHERE `code` IN (
     'dashboard.view','customers.view','customers.create','customers.update','users.view',
+    'tracking.view',
     'leads.assign','leads.reassign','leads.close',
     'visits.view','promises.view','promises.update',
     'reports.view','reports.export','notifications.view','import.view',
@@ -1503,6 +1506,11 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 3, `id` FROM `permissions` WHERE `code` IN (
     'dashboard.view','customers.view','customers.view_pii','customers.create','customers.update',
     'custom_fields.manage',
+    -- Their own trail, and only their own - the page pins an agent to themselves. Somebody
+    -- whose movements are recorded should be able to see what was recorded, and
+    -- TrackingService::trailFor() already skips the audit entry when the viewer is the
+    -- subject, which is the same judgement made in code long before this screen existed.
+    'tracking.view',
     'visits.view','visits.create','promises.view','notifications.view'
   );
 

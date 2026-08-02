@@ -26,6 +26,7 @@ use App\Controllers\Admin\RoleController;
 use App\Controllers\Admin\ScorecardController;
 use App\Controllers\Admin\SettingsController;
 use App\Controllers\Admin\SssController;
+use App\Controllers\Admin\TrackingController;
 use App\Controllers\Admin\UserController;
 use App\Controllers\Admin\VisitController;
 use App\Core\Auth;
@@ -149,6 +150,9 @@ return static function (Router $router): void {
 
     // ---- Settings --------------------------------------------------------
     $router->form('/settings', [SettingsController::class, 'index']);
+
+    // ---- Where an agent's day was recorded --------------------------------
+    $router->get('/tracking', [TrackingController::class, 'index']);
 
     // ---- Protected media (photos, documents) -----------------------------
     $router->get('/media', [MediaController::class, 'show']);

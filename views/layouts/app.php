@@ -121,6 +121,19 @@ $unread = $unreadNotifications ?? 0;
                 </a>
             <?php endif; ?>
 
+            <?php
+            /*
+             * The trail sits with the recovery work, not under BC Performance: it is not a
+             * score and nothing is ranked on it. An agent sees it too - it is their own
+             * movements, and somebody who is recorded should be able to see the recording.
+             */
+            ?>
+            <?php if (can('tracking.view')): ?>
+                <a class="lrms-nav-item<?= active_nav('/tracking', $currentPath) ?>" href="<?= e(url('/tracking')) ?>">
+                    <?= icon('map-pin') ?> <?= is_agent() ? 'My Location Trail' : 'Location Trail' ?>
+                </a>
+            <?php endif; ?>
+
             <?php if (can('scorecard.view') || can('bc_targets.view') || can('sss.view')): ?>
                 <div class="lrms-nav-label">BC Performance</div>
 
