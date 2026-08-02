@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">D2 Recovery</string>
+    <string name="app_name" translatable="false">D2 Recovery Solutions &amp; Services</string>
     <string name="app_full_name">Loan Recovery Management System</string>
 
     <!-- ==================== Customer data sheet ==================== -->
@@ -213,7 +213,7 @@
     <string name="account_change_password">Change password</string>
     <string name="account_dark_mode">Dark mode</string>
     <string name="account_sign_out">Sign out</string>
-    <string name="account_sign_out_confirm">Sign out of D2 Recovery?</string>
+    <string name="account_sign_out_confirm">Sign out of D2 Recovery Solutions &amp; Services?</string>
     <string name="account_about">About</string>
     <string name="account_my_stats">My performance</string>
     <string name="account_assigned">Assigned</string>
@@ -240,7 +240,7 @@
     <string name="npa_badge" translatable="false">NPA</string>
     <string name="required_marker" translatable="false">*</string>
     <string name="update_required_title">Update required</string>
-    <string name="update_required_message">This version of D2 Recovery is no longer supported. Please install the latest version to continue.</string>
+    <string name="update_required_message">This version of D2 Recovery Solutions &amp; Services is no longer supported. Please install the latest version to continue.</string>
 
     <string name="account_version_format">Version %1$s (build %2$d)</string>
     <string name="visit_submitted_from">Submitted from %1$s v%2$s on %3$s. This record is append-only and has not been edited.</string>
@@ -409,7 +409,7 @@
     <string name="visit_sp_cbc_name">SP / CBC name</string>
 
     <!-- ===== The printed form's own sections =====
-         Wording follows the D2 Recovery "Field Visit Verification Report" so an agent
+         Wording follows the D2 Recovery Solutions &amp; Services "Field Visit Verification Report" so an agent
          holding the paper form finds the same words on the screen. -->
     <string name="visit_section_documents_verified">7. Documents verified</string>
     <string name="visit_section_documents_verified_helper">What the borrower actually produced, whether or not you photographed it</string>

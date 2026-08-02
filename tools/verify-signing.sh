@@ -140,7 +140,7 @@ keytool -genkeypair -v \
     -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
     -alias "$KEY_ALIAS" \
     -keyalg RSA -keysize 2048 -validity 30 \
-    -dname 'CN=D2 Recovery Signing Test, OU=CI, O=D2 Recovery, L=Pune, S=MH, C=IN' \
+    -dname 'CN=D2 Recovery Signing Test, OU=CI, O=D2 Recovery Solutions & Services, L=Pune, S=MH, C=IN' \
     > "$WORK/keytool.log" 2>&1 || die 'keytool could not create the test keystore'
 
 # Encode and decode exactly the way KEYSTORE_BASE64 is handled in CI.

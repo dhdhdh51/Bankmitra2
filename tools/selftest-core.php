@@ -555,7 +555,7 @@ file_put_contents($templatePath, Xlsx::build(
     'Lead Template',
     $templateHeadings,
     [$templateRow],
-    'D2 Recovery Lead Import Template',
+    'D2 Recovery Solutions & Services Lead Import Template',
     'sample'
 ));
 $templateRead = XlsxReader::read($templatePath);

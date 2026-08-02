@@ -9,7 +9,7 @@
 
 use App\Core\Settings;
 
-$appName = Settings::get('app_name', 'D2 Recovery') ?? 'D2 Recovery';
+$appName = Settings::get('app_name', 'D2 Recovery Solutions & Services') ?? 'D2 Recovery Solutions & Services';
 ?>
 <!doctype html>
 <html lang="en" data-theme="light">

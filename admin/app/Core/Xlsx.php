@@ -336,8 +336,8 @@ final class Xlsx
             . 'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
             . 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
             . '<dc:title>' . self::escape($title) . '</dc:title>'
-            . '<dc:creator>D2 Recovery</dc:creator>'
-            . '<cp:lastModifiedBy>D2 Recovery</cp:lastModifiedBy>'
+            . '<dc:creator>D2 Recovery Solutions & Services</dc:creator>'
+            . '<cp:lastModifiedBy>D2 Recovery Solutions & Services</cp:lastModifiedBy>'
             . '<dcterms:created xsi:type="dcterms:W3CDTF">' . $now . '</dcterms:created>'
             . '<dcterms:modified xsi:type="dcterms:W3CDTF">' . $now . '</dcterms:modified>'
             . '</cp:coreProperties>';
@@ -347,7 +347,7 @@ final class Xlsx
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
-            . '<Application>D2 Recovery</Application></Properties>';
+            . '<Application>D2 Recovery Solutions & Services</Application></Properties>';
     }
 
     /** Excel forbids : \ / ? * [ ] and a 31-character limit. */

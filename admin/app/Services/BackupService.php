@@ -238,7 +238,7 @@ final class BackupService
 
         $database = (string) Config::require('db.name');
 
-        fwrite($handle, "-- D2 Recovery database backup\n");
+        fwrite($handle, "-- D2 Recovery Solutions & Services database backup\n");
         fwrite($handle, '-- Database: ' . $database . "\n");
         fwrite($handle, '-- Generated: ' . date('Y-m-d H:i:s') . "\n");
         fwrite($handle, "-- Method: pure PHP (mysqldump unavailable)\n\n");

@@ -1,5 +1,5 @@
 -- ============================================================================
--- D2 Recovery - Loan Recovery Management System
+-- D2 Recovery Solutions & Services - Loan Recovery Management System
 -- MySQL 5.7+ / 8.0+ / MariaDB 10.3+ schema
 --
 -- Charset:   utf8mb4 / utf8mb4_unicode_ci
@@ -1681,7 +1681,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 -- ============================================================================
 
 INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `options`, `is_secret`, `is_required`, `hint`, `sort_order`) VALUES
-  ('app_name',           'D2 Recovery',     'general', 'Application name',        'text', NULL,     0, 0, 'Shown in the header and on exports', 1),
+  ('app_name',           'D2 Recovery Solutions & Services', 'general', 'Application name',        'text', NULL,     0, 0, 'Shown in the header and on exports', 1),
   ('bank_name',          '',                'general', 'Bank / institution name', 'text', NULL,     0, 1, 'Printed on report headers',          2),
   -- The masthead of the Field Visit Verification Report. Deliberately NOT bank_name:
   -- the form is the recovery agency's own document, filed WITH a bank, and printing the
@@ -1699,13 +1699,13 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   ('smtp_password',      '',                'smtp',    'SMTP password',           'password', NULL, 1, 0, '', 4),
   ('smtp_encryption',    'tls',             'smtp',    'SMTP encryption',         'select', 'tls,ssl,none',   0, 0, '', 5),
   ('smtp_from_email',    '',                'smtp',    'From email',              'text', NULL,     0, 0, '', 6),
-  ('smtp_from_name',     'D2 Recovery',     'smtp',    'From name',               'text', NULL,     0, 0, '', 7),
+  ('smtp_from_name',     'D2 Recovery Solutions & Services', 'smtp', 'From name',               'text', NULL,     0, 0, '', 7),
 
   ('sms_provider',       '',                'sms',     'SMS provider',            'text', NULL,     0, 1, 'e.g. msg91, textlocal, custom', 1),
   ('sms_api_url',        '',                'sms',     'SMS API URL',             'text', NULL,     0, 1, 'Placeholders: {mobile} {message}', 2),
   ('sms_api_key',        '',                'sms',     'SMS API key',             'password', NULL, 1, 1, '', 3),
   ('sms_sender_id',      '',                'sms',     'SMS sender ID',           'text', NULL,     0, 0, '', 4),
-  ('sms_otp_template',   'Your D2 Recovery OTP is {otp}. Valid for 10 minutes.', 'sms', 'OTP template', 'textarea', NULL, 0, 0, 'Use {otp}', 5),
+  ('sms_otp_template',   'Your D2 Recovery Solutions & Services OTP is {otp}. Valid for 10 minutes.', 'sms', 'OTP template', 'textarea', NULL, 0, 0, 'Use {otp}', 5),
 
   ('google_maps_key',    '',                'integrations', 'Google Maps API key', 'password', NULL, 1, 0, 'Static map previews only - no tracking', 1),
   ('firebase_server_key','',                'integrations', 'Firebase server key', 'password', NULL, 1, 0, 'FCM push notifications', 2),

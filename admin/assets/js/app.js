@@ -1,5 +1,5 @@
 /* ==========================================================================
-   D2 Recovery admin panel behaviour.
+   D2 Recovery Solutions & Services admin panel behaviour.
    Vanilla JS - Bootstrap's bundle (CDN) provides dropdowns/modals/tooltips.
    ========================================================================== */
 (function () {

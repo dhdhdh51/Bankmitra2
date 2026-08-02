@@ -105,7 +105,7 @@ $pending = $db->all(
 printf("  %d agent(s) with no SSS entry yet\n\n", count($pending));
 
 $message = 'प्रिय BC, आज अभी तक आपके द्वारा कोई SSS (APY/PMJJBY/PMSBY) नामांकन दर्ज नहीं किया गया है। '
-    . 'कृपया आज का लक्ष्य पूरा करें और ऐप में रिपोर्ट अपडेट करें। – D2 Recovery Solutions';
+    . 'कृपया आज का लक्ष्य पूरा करें और ऐप में रिपोर्ट अपडेट करें। – D2 Recovery Solutions & Services';
 
 $reminded = 0;
 $mailed = 0;
@@ -188,7 +188,7 @@ foreach ($pending as $agent) {
             'शाखा : ' . (string) ($agent['branch_name'] ?? '-'),
             'दिनांक : ' . date('d/m/Y', strtotime($date)),
             '',
-            $bank !== '' ? $bank . ' · D2 Recovery' : 'D2 Recovery',
+            $bank !== '' ? $bank . ' · D2 Recovery Solutions & Services' : 'D2 Recovery Solutions & Services',
         ]), ENT_QUOTES, 'UTF-8')
         . '</pre>';
 
