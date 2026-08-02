@@ -516,26 +516,35 @@ final class VisitController extends Controller
             if (($report['approval_remarks'] ?? '') !== '') {
                 $pdf->paragraph('Remarks: ' . (string) $report['approval_remarks'], 8.6, '#1c2128');
             }
-
-            $approvalCells = [];
-            if (($report['approval_photo_path'] ?? null) !== null) {
-                $approvalCells[] = [
-                    'path'    => Uploader::absolutePath((string) $report['approval_photo_path']),
-                    'label'   => 'Approver Photograph',
-                    'caption' => Geo::approval($report),
-                ];
-            }
-            if ($approvalCells !== []) {
-                $pdf->imageStrip($approvalCells, 84.0);
-            }
-
-            // The approver signs the paper too. Their photograph is above it for the
-            // same reason the agent's is: a name typed into a field is not a witness.
-            $pdf->signatureBlock([[
-                'label'   => 'Approver Signature',
-                'caption' => (string) ($report['approver_name'] ?? 'Approver') . "\nDate:",
-            ]], 54.0);
         }
+
+        // The approving officer gets exactly what the agent gets: their photograph, and
+        // an empty box beneath it to sign by hand.
+        //
+        // PRINTED IN BOTH STATES, and that is the point of this block rather than an
+        // oversight in it. The copy somebody prints in order to sign it is precisely the
+        // one that has not been approved yet - so putting the box behind "approved"
+        // produced a form with nowhere for the manager to sign at the only moment they
+        // would want to. The box is empty either way; nothing fills it but a pen.
+        if (($report['approval_photo_path'] ?? null) !== null) {
+            $pdf->imageStrip([[
+                'path'    => Uploader::absolutePath((string) $report['approval_photo_path']),
+                'label'   => 'Approver Photograph (at the approval)',
+                'caption' => (string) ($report['approver_name'] ?? '') . "\n" . Geo::approval($report),
+            ]], 84.0);
+        } elseif ($status !== 'pending') {
+            // Only worth saying once somebody HAS approved it. On a pending report there
+            // is no approver yet, so an absent photograph is not a fact about anything.
+            $pdf->paragraph('No photograph of the approver was taken at the approval.', 8.4, '#8a5a00');
+        }
+
+        $approverName = trim((string) ($report['approver_name'] ?? ''));
+        $pdf->signatureBlock([[
+            'label'   => 'Approver Signature',
+            // Named when known, and a role when not: a box labelled only "Signature" on
+            // an unapproved report tells whoever picks it up nothing about who signs it.
+            'caption' => ($approverName !== '' ? $approverName : 'Branch Manager / Admin') . "\nDate:",
+        ]], 60.0, 16.0, 2);
 
         // ---- Operator-defined fields ----------------------------------------
         // Only those marked "print on the visit report". Off by default, because a

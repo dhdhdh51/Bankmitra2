@@ -372,15 +372,20 @@ final class Pdf
      * "nothing to show" is a form nobody can sign.
      *
      * @param list<array{label?:string,caption?:string}> $items
+     * @param int $columns Width the cells to this many columns rather than to the number
+     *                     of items. A lone signature stretched across the full page reads
+     *                     as a different kind of field from the two half-width boxes above
+     *                     it; on a form, boxes that mean the same thing should be the same
+     *                     size. 0 means "as many columns as there are items".
      */
-    public function signatureBlock(array $items, float $height = 60.0, float $gap = 16.0): void
+    public function signatureBlock(array $items, float $height = 60.0, float $gap = 16.0, int $columns = 0): void
     {
         $items = array_values($items);
         if ($items === []) {
             return;
         }
 
-        $count = count($items);
+        $count = max($columns, count($items));
         $cellWidth = ($this->contentWidth() - ($gap * ($count - 1))) / $count;
 
         $labelSpace = 0.0;
@@ -1155,12 +1160,26 @@ final class Pdf
             $converted = preg_replace('/[^\x20-\x7E]/', '?', $string) ?? '';
         }
 
-        // Drop control characters and stray transliteration artefacts.
-        return preg_replace('/[\x00-\x1F\x7F]/', '', $converted) ?? '';
+        // Drop control characters and stray transliteration artefacts - but NOT the
+        // newline, which is the one control character that carries meaning here.
+        //
+        // It used to be stripped along with the rest, and that quietly broke every
+        // multi-line caption on the printed report: wrap() splits on "\n", but this ran
+        // first, so "Suresh Yadav\nBC0007\n26.912400, 75.787300" reached it as one
+        // unbroken run and printed as "Suresh YadavBC000726.912400, 75.787300". Every
+        // test passed, because each phrase was individually present in the bytes.
+        // Callers that draw a single line are protected in escape() instead.
+        return preg_replace('/[\x00-\x09\x0B-\x1F\x7F]/', '', $converted) ?? '';
     }
 
     private static function escape(string $text): string
     {
+        // A newline is legal inside a PDF literal string and means a newline CHARACTER,
+        // not a line break on the page - the text operator draws one line wherever the
+        // cursor is. So anything reaching a single-line draw with a newline still in it
+        // becomes a space. wrap() has already split the ones that were meant to break.
+        $text = str_replace("\n", ' ', $text);
+
         return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $text);
     }
 
