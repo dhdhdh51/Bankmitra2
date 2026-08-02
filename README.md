@@ -686,7 +686,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
 | Integration | `sh tools/integration-test.sh` | **780** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, and a second phone number that no import can flatten |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **417** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
+| Panel smoke | `sh tools/smoke-panel.sh` | **430** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -705,7 +705,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,117 assertions total** — the sum of the bold counts above, counting the seven
+**2,130 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

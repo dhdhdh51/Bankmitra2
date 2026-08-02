@@ -1925,6 +1925,53 @@ foreach (['agent_id=99999', 'agent_id=', 'branch_id=99999', 'unassigned=1', 'sta
     );
 }
 
+// Everything added to the edit form since - the second phone number, the passbook figures,
+// the standing note - has to be editable BY THE AGENT, or it is a form for head office
+// about a doorstep head office never stands at. Proven by saving as the agent and reading
+// it back, not by reasoning about the permission grant.
+if ($ownLeadId > 0) {
+    $agentDoorForm = request($base . '/customers/' . $ownLeadId . '/edit');
+    foreach ([
+        'alt_mobile'       => 'a second phone number',
+        'alt_mobile_label' => 'whose number it is',
+        'sanction_limit'   => 'the sanction limit off the passbook',
+        'drawing_power'    => 'the drawing power',
+        'interest_overdue' => 'the interest overdue',
+        'sanction_date'    => 'the sanction date',
+        'remarks'          => 'a standing note on the account',
+    ] as $field => $what) {
+        check("an agent's edit form offers {$what}",
+            str_contains($agentDoorForm['body'], 'name="' . $field . '"'));
+    }
+
+    $agentDoorSave = request($base . '/customers/' . $ownLeadId . '/edit', [
+        '_csrf'            => csrfToken($agentDoorForm['body']),
+        'name'             => formValue($agentDoorForm['body'], 'name'),
+        'alt_mobile'       => '9700011122',
+        'alt_mobile_label' => 'Brother',
+        'sanction_limit'   => '175000',
+        'interest_overdue' => '3300',
+        'remarks'          => 'Met the brother; borrower away at the mandi till Thursday.',
+    ]);
+    check('an agent can save all of it', $agentDoorSave['status'] === 200, 'HTTP ' . $agentDoorSave['status']);
+
+    $agentDoorProfile = request($base . '/customers/' . $ownLeadId);
+    check('the second number the agent recorded is on the profile',
+        str_contains($agentDoorProfile['body'], '9700011122')
+        || str_contains($agentDoorProfile['body'], '0011122'));
+    check('with the label they gave it', str_contains($agentDoorProfile['body'], 'Brother'));
+    check('and the note they wrote', str_contains($agentDoorProfile['body'], 'away at the mandi'));
+    check('the sanction figure they copied off the passbook is stored',
+        str_contains($agentDoorProfile['body'], '1,75,000'));
+
+    // And it is attributed to them and protected from the next import, like any other
+    // hand-edit - an agent's correction is tracked the same way anybody else's is.
+    $agentDoorAgain = request($base . '/customers/' . $ownLeadId . '/edit');
+    check('and every figure they changed is marked as hand-edited',
+        substr_count($agentDoorAgain['body'], 'Hand-edited') >= 2,
+        substr_count($agentDoorAgain['body'], 'Hand-edited') . ' marked');
+}
+
 // An agent adds a borrower the export has not reached. This is the half of the feature
 // that matters: the branch hands them an account on paper, and building a one-row
 // spreadsheet to get it into the system is not a thing anybody does.
