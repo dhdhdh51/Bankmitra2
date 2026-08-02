@@ -194,9 +194,20 @@
 
                                         <?php if (can('users.reset_password')): ?>
                                             <li>
+                                                <?php
+                                                /*
+                                                 * One modal for the whole page, filled in from
+                                                 * whichever row opened it. It used to be one modal
+                                                 * PER USER - twenty-five copies of the same dialog,
+                                                 * each with its own form and password box, sitting
+                                                 * in the page at all times.
+                                                 */
+                                                ?>
                                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#resetModal<?= e((string) $user['id']) ?>">
+                                                        data-bs-toggle="modal" data-bs-target="#resetModal"
+                                                        data-reset-action="<?= e(url('/users/' . (int) $user['id'] . '/reset-password')) ?>"
+                                                        data-reset-name="<?= e($user['name']) ?>"
+                                                        data-reset-code="<?= e($user['employee_code']) ?>">
                                                     <?= icon('key') ?> Reset password
                                                 </button>
                                             </li>
@@ -248,40 +259,53 @@
     <?php endif; ?>
 </div>
 
-<!-- ==================== Reset password modals ==================== -->
+<?php
+/*
+ * ONE reset-password dialog for the page.
+ *
+ * There was one per user. On a full page that is twenty-five identical dialogs in the DOM,
+ * each with its own <form> and its own password input - twenty-five password boxes for a
+ * browser's password manager to offer to fill, twenty-five dialogs for a screen reader to
+ * announce, and a page several times heavier than the table it belongs to.
+ *
+ * Worse, it was only invisible because Bootstrap's CSS says `.modal { display: none }`. On a
+ * network that cannot reach the CDN - a bank's outbound filter is a real thing - every one
+ * of them rendered stacked down the page, which is exactly what "as many as there are users"
+ * looks like. Hence also the inline display:none here and the fallback rules in app.css:
+ * nothing on this page depends on a stylesheet arriving from someone else's server to stay
+ * shut.
+ *
+ * Filled in on show.bs.modal from the button that opened it - Bootstrap hands over the
+ * trigger as event.relatedTarget precisely for this.
+ */
+?>
 <?php if (can('users.reset_password')): ?>
-    <?php foreach ($users->items as $user): ?>
-        <div class="modal fade" id="resetModal<?= e((string) $user['id']) ?>" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <form class="modal-content" method="post"
-                      action="<?= e(url('/users/' . (int) $user['id'] . '/reset-password')) ?>">
-                    <?= csrf_field() ?>
-                    <div class="modal-header">
-                        <h5 class="modal-title">Reset password</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal fade" id="resetModal" tabindex="-1" aria-hidden="true" style="display:none">
+        <div class="modal-dialog modal-dialog-centered">
+            <form class="modal-content" method="post" action="" data-reset-form>
+                <?= csrf_field() ?>
+                <div class="modal-header">
+                    <h5 class="modal-title">Reset password</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted" style="font-size:.8438rem">
+                        Setting a new password for <strong data-reset-name-out></strong>
+                        (<code data-reset-code-out></code>).
+                        They will be required to change it at their next sign-in.
+                    </p>
+                    <label class="form-label" for="reset-pass">New password</label>
+                    <input type="text" class="form-control" name="password" id="reset-pass"
+                           placeholder="Leave blank to generate one automatically" autocomplete="off">
+                    <div class="form-text">
+                        The password is shown once after saving so you can pass it on.
                     </div>
-                    <div class="modal-body">
-                        <p class="text-muted" style="font-size:.8438rem">
-                            Setting a new password for <strong><?= e($user['name']) ?></strong>
-                            (<code><?= e($user['employee_code']) ?></code>).
-                            They will be required to change it at their next sign-in.
-                        </p>
-                        <label class="form-label" for="reset-pass-<?= e((string) $user['id']) ?>">
-                            New password
-                        </label>
-                        <input type="text" class="form-control" name="password"
-                               id="reset-pass-<?= e((string) $user['id']) ?>"
-                               placeholder="Leave blank to generate one automatically" autocomplete="off">
-                        <div class="form-text">
-                            The password is shown once after saving so you can pass it on.
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Reset password</button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Reset password</button>
+                </div>
+            </form>
         </div>
-    <?php endforeach; ?>
+    </div>
 <?php endif; ?>
