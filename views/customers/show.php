@@ -10,7 +10,6 @@
  * @var list<array<string,mixed>> $promises
  * @var list<array<string,mixed>> $photos
  * @var list<array<string,mixed>> $documents
- * @var list<array<string,mixed>> $signatures
  * @var list<array<string,mixed>> $otherLoans
  * @var list<array<string,mixed>> $agents
  * @var list<array<string,mixed>> $branches
@@ -559,10 +558,6 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                                         <span><?= icon('image') ?> <?= e((string) (int) $event['photo_count']) ?> photo(s)</span>
                                     <?php endif; ?>
 
-                                    <?php if ((int) ($event['signature_count'] ?? 0) > 0): ?>
-                                        <span><?= icon('pen') ?> <?= e((string) (int) $event['signature_count']) ?> signature(s)</span>
-                                    <?php endif; ?>
-
                                     <?php if (!empty($event['promise_amount'])): ?>
                                         <span><?= icon('handshake') ?>
                                             <?= e(money($event['promise_amount'], false)) ?>
@@ -651,9 +646,6 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                                         <?php if ((int) $visit['photo_count'] > 0): ?>
                                             <?= icon('image') ?> <?= e((string) (int) $visit['photo_count']) ?>
                                         <?php endif; ?>
-                                        <?php if ((int) $visit['signature_count'] > 0): ?>
-                                            <?= icon('pen') ?> <?= e((string) (int) $visit['signature_count']) ?>
-                                        <?php endif; ?>
                                         <?php if ((int) $visit['document_count'] > 0): ?>
                                             <?= icon('file') ?> <?= e((string) (int) $visit['document_count']) ?>
                                         <?php endif; ?>
@@ -733,44 +725,6 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                                         </div>
                                     </figcaption>
                                 </figure>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <!-- Signatures -->
-        <?php if ($signatures !== []): ?>
-            <div class="lrms-card mb-3">
-                <div class="lrms-card-head">
-                    <h2><?= icon('pen') ?> Signatures</h2>
-                </div>
-                <div class="lrms-card-body">
-                    <div class="row g-2">
-                        <?php foreach ($signatures as $signature): ?>
-                            <div class="col-6 col-md-4">
-                                <div class="lrms-signature">
-                                    <img src="<?= e(Url::media((string) $signature['file_path'])) ?>"
-                                         alt="<?= e($signature['signature_type']) ?> signature" loading="lazy">
-                                    <div class="cap">
-                                        <?= e($signature['signature_type'] === 'customer' ? 'borrower' : 'agent') ?>
-                                        <?php if (!empty($signature['visit_date'])): ?>
-                                            · <?= e(fmt_date((string) $signature['visit_date'], 'd M y')) ?>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div class="lrms-photo-geo mt-1" style="font-size:.6875rem">
-                                    <?php if (Geo::has($signature)): ?>
-                                        <span style="line-height:0"><?= icon('map-pin') ?></span>
-                                        <a href="<?= e(Geo::mapUrl($signature['gps_latitude'], $signature['gps_longitude'])) ?>"
-                                           target="_blank" rel="noopener noreferrer">
-                                            <?= e(Geo::coordinates($signature['gps_latitude'], $signature['gps_longitude'])) ?>
-                                        </a>
-                                    <?php else: ?>
-                                        <span class="text-muted"><?= e(Geo::signature($signature)) ?></span>
-                                    <?php endif; ?>
-                                </div>
                             </div>
                         <?php endforeach; ?>
                     </div>

@@ -8,7 +8,6 @@
  * @var array<string,mixed>|null  $ckcc  CKCC OD-2 renewal section, when filed
  * @var list<array<string,mixed>> $photos
  * @var list<array<string,mixed>> $documents
- * @var list<array<string,mixed>> $signatures
  */
 
 use App\Controllers\Admin\VisitController;
@@ -33,17 +32,9 @@ $flagBlock = static function (array $map, array $row): string {
     return $html . '</div>';
 };
 
-$signatureByType = [];
-foreach ($signatures as $signature) {
-    $signatureByType[(string) $signature['signature_type']] = $signature;
-}
-
 // How many photographs actually carry a position. Shown in the card header because
 // "6 photographs" and "6 photographs, none of which record where they were taken"
 // are very different things to be looking at before approving a report.
-// Only somebody who may correct a report may attach evidence to one.
-$canUploadSignature = \App\Core\Auth::can('visits.revise');
-
 $geoTagged = 0;
 foreach ($photos as $photo) {
     if (Geo::has($photo)) {
@@ -170,7 +161,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
         </div>
     </div>
 
-    <?php if (($report['approval_photo_path'] ?? null) !== null || ($report['approval_signature_path'] ?? null) !== null): ?>
+    <?php if (($report['approval_photo_path'] ?? null) !== null): ?>
         <div class="lrms-card-body border-top">
             <div class="d-flex flex-wrap gap-4">
                 <?php if (($report['approval_photo_path'] ?? null) !== null): ?>
@@ -178,14 +169,6 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                         <div class="lrms-stat-label mb-1">Approver photograph</div>
                         <img src="<?= e(Url::media((string) $report['approval_photo_path'])) ?>"
                              alt="Approver photograph"
-                             style="height:110px;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
-                    </div>
-                <?php endif; ?>
-                <?php if (($report['approval_signature_path'] ?? null) !== null): ?>
-                    <div>
-                        <div class="lrms-stat-label mb-1">Approver signature</div>
-                        <img src="<?= e(Url::media((string) $report['approval_signature_path'])) ?>"
-                             alt="Approver signature"
                              style="height:110px;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
                     </div>
                 <?php endif; ?>
@@ -588,89 +571,17 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 
     <!-- Right column: attachments -->
     <div class="col-xl-4">
-        <div class="lrms-card mb-3">
-            <div class="lrms-card-head">
-                <h2><?= icon('pen') ?> Signatures</h2>
-            </div>
-            <div class="lrms-card-body">
-                <?php foreach (['customer' => 'Borrower signature', 'agent' => 'Agent signature'] as $type => $label): ?>
-                    <div class="mb-3">
-                        <div class="text-muted mb-1" style="font-size:.6875rem;text-transform:uppercase;letter-spacing:.05em;font-weight:650">
-                            <?= e($label) ?>
-                        </div>
-                        <?php if (isset($signatureByType[$type])): ?>
-                            <?php $signature = $signatureByType[$type]; ?>
-                            <div class="lrms-signature">
-                                <img src="<?= e(Url::media((string) $signature['file_path'])) ?>"
-                                     alt="<?= e($label) ?>">
-                                <?php if (!empty($signature['signed_name'])): ?>
-                                    <div class="cap"><?= e($signature['signed_name']) ?></div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="lrms-photo-geo mt-1" style="padding-left:2px">
-                                <?php if (Geo::has($signature)): ?>
-                                    <span style="line-height:0"><?= icon('map-pin') ?></span>
-                                    <a href="<?= e(Geo::mapUrl($signature['gps_latitude'], $signature['gps_longitude'])) ?>"
-                                       target="_blank" rel="noopener noreferrer">
-                                        <?= e(Geo::coordinates($signature['gps_latitude'], $signature['gps_longitude'])) ?>
-                                    </a>
-                                    <?php if (($signature['gps_accuracy_m'] ?? null) !== null): ?>
-                                        <span class="<?= Geo::isPrecise($signature['gps_accuracy_m']) ? 'text-muted' : 'lrms-geo-coarse' ?>">
-                                            <?= e(Geo::accuracy($signature['gps_accuracy_m'])) ?>
-                                        </span>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <span class="text-muted"><?= e(Geo::signature($signature)) ?></span>
-                                <?php endif; ?>
-                            </div>
-                        <?php else: ?>
-                            <div class="lrms-signature" style="background:var(--lrms-bg);padding:20px 8px">
-                                <span class="text-muted" style="font-size:.8125rem">Not captured</span>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php
-                        // Uploading an image is offered only where nothing was drawn on
-                        // the device. A pad signature was made in front of the person
-                        // signing it; replacing that with a photograph from a desk is a
-                        // downgrade, and the server refuses it too.
-                        $isPadSignature = isset($signatureByType[$type])
-                            && (string) ($signatureByType[$type]['capture_method'] ?? 'device_pad') === 'device_pad';
-                        ?>
-                        <?php if ($canUploadSignature && !$isPadSignature): ?>
-                            <form method="post" action="<?= e(url('/visits/' . $report['id'] . '/signature')) ?>"
-                                  enctype="multipart/form-data" class="mt-2" data-no-double-submit>
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="signature_type" value="<?= e($type) ?>">
-                                <details>
-                                    <summary style="font-size:.75rem;cursor:pointer;color:var(--lrms-primary)">
-                                        <?= isset($signatureByType[$type]) ? 'Replace the uploaded image' : 'Upload an image of the signature' ?>
-                                    </summary>
-                                    <div class="mt-2">
-                                        <input type="file" class="form-control form-control-sm mb-2"
-                                               name="signature_file" required
-                                               accept="image/jpeg,image/png,image/webp">
-                                        <input type="text" class="form-control form-control-sm mb-2"
-                                               name="signed_name" maxlength="150"
-                                               placeholder="Name as signed (optional)"
-                                               value="<?= e($type === 'agent' ? (string) $report['agent_name'] : (string) $report['customer_name']) ?>">
-                                        <input type="text" class="form-control form-control-sm mb-2"
-                                               name="uploaded_note" maxlength="255"
-                                               placeholder="Why is this being uploaded? (optional)">
-                                        <p class="text-muted mb-2" style="font-size:.6875rem">
-                                            It will print as an uploaded image with no position, because the
-                                            only position available now is this office.
-                                        </p>
-                                        <button type="submit" class="btn btn-sm btn-outline-primary">Attach</button>
-                                    </div>
-                                </details>
-                            </form>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
+        <?php
+        /*
+         * There is no Signatures card here any more, and its absence is the feature.
+         *
+         * Signatures used to be drawn on the phone with a fingertip. Nobody accepts a
+         * fingertip scrawl across a counter, so the printed report now carries empty
+         * ruled boxes and the borrower and the agent sign the paper. Nothing to show on
+         * screen, because nothing is captured - and a card reading "Not captured" twice
+         * on every report is worse than no card.
+         */
+        ?>
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
                 <h2><?= icon('image') ?> Photographs</h2>

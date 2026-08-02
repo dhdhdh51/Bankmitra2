@@ -58,7 +58,7 @@ final class CustomerController extends Controller
 
     /**
      * Full customer profile: loan info, promise history, visit history, photos,
-     * documents, signatures and the append-only timeline.
+     * documents and the append-only timeline.
      */
     public function show(Request $request): void
     {
@@ -92,7 +92,6 @@ final class CustomerController extends Controller
             'promises'     => Promise::forLoanAccount($id),
             'photos'       => VisitReport::photosForLoanAccount($id),
             'documents'    => VisitReport::documentsForLoanAccount($id),
-            'signatures'   => VisitReport::signaturesForLoanAccount($id),
             'otherLoans'   => Customer::loanAccounts((int) $lead['customer_id']),
             'agents'       => Auth::can('leads.assign') ? User::agents($scoped ?? (int) $lead['branch_id']) : [],
             'branches'     => Auth::can('leads.transfer') ? Branch::options($scoped) : [],

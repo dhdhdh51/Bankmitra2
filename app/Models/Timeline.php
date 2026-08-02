@@ -82,8 +82,7 @@ final class Timeline
                     vr.customer_met, vr.house_locked, vr.promise_amount AS visit_promise_amount,
                     vr.promise_date AS visit_promise_date,
                     p.promise_amount, p.promise_date, p.status AS promise_status,
-                    (SELECT COUNT(*) FROM photos ph WHERE ph.visit_report_id = vh.visit_report_id) AS photo_count,
-                    (SELECT COUNT(*) FROM signatures s WHERE s.visit_report_id = vh.visit_report_id) AS signature_count
+                    (SELECT COUNT(*) FROM photos ph WHERE ph.visit_report_id = vh.visit_report_id) AS photo_count
                FROM visit_history vh
                LEFT JOIN visit_reports vr ON vr.id = vh.visit_report_id
                LEFT JOIN promises p ON p.id = vh.promise_id

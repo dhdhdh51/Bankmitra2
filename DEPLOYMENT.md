@@ -152,7 +152,7 @@ public_html/
 ├── assets/            ← CSS and JS (public)
 ├── cron/              ← scheduled scripts
 ├── storage/           ← logs, backups, import files (blocked)
-└── uploads/           ← photos and signatures (served only via PHP)
+└── uploads/           ← photos and documents (served only via PHP)
 ```
 
 ### 3.2 Configuration
@@ -682,16 +682,16 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 236 checks — crypto, JWT, XLSX, PDF (including image embedding), geo wording, validator, paginator, key validation |
-| `sh tools/verify-schema.sh` | 24 checks — 35 tables, 57 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
-| `sh tools/integration-test.sh` | 752 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
+| `php tools/selftest-core.php` | 242 checks — crypto, JWT, XLSX, PDF (including image embedding and the blank signature boxes), geo wording, validator, paginator, key validation |
+| `sh tools/verify-schema.sh` | 24 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
+| `sh tools/integration-test.sh` | 744 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo |
 | `sh tools/verify-upgrade-sql.sh` | 17 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 324 panel + 227 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 225 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 319 panel + 226 API checks over real HTTP |
+| `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
-| `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
+| `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
 
 The Docker-based scripts need Docker; the rest need only PHP.
@@ -1416,6 +1416,8 @@ Confirm it landed:
 SELECT COUNT(*) FROM `role_permissions` WHERE `role_id` = 3;   -- 9
 SELECT COUNT(*) FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'loan_accounts';   -- 45
+-- The signatures table existed at this release and is dropped by a later one, so
+-- this count only holds until you apply "Removing captured signatures" below.
 SELECT COUNT(*) FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'signatures';       -- 16
 
@@ -1530,6 +1532,59 @@ agent's control over the daily alarm and makes it repeat until the report is fil
 
 An older APK against the new server keeps working; it simply still shows its own reminder
 controls and still asks about location separately.
+
+### Removing captured signatures on an existing install
+
+Signatures are no longer captured anywhere — not on the phone, not from a desk. The
+printed visit report now carries **empty ruled boxes** under the agent's photograph, and
+the borrower and the agent sign the paper after it is printed. The approver signs the
+same way.
+
+The reason is not technical. A signature drawn with a fingertip on a 5-inch screen is
+not something anybody accepts across a counter, and a bank that has to produce a signed
+acknowledgement needs the signed acknowledgement, not a photograph of a squiggle.
+
+**This deletes data.** `signatures` holds every mark ever captured, and the files sit
+under `uploads/signatures/`. Take a backup first — `cron/backup.php` or a phpMyAdmin
+export — and keep it, because nothing here can be undone.
+
+```sql
+-- 1. The table, and the approver's stored signature with it.
+DROP TABLE IF EXISTS `signatures`;
+
+ALTER TABLE `visit_reports`
+  DROP COLUMN `approval_signature_path`;
+```
+
+The image files are not removed by that. Once you are satisfied nothing is missing,
+delete `uploads/signatures/` from the file manager; until you do, they simply sit there
+unreferenced and unservable — `/media` refuses any file it cannot trace back to a
+photo, a document or an approval, so an orphan is never served.
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM information_schema.tables
+ WHERE table_schema = DATABASE() AND table_name = 'signatures';        -- 0
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'visit_reports'
+   AND column_name LIKE 'approval%';                                   -- 9
+```
+
+Afterwards:
+
+- **Print a visit report and look at it.** Under "Signatures" you should see the agent's
+  photograph from the visit, then two bordered boxes — "Borrower Signature / Thumb
+  Impression" and "BC / DC Agent Signature" — each with a rule to sign above and a name
+  and date line beneath. The approval section carries a third box.
+- **A new APK is required.** The signature pad is gone from the app, and an older APK
+  will keep offering it: the agent can still draw one, the upload will be accepted as a
+  field the server now ignores, and nothing will appear on the report. Roll the new APK
+  out before you run this, or the agents' work goes nowhere for as long as the two are
+  out of step.
+- The visit report screen in the panel loses its Signatures card, and the approval form
+  no longer asks the approver for an image. Everything else — photographs, documents,
+  positions, the approval photograph — is untouched.
 
 ### Renaming to D2 Recovery on an existing install
 

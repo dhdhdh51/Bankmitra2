@@ -230,8 +230,7 @@ final class VisitReport
                     vr.promise_amount, vr.promise_date, vr.remarks, vr.current_status,
                     vr.outstanding_amount, vr.overdue_amount,
                     (SELECT COUNT(*) FROM photos p WHERE p.visit_report_id = vr.id) AS photo_count,
-                    (SELECT COUNT(*) FROM documents d WHERE d.visit_report_id = vr.id) AS document_count,
-                    (SELECT COUNT(*) FROM signatures s WHERE s.visit_report_id = vr.id) AS signature_count
+                    (SELECT COUNT(*) FROM documents d WHERE d.visit_report_id = vr.id) AS document_count
                FROM visit_reports vr
               WHERE vr.loan_account_id = ?
               ORDER BY vr.created_at DESC, vr.id DESC
@@ -344,8 +343,8 @@ final class VisitReport
      * Records an approval or rejection.
      *
      * Purely additive: it writes the approval columns and touches nothing the agent
-     * submitted. The approver's own photograph, signature and position are stored
-     * alongside their user id, because "I approved it at the branch" and "I approved
+     * submitted. The approver's own photograph and position are stored alongside their
+     * user id, because "I approved it at the branch" and "I approved
      * forty of them from home at midnight" are different claims and only one of them
      * is verification.
      *
@@ -475,66 +474,6 @@ final class VisitReport
         );
     }
 
-    /** @return list<array<string,mixed>> */
-    public static function signatures(int $visitReportId): array
-    {
-        return Database::instance()->all(
-            'SELECT * FROM signatures WHERE visit_report_id = ? ORDER BY signature_type ASC',
-            [$visitReportId]
-        );
-    }
-
-    /**
-     * Attach a signature image uploaded from the panel.
-     *
-     * Written as `capture_method = 'panel_upload'` with no coordinates at all. The only
-     * position available at upload time is wherever the person uploading is sitting,
-     * and putting that under a borrower's signature would be a fact about a clerk
-     * dressed up as a fact about a doorstep.
-     *
-     * `captured_at` is likewise left null rather than set to now: the signature was made
-     * at some earlier point nobody recorded, and "now" would be the upload time.
-     *
-     * @param array{file_path:string,signed_name:?string,uploaded_note:?string,uploaded_by:int} $data
-     */
-    public static function attachUploadedSignature(
-        int $visitReportId,
-        int $loanAccountId,
-        string $type,
-        array $data
-    ): void {
-        // One of each type per report is a unique key, so an upload that replaces a
-        // previous upload updates in place rather than failing on the constraint.
-        Database::instance()->query(
-            'INSERT INTO signatures
-                (visit_report_id, loan_account_id, signature_type, file_path, signed_name,
-                 captured_at, gps_source, capture_method, uploaded_note, uploaded_by)
-             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                file_path      = VALUES(file_path),
-                signed_name    = VALUES(signed_name),
-                captured_at    = NULL,
-                gps_latitude   = NULL,
-                gps_longitude  = NULL,
-                gps_accuracy_m = NULL,
-                gps_source     = VALUES(gps_source),
-                capture_method = VALUES(capture_method),
-                uploaded_note  = VALUES(uploaded_note),
-                uploaded_by    = VALUES(uploaded_by)',
-            [
-                $visitReportId,
-                $loanAccountId,
-                $type,
-                $data['file_path'],
-                $data['signed_name'],
-                'unavailable',
-                'panel_upload',
-                $data['uploaded_note'],
-                $data['uploaded_by'],
-            ]
-        );
-    }
-
     /** Every photo ever captured for a loan account (profile gallery). @return list<array<string,mixed>> */
     public static function photosForLoanAccount(int $loanAccountId): array
     {
@@ -558,20 +497,6 @@ final class VisitReport
                LEFT JOIN visit_reports vr ON vr.id = d.visit_report_id
               WHERE d.loan_account_id = ?
               ORDER BY d.created_at DESC
-              LIMIT 300',
-            [$loanAccountId]
-        );
-    }
-
-    /** @return list<array<string,mixed>> */
-    public static function signaturesForLoanAccount(int $loanAccountId): array
-    {
-        return Database::instance()->all(
-            'SELECT s.*, vr.visit_date
-               FROM signatures s
-               LEFT JOIN visit_reports vr ON vr.id = s.visit_report_id
-              WHERE s.loan_account_id = ?
-              ORDER BY s.created_at DESC
               LIMIT 300',
             [$loanAccountId]
         );

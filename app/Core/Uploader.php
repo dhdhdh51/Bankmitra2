@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Core;
 
 /**
- * Validated file storage for photos, documents and signatures.
+ * Validated file storage for photos and documents.
  *
  * Files are written under uploads/<kind>/<Y>/<m>/<random>.<ext> - a date-sharded
  * tree keeps directory sizes manageable at half a million customers.
@@ -89,8 +89,8 @@ final class Uploader
     }
 
     /**
-     * Stores a base64 data URL or raw base64 PNG - how the Android signature pad
-     * and camera captures submit when not using multipart.
+     * Stores a base64 data URL or raw base64 PNG - how a camera capture submits when
+     * not using multipart.
      *
      * @return array{path:string,original_name:string,mime:string,size:int,width:int|null,height:int|null}
      */

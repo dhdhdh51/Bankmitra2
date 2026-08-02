@@ -184,7 +184,6 @@ final class VisitController extends Controller
             'ckcc'       => $ckcc === null ? null : $this->presentCkcc($ckcc),
             'photos'     => array_map(fn (array $m): array => $this->presentMedia($m, 'photo'), VisitReport::photos($id)),
             'documents'  => array_map(fn (array $m): array => $this->presentMedia($m, 'document'), VisitReport::documents($id)),
-            'signatures' => array_map(fn (array $m): array => $this->presentMedia($m, 'signature'), VisitReport::signatures($id)),
         ]);
     }
 

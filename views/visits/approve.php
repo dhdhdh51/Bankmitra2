@@ -3,9 +3,10 @@
  * Approve or reject a submitted field visit report.
  *
  * The approver's photograph and position are captured now, at the moment they act,
- * rather than read off their profile. A signature on file proves who somebody is; a
- * photograph and a coordinate taken at approval time are the only things that say
- * they actually looked at this report where and when they claim.
+ * rather than read off their profile: a photograph and a coordinate taken at approval
+ * time are the only things that say they actually looked at this report where and when
+ * they claim. Their signature goes on the printed page by hand, like every other
+ * signature - nothing is drawn on a screen any more.
  *
  * @var array<string,mixed>        $report
  * @var array<string,mixed>        $old
@@ -89,11 +90,12 @@ $action = url('/visits/' . $id . '/approve');
             </div>
 
             <div class="lrms-card mb-3">
-                <div class="lrms-card-head"><h2>Your photograph &amp; signature</h2></div>
+                <div class="lrms-card-head"><h2>Your photograph</h2></div>
                 <div class="lrms-card-body">
                     <p class="text-muted mb-3" style="font-size:.8125rem">
-                        Both are printed on the report next to your decision. If you leave the
-                        signature blank, the one held on your user record is used.
+                        Printed on the report next to your decision. Your signature is not asked
+                        for here &mdash; the printed page carries a blank box for it, and you sign
+                        that after printing.
                     </p>
 
                     <div class="row g-3">
@@ -103,13 +105,6 @@ $action = url('/visits/' . $id . '/approve');
                                    id="approval_photo" name="approval_photo"
                                    accept="image/jpeg,image/png,image/webp" capture="user">
                             <?= field_error($errors, 'approval_photo') ?>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label" for="approval_signature">Signature</label>
-                            <input type="file" class="form-control" id="approval_signature"
-                                   name="approval_signature" accept="image/jpeg,image/png,image/webp">
-                            <div class="form-text">Optional if your profile already has one.</div>
                         </div>
                     </div>
 
