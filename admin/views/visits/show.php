@@ -573,15 +573,27 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
     <div class="col-xl-4">
         <?php
         /*
-         * There is no Signatures card here any more, and its absence is the feature.
+         * Signatures are not captured any more - they are signed on the printed copy -
+         * so there is nothing to render here. But the card stays, as one sentence.
          *
-         * Signatures used to be drawn on the phone with a fingertip. Nobody accepts a
-         * fingertip scrawl across a counter, so the printed report now carries empty
-         * ruled boxes and the borrower and the agent sign the paper. Nothing to show on
-         * screen, because nothing is captured - and a card reading "Not captured" twice
-         * on every report is worse than no card.
+         * Deleting it outright was the first attempt and it was wrong: somebody looking
+         * for a borrower's signature on this page would find no signature and no mention
+         * of one, and conclude the report was unsigned or that the panel had lost it.
+         * The empty state of a thing that moved has to say where it moved to.
          */
         ?>
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2><?= icon('pen') ?> Signatures</h2>
+            </div>
+            <div class="lrms-card-body">
+                <p class="text-muted mb-0" style="font-size:.8125rem">
+                    Nothing is signed on a screen. <strong>Print this report</strong> &mdash; it
+                    carries empty boxes for the borrower, the BC&nbsp;/&nbsp;DC agent and the
+                    approving officer, to be signed by hand on the paper.
+                </p>
+            </div>
+        </div>
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
                 <h2><?= icon('image') ?> Photographs</h2>

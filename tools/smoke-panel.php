@@ -493,9 +493,15 @@ if ($panelWithMedia !== null) {
     // The signature card is gone from the panel, and its absence is asserted: a card
     // reading "Not captured" twice on every report would be worse than no card, and
     // an upload form that still posts to a deleted route is a 404 with a lost file.
-    check('the panel no longer shows a signature card',
+    check('the panel no longer shows a captured signature or an upload form',
         !str_contains($panelWithMedia, 'Upload an image of the signature')
         && !str_contains($panelWithMedia, 'lrms-signature'));
+    // But it must say where signatures went. Deleting the card outright left somebody
+    // looking for a borrower's signature with no signature and no explanation, which
+    // reads as a report that was never signed.
+    check('but it says signatures are on the printed copy',
+        str_contains($panelWithMedia, 'Nothing is signed on a screen')
+        && str_contains($panelWithMedia, 'Print this report'));
 }
 
 // ---------------------------------------------------------------------------
@@ -791,6 +797,18 @@ check('a rejection with no remarks is refused',
     str_contains($rejectNoReason['body'], 'Say why') || str_contains($rejectNoReason['body'], 'invalid-feedback'),
     'HTTP ' . $rejectNoReason['status']);
 
+// The approving officer's box has to be on the page BEFORE anybody approves. The copy
+// somebody prints in order to sign it is exactly the one that is still pending, so a box
+// that only appears after approval is a box that is never there when it is needed.
+$pendingPdf = request($base . '/visits/' . $visitId . '/pdf');
+check('a pending report still prints an approver signature box',
+    $pendingPdf['status'] === 200 && str_contains($pendingPdf['body'], 'Approver Signature'),
+    'HTTP ' . $pendingPdf['status']);
+check('labelled with the role, since nobody has signed it yet',
+    str_contains($pendingPdf['body'], 'Branch Manager'));
+check('and it does not claim a photograph is missing from an approval nobody has made',
+    !str_contains($pendingPdf['body'], 'No photograph of the approver'));
+
 // Approve, with a photograph and a position.
 $approverPhoto = tempPng(80, 80, [40, 90, 40]);
 $approveForm2 = request($base . '/visits/' . $visitId . '/approve');
@@ -848,6 +866,17 @@ check('the previous decision\'s photograph is not carried forward',
 $approvedPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('the printed report carries the approval', $approvedPdf['status'] === 200
     && str_contains($approvedPdf['body'], 'Approved'), 'HTTP ' . $approvedPdf['status']);
+// The approver ends up with what the agent has: a photograph, and an empty box under it.
+// This decision declined its position and supplied no photograph, so the absence has to
+// be stated - on an approved report a silent gap reads as an image that failed to load.
+check('an approver with no photograph is reported in words',
+    str_contains($approvedPdf['body'], 'No photograph of the approver'));
+check('and the signature box is still printed for them',
+    str_contains($approvedPdf['body'], 'Approver Signature'));
+// Now that somebody has approved it, the box carries their name rather than the role it
+// falls back to on a pending report.
+check('the approver is named on their own box once they are known',
+    !str_contains($approvedPdf['body'], 'Branch Manager'));
 
 // ---- Correction, and the append-only guarantee ------------------------------
 page('GET /visits/{id}/revise', '/visits/' . $visitId . '/revise', 200, 'Correct visit report');

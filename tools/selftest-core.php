@@ -745,9 +745,13 @@ check('and one rule inside each box to sign above',
 check('the labels are printed', str_contains($sigBytes, 'Borrower Signature') && str_contains($sigBytes, 'Agent Signature'));
 check('the caption names whoever signs, and asks for a date', substr_count($sigBytes, 'Date:') === 2,
     (string) substr_count($sigBytes, 'Date:'));
-// The cursor has to clear the boxes, or the next section prints on top of them - the
-// caption is measured too, and the two cells have different caption heights.
-check('the cursor advances past the tallest cell', $yBefore - $yAfter >= 60.0 + (3 * 9.6),
+// The cursor has to clear the boxes, or the next section prints on top of them. Measured
+// exactly, not loosely: label 12 + box 60 + the TALLER caption's three lines at 9.6 + 10
+// of breathing room. A ">=" here passed while captions were being counted as one line,
+// which is how the newline bug survived - the block was the right size for the wrong
+// reason and there was slack to hide in.
+check('the cursor advances past the tallest cell',
+    abs(($yBefore - $yAfter) - (12.0 + 60.0 + (3 * 9.6) + 10.0)) < 0.01,
     (string) round($yBefore - $yAfter, 1));
 // No image is embedded, which is the whole point: an empty box cannot be mistaken
 // for a captured mark.
@@ -757,6 +761,54 @@ $noSigPdf = new Pdf('Signature space', '', false, '');
 $noSigBefore = $noSigPdf->cursorY();
 $noSigPdf->signatureBlock([]);
 check('but an empty list still draws nothing', $noSigPdf->cursorY() === $noSigBefore);
+
+// The approver signs alone, and a lone box stretched across the whole page reads as a
+// different kind of field from the two half-width boxes above it. On a form, boxes that
+// mean the same thing have to be the same size, so a column count can be forced.
+$boxWidth = static function (string $bytes): float {
+    preg_match_all('/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re/', $bytes, $m);
+    return (float) ($m[3][count($m[3]) - 1] ?? 0.0);
+};
+
+$wide = new Pdf('Signature space', '', false, '');
+$wide->signatureBlock([['label' => 'Approver Signature', 'caption' => "Name\nDate:"]], 60.0);
+$wideWidth = $boxWidth($wide->output());
+
+$halved = new Pdf('Signature space', '', false, '');
+$halved->signatureBlock([['label' => 'Approver Signature', 'caption' => "Name\nDate:"]], 60.0, 16.0, 2);
+$halvedWidth = $boxWidth($halved->output());
+
+check('a lone box fills the page by default', $wideWidth > 400.0, (string) round($wideWidth, 1));
+check('and can be sized to a column instead, to match the boxes above it',
+    $halvedWidth > 0 && abs($halvedWidth - (($wideWidth - 16.0) / 2)) < 0.5,
+    (string) round($halvedWidth, 1));
+
+// ---------------------------------------------------------------------------
+section('Multi-line captions');
+
+// A caption is "name\ncode\nposition", and text() used to strip control characters
+// before wrap() ever saw the newlines - so every one of those printed as a single
+// unbroken run: "Suresh YadavBC000726.912400, 75.787300". Every test still passed,
+// because each phrase was individually present in the file.
+check('text() keeps a newline, which is the one control character that means something',
+    Pdf::text("Suresh Yadav\nBC0007") === "Suresh Yadav\nBC0007",
+    str_replace("\n", '\\n', Pdf::text("Suresh Yadav\nBC0007")));
+check('and still drops the ones that do not', Pdf::text("a\tb\x07c") === 'abc',
+    Pdf::text("a\tb\x07c"));
+check('wrap() breaks on it rather than running the lines together',
+    Pdf::wrap(Pdf::text("Suresh Yadav\nBC0007\nDate:"), 400.0, 7.2, false)
+        === ['Suresh Yadav', 'BC0007', 'Date:'],
+    implode(' | ', Pdf::wrap(Pdf::text("Suresh Yadav\nBC0007\nDate:"), 400.0, 7.2, false)));
+
+// And the other half of the fix: a newline that reaches a single-line draw must not go
+// into the file as a control byte. It is a space there, because one text operator draws
+// one line wherever the cursor already is.
+$oneLine = new Pdf('Caption', "Ramesh\nKumar", false, '');
+$oneLine->heading("Two\nWords");
+$oneLineBytes = $oneLine->output();
+check('a stray newline reaching a single line becomes a space, not a control byte',
+    preg_match('/\([^()]*[\x00-\x09\x0B-\x1F][^()]*\)\s*Tj/', $oneLineBytes) !== 1);
+check('and the words survive it', str_contains($oneLineBytes, 'Two Words'));
 
 array_map('unlink', glob($imgDir . '/*') ?: []);
 @rmdir($imgDir);

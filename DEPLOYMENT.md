@@ -682,13 +682,13 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 242 checks — crypto, JWT, XLSX, PDF (including image embedding and the blank signature boxes), geo wording, validator, paginator, key validation |
+| `php tools/selftest-core.php` | 249 checks — crypto, JWT, XLSX, PDF (including image embedding, the blank signature boxes and multi-line captions), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 24 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
 | `sh tools/integration-test.sh` | 744 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo |
 | `sh tools/verify-upgrade-sql.sh` | 17 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 319 panel + 226 API checks over real HTTP |
+| `sh tools/smoke-panel.sh` | 326 panel + 226 API checks over real HTTP |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |

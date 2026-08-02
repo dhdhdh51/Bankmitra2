@@ -117,7 +117,9 @@ never processes a payment** — repayment always happens through the bank's own 
 - A branch manager or admin approves or rejects a visit report with **their own
   geo-tagged photograph**, plus remarks — because "I approved it at the branch" and "I
   approved forty of them from home at midnight" are different claims and only one of them
-  is verification. Their signature goes in the blank box the printout carries for it.
+  is verification. Their signature goes in the blank box the printout carries for it —
+  the same size as the borrower's and the agent's, and printed before approval as well as
+  after, because a form with nowhere to sign is no use to the person about to sign it.
 - The position comes from the browser and records `device`, `denied` and `unavailable`
   as distinct outcomes. A missing fix does not block the approval: refusing to accept it
   would push approvals off the system and onto a phone call, which records nothing.
@@ -499,8 +501,9 @@ The printed report carries:
   was taken, and directly beneath it **empty ruled boxes** for the borrower's and the
   agent's signature, each with a name and date line: they are signed by hand on the
   printed copy,
-- **Approval** — status, approver, their position, remarks and photograph, above a blank
-  box for their signature,
+- **Approval** — status, approver, their position, remarks and photograph, above **their
+  own blank signature box**, which prints whether or not the report has been reviewed yet:
+  the copy somebody prints in order to sign it is precisely the one still pending,
 - any custom fields marked to print,
 - and, in the footer, the number of times the report was corrected after filing.
 
@@ -619,12 +622,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Harness | Command | Checks |
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **242** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, and how a recorded position is worded |
+| Core unit tests | `php tools/selftest-core.php` | **249** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **24** — 34 tables, 54 FKs, seeds, bcrypt login hash |
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **17** — all five release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting, and grant by grant |
 | Integration | `sh tools/integration-test.sh` | **744** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, and leads spread evenly across a branch |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **319** panel + **226** API |
+| Panel smoke | `sh tools/smoke-panel.sh` | **326** panel + **226** API |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -643,7 +646,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,967 assertions total** — the sum of the bold counts above, counting the seven
+**1,981 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -1142,6 +1145,19 @@ Kept here because they are the reason the tests exist:
     `.apk`. Worth writing down because the build itself was correct every time — the
     failure was entirely in how it was handed over, which is not something a test suite
     is ever asked about.
+76. **Every multi-line caption on the printed report had been running together.**
+    `Pdf::text()` stripped control characters, and it ran *before* `Pdf::wrap()`, which is
+    what splits on newlines. So a caption built as "name\ncode\nposition" reached the page
+    as `Suresh YadavBC000726.912400, 75.787300`. It had been like that for as long as
+    captioned images existed and **every test passed**, because each harness asserted
+    `str_contains($pdf, 'some phrase')` and each phrase was individually present — nothing
+    ever asked what sat next to it. Found by extracting the text operators out of a
+    generated PDF in page order and reading them, which is the first time anybody looked
+    at the output rather than searched it. `text()` now keeps `\n` and drops the rest, and
+    `escape()` turns any newline that still reaches a single-line draw into a space, since
+    one text operator draws one line wherever the cursor already is. The block's cursor
+    advance is now asserted exactly rather than with `>=`: the loose bound was large
+    enough to hide a caption measured as one line when it was three.
 
 ---
 
