@@ -474,6 +474,21 @@ final class CustomerController extends Controller
             'drawing_power'       => 'nullable|numeric|min_value:0',
             'interest_overdue'    => 'nullable|numeric|min_value:0',
             'remarks'             => 'nullable|max:1000',
+            'bc_code'             => 'nullable|max:40',
+            'next_followup_date'  => 'nullable|date',
+            'ots_eligible'        => 'nullable|in:0,1',
+            'krm_eligible'        => 'nullable|in:0,1',
+            // The identity of the account, and the one field an import matches on. Editable
+            // because a number typed wrong at creation has to be fixable, and refused when
+            // it would collide with another account.
+            //
+            // NOT `required`. Every other field on this form is written only when the
+            // request carries it, so a caller that posts three fields changes three fields -
+            // and making this one mandatory turned every partial post into a validation
+            // failure that saved nothing. Eighteen existing assertions caught that
+            // immediately, which is the only reason it is not in the hosting package.
+            'loan_account_number' => 'nullable|max:60',
+            'current_status'      => 'nullable|in:' . implode(',', LoanAccount::STATUSES),
         ], [
             'father_husband_name' => 'Father / husband name',
             'ckcc_renewal_due_date' => 'CKCC renewal due date',
@@ -571,12 +586,22 @@ final class CustomerController extends Controller
             'drawing_power'         => 'money',
             'interest_overdue'      => 'money',
             'remarks'               => 'str',
+            'bc_code'               => 'str',
+            'next_followup_date'    => 'date',
+            // Three-state, not a checkbox. An unticked box and "the file never said" are
+            // different facts about an account, and the customer sheet prints them
+            // differently - so the control is a select with an explicit "not stated".
+            'ots_eligible'          => 'flag',
+            'krm_eligible'          => 'flag',
         ] as $column => $kind) {
             if (!$request->has($column)) {
                 continue;
             }
 
             $loanEdits[$column] = match ($kind) {
+                'flag' => $request->nullableStr($column) === null
+                    ? null
+                    : ($request->str($column) === '1' ? 1 : 0),
                 'money' => $request->nullableStr($column) === null
                     ? null
                     : round((float) $request->float($column), 2),
@@ -586,6 +611,66 @@ final class CustomerController extends Controller
                 'date'  => $request->nullableStr($column),
                 default => $request->nullableStr($column),
             };
+        }
+
+        // ---- The account number ---------------------------------------------
+        //
+        // Editable, because a number typed wrong when the account was created has to be
+        // fixable and there is no other way to fix it. Handled here rather than through
+        // applyManualEdit(), for two reasons: it is the key an import matches on, so a
+        // collision has to be refused rather than stamped as an override; and a rename is
+        // worth its own line in the timeline, since every visit, promise and photo already
+        // attached to the row keeps pointing at it under a new name.
+        $newNumber = trim($request->str('loan_account_number'));
+        $oldNumber = (string) $lead['loan_account_number'];
+
+        if ($request->has('loan_account_number') && $newNumber !== '' && $newNumber !== $oldNumber) {
+            $clash = LoanAccount::findByNumber($newNumber);
+            if ($clash !== null) {
+                $this->backWithErrors(
+                    '/customers/' . $id . '/edit',
+                    ['loan_account_number' => [sprintf(
+                        'Account %s already belongs to %s in %s branch. Two accounts cannot share a number.',
+                        $newNumber,
+                        (string) ($clash['customer_name'] ?? 'another borrower'),
+                        (string) ($clash['branch_name'] ?? 'another')
+                    )]],
+                    $request->all()
+                );
+            }
+
+            LoanAccount::update($id, ['loan_account_number' => mb_substr($newNumber, 0, 60)]);
+
+            Timeline::record(
+                $id,
+                'lead_updated',
+                'Account number corrected',
+                sprintf('%s was corrected to %s.', $oldNumber, $newNumber),
+                Auth::id(),
+                (string) (Auth::user()['name'] ?? ''),
+                null,
+                null,
+                ['from' => $oldNumber, 'to' => $newNumber]
+            );
+
+            Logger::audit(
+                'update',
+                'loan_account',
+                $id,
+                ['loan_account_number' => $oldNumber],
+                ['loan_account_number' => $newNumber],
+                sprintf('Renamed loan account %s to %s', $oldNumber, $newNumber)
+            );
+        }
+
+        // ---- The status ------------------------------------------------------
+        //
+        // Through AssignmentService, not written here: it stamps closed_at, and it writes
+        // closed / reopened / status_changed to the timeline as three different events. A
+        // direct UPDATE would move the badge and leave the history saying nothing happened.
+        $newStatus = $request->nullableStr('current_status');
+        if ($newStatus !== null && $newStatus !== (string) $lead['current_status']) {
+            AssignmentService::setStatus([$id], $newStatus, 'Changed on the borrower\'s edit form.');
         }
 
         $loanChanged = LoanAccount::applyManualEdit($id, $loanEdits, Auth::id());

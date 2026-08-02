@@ -186,6 +186,59 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                         $overriddenSet = array_flip($overridden ?? []);
                         ?>
 
+                        <?php
+                        /*
+                         * The account number, editable.
+                         *
+                         * It is the identity of the row and the key an import matches on, so
+                         * it was read-only - which left a number typed wrong at creation
+                         * wrong forever. It can be corrected now, a collision is refused
+                         * with the name of the borrower who holds it, and the rename gets
+                         * its own timeline entry because every visit and promise already
+                         * attached to this row keeps pointing at it under the new name.
+                         */
+                        ?>
+                        <div class="col-md-6">
+                            <label class="form-label" for="loan_account_number">Loan account number</label>
+                            <input type="text" class="form-control font-mono<?= has_error($errors, 'loan_account_number') ?>"
+                                   id="loan_account_number" name="loan_account_number" maxlength="60" required
+                                   value="<?= $value('loan_account_number') ?>">
+                            <?= field_error($errors, 'loan_account_number') ?>
+                            <div class="form-text">
+                                Correcting this renames the account everywhere &mdash; the visits and promises
+                                already recorded stay with it.
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="current_status">Status</label>
+                            <select class="form-select<?= has_error($errors, 'current_status') ?>"
+                                    id="current_status" name="current_status">
+                                <?php foreach (\App\Models\LoanAccount::STATUSES as $statusOption): ?>
+                                    <option value="<?= e($statusOption) ?>"
+                                        <?= (string) ($old['current_status'] ?? $lead['current_status']) === $statusOption ? 'selected' : '' ?>>
+                                        <?= e(ucfirst($statusOption)) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?= field_error($errors, 'current_status') ?>
+                            <div class="form-text">
+                                Normally moves on its own when a visit or a promise is filed. Changing it here
+                                is recorded in the timeline like any other status change.
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="bc_code">BC / DC code on the account</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'bc_code') ?>"
+                                   id="bc_code" name="bc_code" maxlength="40"
+                                   value="<?= $value('bc_code') ?>">
+                            <?= field_error($errors, 'bc_code') ?>
+                            <?php if (isset($overriddenSet['bc_code'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
                         <div class="col-md-6">
                             <label class="form-label" for="loan_type">Loan type</label>
                             <input type="text" class="form-control<?= has_error($errors, 'loan_type') ?>"
@@ -381,6 +434,47 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                             <?php if (isset($overriddenSet['interest_overdue'])): ?>
                                 <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
                             <?php endif; ?>
+                        </div>
+
+                        <?php
+                        /*
+                         * The settlement / renewal eligibility flags the file carries.
+                         *
+                         * Three-state on purpose: "no" and "the file never said" are
+                         * different facts about an account and the customer sheet prints
+                         * them differently, so a checkbox - which cannot tell them apart -
+                         * would quietly turn every silence into a no.
+                         */
+                        ?>
+                        <?php foreach ([
+                            'ots_eligible' => 'Eligible for OTS',
+                            'krm_eligible' => 'Eligible for KRM',
+                        ] as $flag => $flagLabel): ?>
+                            <div class="col-md-3">
+                                <label class="form-label" for="<?= e($flag) ?>"><?= e($flagLabel) ?></label>
+                                <?php $flagValue = $old[$flag] ?? ($lead[$flag] === null ? '' : (string) (int) $lead[$flag]); ?>
+                                <select class="form-select<?= has_error($errors, $flag) ?>"
+                                        id="<?= e($flag) ?>" name="<?= e($flag) ?>">
+                                    <option value="" <?= (string) $flagValue === '' ? 'selected' : '' ?>>Not stated</option>
+                                    <option value="1" <?= (string) $flagValue === '1' ? 'selected' : '' ?>>Yes</option>
+                                    <option value="0" <?= (string) $flagValue === '0' ? 'selected' : '' ?>>No</option>
+                                </select>
+                                <?= field_error($errors, $flag) ?>
+                                <?php if (isset($overriddenSet[$flag])): ?>
+                                    <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="next_followup_date">Next follow-up date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'next_followup_date') ?>"
+                                   id="next_followup_date" name="next_followup_date"
+                                   value="<?= $value('next_followup_date') ?>">
+                            <?= field_error($errors, 'next_followup_date') ?>
+                            <div class="form-text">
+                                Filing a promise sets this by itself; a date typed here holds until then.
+                            </div>
                         </div>
 
                         <?php

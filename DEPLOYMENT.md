@@ -723,7 +723,7 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 430 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
+| `sh tools/smoke-panel.sh` | 442 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
