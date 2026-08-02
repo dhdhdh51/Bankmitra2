@@ -71,7 +71,21 @@ class LocationTrackingTest {
             .find(strings())?.groupValues?.get(1)
         requireNotNull(notice) { "location_notice_short is missing" }
         assertTrue("the notice must say location is recorded", notice.contains("records your location"))
-        assertTrue("the notice must say when", notice.contains("on duty"))
+        assertTrue("the notice must say when", notice.contains("signed in"))
+        // It used to end "Tap to read the full notice." The screen that notice lived on
+        // is gone, so the sentence would be inviting a tap that does nothing.
+        assertFalse("the notice must not point at a screen that no longer exists", notice.contains("Tap to"))
+    }
+
+    @Test
+    fun `what the agent is told appears where they will see it`() {
+        // The notice screen is gone, so this one sentence is the entire disclosure. If it
+        // were only defined and never placed, recording would be undisclosed in practice.
+        val layouts = (File(res, "layout").listFiles() ?: emptyArray())
+            .filter { it.extension == "xml" && it.readText().contains("@string/location_notice_short") }
+            .map { it.name }
+        assertTrue("the login screen must carry the notice", layouts.contains("activity_login.xml"))
+        assertTrue("the account screen must carry the notice", layouts.contains("fragment_account.xml"))
     }
 
     // -----------------------------------------------------------------------
@@ -123,17 +137,19 @@ class LocationTrackingTest {
     @Test
     fun `the notification offers a way to stop`() {
         assertTrue(
-            "the ongoing notification must carry a stop action - making somebody hunt " +
-                "through settings to turn off tracking is not consent",
+            "the ongoing notification must carry a stop action - a foreground service an " +
+                "agent cannot end at all is how an app's notifications get switched off " +
+                "wholesale, which would take the daily reminder with it",
             service.contains("R.string.location_stop_duty") && service.contains("addAction"),
         )
         assertTrue("the notification must be ongoing", service.contains("setOngoing(true)"))
     }
 
     @Test
-    fun `a duty session is never resumed without the agent`() {
-        // START_STICKY would have Android restart the service after the process dies,
-        // resuming recording that nobody asked for.
+    fun `a dead process does not silently resume recording`() {
+        // START_STICKY would have Android restart the service after the process died,
+        // with no activity on screen and nobody to notice it had come back wrong. Opening
+        // the app is what starts a session.
         assertFalse("the service must not be sticky", code(service).contains("START_STICKY"))
         assertTrue("the service must return START_NOT_STICKY", code(service).contains("START_NOT_STICKY"))
     }
@@ -154,40 +170,74 @@ class LocationTrackingTest {
     }
 
     @Test
-    fun `the consent screen asks before the operating system does`() {
-        val activity = File(
-            "src/main/java/com/lrms/recovery/ui/location/LocationConsentActivity.kt",
-        ).readText()
-
-        // Requesting the OS permission first would put a system dialog in front of
-        // somebody who has not yet been told what the answer will be used for.
+    fun `the permission is asked for, since nothing else asks any more`() {
+        // Deleting the notice screen deleted the only place that ever requested the
+        // location permission. Recording would then never start on any device, which is a
+        // worse outcome than the screen was a problem: the app would appear to work and
+        // quietly capture nothing. The shell every signed-in agent lands on asks instead.
+        val main = code(File("src/main/java/com/lrms/recovery/ui/main/MainActivity.kt").readText())
         assertTrue(
-            "the duty button must check acknowledgement before requesting permission",
-            Regex("""acknowledged != true[\s\S]*?return""").containsMatchIn(activity),
+            "MainActivity must request the location permission",
+            Regex("""locationPermission\.launch[\s\S]{0,200}ACCESS_FINE_LOCATION""")
+                .containsMatchIn(main),
         )
         assertTrue(
-            "withdrawing must stop the service immediately",
-            Regex("""withdrawLocationConsent[\s\S]*?DutyLocationService\.stop""").containsMatchIn(activity),
-        )
-        assertTrue(
-            "the notice text must come from the server, not be hardcoded in the app",
-            activity.contains("repository.locationNotice()"),
-        )
-        assertTrue(
-            "a changed notice version must force a re-read",
-            Regex("""409[\s\S]*?load\(\)""").containsMatchIn(activity),
+            "and start recording once it is granted",
+            Regex("""ACCESS_FINE_LOCATION[\s\S]*?DutyLocationService\.start""").containsMatchIn(main),
         )
     }
 
     @Test
-    fun `withdrawal is offered in the app and explains the consequence`() {
-        val text = strings()
-        assertTrue("a withdraw action must exist", text.contains("name=\"location_withdraw\""))
-        val confirm = Regex("""<string name="location_withdraw_confirm">([^<]+)</string>""")
-            .find(text)?.groupValues?.get(1)
-        requireNotNull(confirm) { "location_withdraw_confirm is missing" }
-        assertTrue("withdrawal must say recording stops", confirm.contains("stop immediately"))
-        assertTrue("withdrawal must mention the effect on reports", confirm.contains("Visit reports"))
+    fun `nothing is recorded before the server will accept it`() {
+        // The server answers 412 until consent is on file, and the service reads a 412 as
+        // withdrawn consent and stops. Posting the consent and starting the session in
+        // parallel is therefore a race whose loser is a fresh install that records
+        // nothing until the next launch. Consent first, then start, in one method.
+        val main = code(File("src/main/java/com/lrms/recovery/ui/main/MainActivity.kt").readText())
+        assertTrue(
+            "consent must be posted before the service is started",
+            Regex("""acceptLocationNotice[\s\S]*?DutyLocationService\.start""").containsMatchIn(main),
+        )
+        // There is one earlier start, and it is the latched path: consent already on file
+        // from a previous launch, so there is nothing to wait for. It must be guarded by
+        // that latch and not by anything looser.
+        assertTrue(
+            "starting without posting consent is only allowed once it has been recorded",
+            Regex("""locationConsentRecorded\)[\s\S]{0,200}DutyLocationService\.start""")
+                .containsMatchIn(main),
+        )
+        assertTrue(
+            "and the latch must only be set on a successful accept",
+            Regex("""accepted is ApiResult\.Success[\s\S]{0,200}locationConsentRecorded = true""")
+                .containsMatchIn(main),
+        )
+        assertTrue(
+            "with the version the server is serving, not a baked-in constant",
+            Regex("""locationNotice\(\)[\s\S]{0,400}notice\.data\.version""").containsMatchIn(main),
+        )
+    }
+
+    @Test
+    fun `recording ends with the session it belongs to`() {
+        // Signing out has to stop it. Left running, it would keep collecting against a
+        // token that has just been cleared: every point refused, and an ongoing
+        // notification still claiming a duty session with nobody signed in.
+        val base = code(File("src/main/java/com/lrms/recovery/ui/BaseActivity.kt").readText())
+        assertTrue(
+            "forceSignOut must stop the duty service",
+            Regex("""fun forceSignOut[\s\S]{0,400}DutyLocationService\.stop""").containsMatchIn(base),
+        )
+
+        // Losing the permission is the withdrawal now that there is no in-app one. It is
+        // checked on every start, and again where the OS could revoke it mid-session.
+        assertTrue(
+            "a start without permission must stop the service",
+            Regex("""hasLocationPermission\(\)[\s\S]{0,200}stopSelf\(\)""").containsMatchIn(code(service)),
+        )
+        assertTrue(
+            "a permission revoked mid-session must stop the service",
+            Regex("""SecurityException[\s\S]{0,200}stopSelf\(\)""").containsMatchIn(code(service)),
+        )
     }
 
     // -----------------------------------------------------------------------
@@ -195,14 +245,32 @@ class LocationTrackingTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `the consent screen is reachable from the app`() {
-        // A consent screen nothing opens is not a consent mechanism: recording could
-        // never be switched on, and more to the point could never be switched off.
+    fun `granting the OS permission is the whole of the consent`() {
+        // The in-app consent notice is gone, deliberately. It could disagree with the OS
+        // setting: an agent could grant the permission and still have every coordinate
+        // refused by the server, with nothing anywhere explaining why their visits carried
+        // no location. The permission dialog is now the only question asked.
         val reachable = File("src/main/java/com/lrms/recovery")
             .walkTopDown()
             .filter { it.extension == "kt" && !it.path.contains("/ui/location/") }
             .any { it.readText().contains("LocationConsentActivity") }
-        assertTrue("no screen in the app opens LocationConsentActivity", reachable)
+        assertFalse("no screen should send an agent to a second consent question", reachable)
+
+        // It is still RECORDED server-side, because the audit trail is the point: which
+        // notice version applied, when, from which device.
+        val main = code(File("src/main/java/com/lrms/recovery/ui/main/MainActivity.kt").readText())
+        assertTrue(
+            "consent must be posted once the permission is held",
+            Regex("""ACCESS_FINE_LOCATION[\s\S]{0,600}acceptLocationNotice""").containsMatchIn(main),
+        )
+        assertTrue(
+            "and latched so it is not re-posted on every launch",
+            main.contains("locationConsentRecorded"),
+        )
+        assertTrue(
+            "with the version the server is currently serving, not a baked-in constant",
+            Regex("""locationNotice\(\)[\s\S]{0,400}notice\.data\.version""").containsMatchIn(main),
+        )
     }
 
     @Test
@@ -219,34 +287,53 @@ class LocationTrackingTest {
             Regex("""onDestroy\(\)[\s\S]*?active = false""").containsMatchIn(code(service)),
         )
 
-        for (screen in listOf(
-            "src/main/java/com/lrms/recovery/ui/location/LocationConsentActivity.kt",
-            "src/main/java/com/lrms/recovery/ui/account/AccountFragment.kt",
-        )) {
-            val text = code(File(screen).readText())
-            assertTrue(
-                "$screen must read DutyLocationService.isRunning",
-                text.contains("DutyLocationService.isRunning"),
-            )
-            // Without this, stopping from the notification leaves the screen behind
-            // it still showing a Stop button for a session that already ended.
-            assertTrue(
-                "$screen must refresh duty state in onResume",
-                Regex("""onResume\(\)[\s\S]*?isRunning""").containsMatchIn(text),
-            )
-        }
+        // No screen reads this to draw a Start/Stop toggle any more - there is no toggle.
+        // It is read to decide whether entering the app needs to start a session, and it
+        // is what keeps that from starting a second one.
+        val main = code(File("src/main/java/com/lrms/recovery/ui/main/MainActivity.kt").readText())
+        assertTrue(
+            "entering the app must resume recording, and only when it is not running",
+            Regex("""onResume\(\)[\s\S]*?!DutyLocationService\.isRunning[\s\S]{0,200}startRecordingLocation""")
+                .containsMatchIn(main),
+        )
+        assertTrue(
+            "a start for a session already running must be a no-op, not a second listener",
+            Regex("""if \(active\)[\s\S]{0,120}return START_NOT_STICKY""").containsMatchIn(code(service)),
+        )
     }
 
     @Test
-    fun `the notice is available in Hindi as well as English`() {
-        val activity = File(
-            "src/main/java/com/lrms/recovery/ui/location/LocationConsentActivity.kt",
-        ).readText()
-        assertTrue("the Hindi notice must be shown", activity.contains("payload.hindi"))
-        assertTrue("the English notice must be shown", activity.contains("payload.english"))
-        assertTrue(
-            "the retention period must be shown to the agent",
-            activity.contains("location_retention_note"),
+    fun `the second consent question is gone, screen and strings together`() {
+        assertFalse(
+            "the consent activity must be deleted, not merely unreachable",
+            File("src/main/java/com/lrms/recovery/ui/location/LocationConsentActivity.kt").exists(),
         )
+        assertFalse(
+            "its layout must go with it",
+            File(res, "layout/activity_location_consent.xml").exists(),
+        )
+        assertFalse(
+            "and its manifest entry",
+            manifest.contains("LocationConsentActivity"),
+        )
+        // Strings are the part that gets left behind, and a string left defined is one
+        // somebody drops into a layout without noticing it asks a question the app no
+        // longer honours.
+        for (dead in listOf(
+            "location_notice_accept",
+            "location_notice_required",
+            "location_withdraw",
+            "location_withdraw_confirm",
+            "location_withdrawn",
+            "location_off_duty",
+            "location_start_duty",
+            "location_permission_needed",
+            "location_notice_updated",
+        )) {
+            assertFalse(
+                "the string $dead belongs to the deleted screen and must go too",
+                userVisibleStrings().contains("name=\"$dead\""),
+            )
+        }
     }
 }

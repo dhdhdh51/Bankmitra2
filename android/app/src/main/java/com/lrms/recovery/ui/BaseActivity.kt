@@ -8,6 +8,7 @@ import com.lrms.recovery.LrmsApp
 import com.lrms.recovery.R
 import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.data.LrmsRepository
+import com.lrms.recovery.location.DutyLocationService
 import com.lrms.recovery.ui.login.LoginActivity
 
 /**
@@ -46,6 +47,10 @@ abstract class BaseActivity : AppCompatActivity() {
      * Public so a hosted fragment can trigger it too.
      */
     fun forceSignOut(message: String? = null) {
+        // Recording follows the session out. Left running it would keep collecting
+        // against a token that has just been cleared - every point refused, the ongoing
+        // notification still claiming a duty session, and nobody signed in to explain it.
+        DutyLocationService.stop(this)
         session.clearSession()
 
         startActivity(

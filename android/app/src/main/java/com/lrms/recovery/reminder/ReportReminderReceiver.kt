@@ -38,35 +38,49 @@ class ReportReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val session = (context.applicationContext as? LrmsApp)?.repository?.session
 
-        // Book tomorrow before anything can return early.
-        if (session != null) {
-            ReportReminderScheduler.reschedule(context, session)
-        }
-
         if (intent.action != ACTION_REMIND || session == null) {
+            // Still book the next day if we can: an alarm chain that ends silently is
+            // worse than no alarm, because everybody believes it is still on.
+            if (session != null) {
+                ReportReminderScheduler.reschedule(context, session)
+            }
             return
         }
 
         // Nobody signed in: this phone has been handed on, or the agent signed out.
         // Reminding a login screen is pointless.
         if (session.accessToken.isNullOrBlank()) {
+            ReportReminderScheduler.reschedule(context, session)
             return
         }
 
         val warranted = ReportReminderPlan.shouldNotify(
             enabledOnServer = session.reportReminderAllowed,
-            enabledByAgent = session.reportReminderEnabled,
             lastSubmittedIso = session.lastReportSubmittedDate,
             todayIso = Formatters.todayIso(),
             dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK),
         )
 
         if (!warranted) {
+            // The report is in (or it is Sunday, or the bank has reminders off). Clear any
+            // notification left on screen and go back to the daily schedule - this is the
+            // branch that ends the repeating chain.
+            ReportReminderScheduler.clearNotification(context)
+            ReportReminderScheduler.reschedule(context, session)
             return
         }
 
         notify(context, session.reportDueTime)
+
+        // Still not filed, so come back on the bank's interval. When today's repeats are
+        // spent, fall back to booking tomorrow's deadline so the phone is quiet overnight
+        // and the unfiled report is still picked up in the morning.
+        if (!ReportReminderScheduler.scheduleRetry(context, session)) {
+            ReportReminderScheduler.reschedule(context, session)
+        }
     }
+
+
 
     private fun notify(context: Context, dueTime: String?) {
         createChannel(context)
@@ -92,9 +106,18 @@ class ReportReminderReceiver : BroadcastReceiver() {
             )
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentIntent(open)
-            .setAutoCancel(true)
+            // Not auto-cancelling and ongoing: this has to still be there until the report
+            // is in. Auto-cancel would clear it the moment the agent opened the form and
+            // backed out again, which is exactly the case the repeat exists for.
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .setOnlyAlertOnce(false)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            // HIGH now, not DEFAULT. It was default because a heads-up every evening
+            // teaches an agent to swipe the app away - but a reminder that must be acted
+            // on before the day closes is worth surfacing, and it stops the moment the
+            // report is filed rather than arriving regardless.
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
         // Wrapped: on Android 13+ POST_NOTIFICATIONS may have been refused, and the
@@ -113,13 +136,18 @@ class ReportReminderReceiver : BroadcastReceiver() {
             return
         }
 
-        // DEFAULT, not HIGH: this is a deadline reminder, not an emergency. A
-        // full-screen heads-up every evening is how an agent learns to swipe the app's
-        // notifications away without reading them.
+        // HIGH, so it is seen. The earlier reasoning for DEFAULT was that a heads-up
+        // every evening teaches an agent to swipe the app's notifications away - which is
+        // true of a reminder that arrives whether or not the work is done. This one stops
+        // as soon as the report is filed, so the way to make it go away is to do the thing
+        // it is asking for.
+        //
+        // A channel's importance is fixed once created, so this only takes effect for
+        // installs that have not created it yet. That is why the id changed with it.
         val channel = NotificationChannel(
             CHANNEL_ID,
             context.getString(R.string.report_reminder_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = context.getString(R.string.report_reminder_channel_description)
         }
@@ -131,7 +159,8 @@ class ReportReminderReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_REMIND = "com.lrms.recovery.reminder.REMIND"
 
-        private const val CHANNEL_ID = "daily_report_reminder"
-        private const val NOTIFICATION_ID = 7301
+        private const val CHANNEL_ID = "daily_report_reminder_v2"
+        /** Shared with the scheduler, which clears it when the report lands. */
+        const val NOTIFICATION_ID = 7301
     }
 }

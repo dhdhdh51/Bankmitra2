@@ -24,18 +24,30 @@ import java.util.TimeZone
  *   on a day nobody is measured on is pure nuisance, and nuisance is how a reminder
  *   gets switched off entirely.
  *
- *   THE LEAD TIME CANNOT PUSH PAST THE DEADLINE. An agent may ask to be nudged
- *   earlier - half an hour before, an hour before - but not later. A reminder after
- *   the deadline is not a reminder, and letting it move later would quietly let
- *   somebody opt out of the deadline they are still assessed against.
+ *   THE AGENT HAS NO SAY IN IT. There is no lead time to bring it forward and no switch
+ *   to turn it off. Both existed and both are gone: the deadline is the bank's, the agent
+ *   is measured against it, and a reminder that the person being measured can move or
+ *   silence is not a reminder. The only switch is the bank's, and it arrives from /meta.
+ *
+ *   IT KEEPS COMING UNTIL THE REPORT IS IN. One notification at the deadline is one swipe
+ *   away from being nobody's problem until tomorrow. It re-fires on the bank's interval
+ *   until the agent has filed - and stops at the bank's cutoff hour, because an alarm at
+ *   2 am does not get a report submitted. It gets the app's notifications switched off
+ *   entirely, and takes the reminders that were working with it.
  */
 object ReportReminderPlan {
 
     /** Used when the server's value is missing or malformed. */
     const val DEFAULT_DUE_TIME = "17:00"
 
-    /** The most an agent may bring their own reminder forward. */
-    const val MAX_LEAD_MINUTES = 240
+    /** Used when the server sends no repeat interval. */
+    const val DEFAULT_REPEAT_MINUTES = 15
+
+    /** Repeats never run past this hour unless the server says otherwise. */
+    const val DEFAULT_UNTIL_HOUR = 22
+
+    /** Below this, a repeat is a phone nobody can put down rather than a firmer nudge. */
+    const val MIN_REPEAT_MINUTES = 5
 
     /**
      * A parsed deadline. [minuteOfDay] is what the scheduler actually uses.
@@ -70,26 +82,29 @@ object ReportReminderPlan {
         return DueTime(hour, minute)
     }
 
-    /** Clamped so a stored preference from an older build cannot move it later. */
-    fun sanitiseLead(minutes: Int): Int = minutes.coerceIn(0, MAX_LEAD_MINUTES)
+    /** Clamped so a server value of 1 does not turn the phone into an alarm clock. */
+    fun sanitiseRepeat(minutes: Int): Int = when {
+        minutes <= 0 -> 0
+        else -> minutes.coerceIn(MIN_REPEAT_MINUTES, 240)
+    }
+
+    /** Clamped to a real hour of the day. */
+    fun sanitiseUntilHour(hour: Int): Int = hour.coerceIn(0, 23)
 
     /**
      * The instant the next reminder should fire, in epoch milliseconds.
      *
-     * @param dueTime     the bank's deadline, as sent by the server
-     * @param leadMinutes how far ahead of it this agent wants to be nudged
-     * @param nowMillis   the current instant
-     * @param timeZone    the device's zone; passed in so tests are not at the mercy
-     *                    of wherever the build machine thinks it is
+     * @param dueTime   the bank's deadline, as sent by the server
+     * @param nowMillis the current instant
+     * @param timeZone  the device's zone; passed in so tests are not at the mercy of
+     *                  wherever the build machine thinks it is
      */
     fun nextTriggerAt(
         dueTime: String?,
-        leadMinutes: Int,
         nowMillis: Long,
         timeZone: TimeZone = TimeZone.getDefault(),
     ): Long {
         val due = parseDueTime(dueTime)
-        val lead = sanitiseLead(leadMinutes)
 
         val calendar = Calendar.getInstance(timeZone).apply {
             timeInMillis = nowMillis
@@ -97,7 +112,6 @@ object ReportReminderPlan {
             set(Calendar.MINUTE, due.minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            add(Calendar.MINUTE, -lead)
         }
 
         // Strictly after now. Equal-to-now would fire an alarm the same instant the
@@ -125,12 +139,11 @@ object ReportReminderPlan {
      */
     fun shouldNotify(
         enabledOnServer: Boolean,
-        enabledByAgent: Boolean,
         lastSubmittedIso: String?,
         todayIso: String,
         dayOfWeek: Int,
     ): Boolean {
-        if (!enabledOnServer || !enabledByAgent) {
+        if (!enabledOnServer) {
             return false
         }
 
@@ -139,7 +152,55 @@ object ReportReminderPlan {
         }
 
         // Nagging somebody who has already done the thing is how a reminder becomes
-        // noise, and noise gets silenced - taking the useful reminders with it.
+        // noise, and noise gets silenced - taking the useful reminders with it. This is
+        // also what makes the repeating alarm stop: it is checked every time it fires, so
+        // the moment the report is in, the next firing does nothing and the chain ends.
         return lastSubmittedIso != todayIso
+    }
+
+    /**
+     * When to nudge again after a reminder that did not get a report filed, or null when
+     * the day is over.
+     *
+     * This is the "keeps ringing until submitted" half. Null is the important return: it
+     * means the repeats have run out for today, so the caller books the deadline on the
+     * next working day instead and the agent's phone is quiet overnight. An unfiled report
+     * is not forgotten - it is picked up again tomorrow.
+     *
+     * @param repeatMinutes the bank's interval; 0 means "one reminder, no repeats"
+     * @param untilHour     the hour repeats stop at, exclusive of anything past it
+     */
+    fun nextRetryAt(
+        nowMillis: Long,
+        repeatMinutes: Int,
+        untilHour: Int,
+        timeZone: TimeZone = TimeZone.getDefault(),
+    ): Long? {
+        val interval = sanitiseRepeat(repeatMinutes)
+        if (interval == 0) {
+            return null
+        }
+
+        val calendar = Calendar.getInstance(timeZone).apply {
+            timeInMillis = nowMillis
+            add(Calendar.MINUTE, interval)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        // Past the cutoff, or rolled into tomorrow. Either way today's repeats are done.
+        val cutoff = Calendar.getInstance(timeZone).apply {
+            timeInMillis = nowMillis
+            set(Calendar.HOUR_OF_DAY, sanitiseUntilHour(untilHour))
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        if (calendar.timeInMillis > cutoff.timeInMillis) {
+            return null
+        }
+
+        return calendar.timeInMillis
     }
 }

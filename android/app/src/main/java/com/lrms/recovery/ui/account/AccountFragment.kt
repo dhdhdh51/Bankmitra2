@@ -14,48 +14,34 @@ import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.databinding.FragmentAccountBinding
 import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.ui.BaseFragment
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import com.lrms.recovery.location.DutyLocationService
-import com.lrms.recovery.reminder.ReportReminderPlan
-import com.lrms.recovery.reminder.ReportReminderScheduler
-import com.lrms.recovery.ui.location.LocationConsentActivity
 import com.lrms.recovery.ui.login.ChangePasswordActivity
 import com.lrms.recovery.ui.sss.SssEntryActivity
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
 
 /**
- * The agent's own account: identity, their performance counters, theme and
- * sign-out.
+ * The agent's own account: identity, their performance counters, theme and sign-out.
  *
- * The counters come from the agent dashboard endpoint and are scoped server-side
- * to this agent, so no branch or all-branch figures are ever exposed here.
+ * The counters come from the agent dashboard endpoint and are scoped server-side to this
+ * agent, so no branch or all-branch figures are ever exposed here.
+ *
+ * TWO THINGS DELIBERATELY ARE NOT HERE ANY MORE.
+ *
+ * The daily report reminder had a switch and a "nudge me this early" picker. Both are
+ * gone: the deadline is the bank's, the agent is measured against it, and a reminder the
+ * measured person can move or silence is not a reminder. The time now arrives from /meta
+ * and there is nothing on this screen about it.
+ *
+ * Location had a consent notice with an on/off control. Also gone. Granting the operating
+ * system's location permission is the whole of the consent, recorded once for the audit
+ * trail without asking a second question - so there is no in-app toggle that can disagree
+ * with the OS setting, and nothing here for an agent to switch off and then wonder why
+ * their visits carry no coordinates.
  */
 class AccountFragment : BaseFragment() {
 
     private var _binding: FragmentAccountBinding? = null
     private val binding get() = _binding!!
-
-    /** Lead times offered, in minutes. Index-matched to R.array.report_reminder_lead_labels. */
-    private val leadOptions = intArrayOf(0, 15, 30, 60, 120)
-
-    /**
-     * On Android 13+ a notification the agent never allowed is dropped silently, so
-     * the reminder would appear to be on and simply never arrive. Asked for at the
-     * moment they switch the reminder on, which is the only point at which the request
-     * makes sense to them.
-     */
-    private val notificationPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (!granted) {
-            showMessage(getString(R.string.report_reminder_notifications_needed), binding.root)
-        }
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -88,19 +74,8 @@ class AccountFragment : BaseFragment() {
             AppCompatDelegate.setDefaultNightMode(mode)
         }
 
-        // The only route to the location notice. It sits in Settings permanently
-        // rather than appearing as a one-time prompt, because "you can withdraw at
-        // any time" is only true if there is somewhere to go and do it.
-        // The row toggles; a long-press-free tap is the whole control, and the switch
-        // itself is not clickable so there is one target rather than two that disagree.
-        binding.rowReminder.setOnClickListener { toggleReminder() }
-
         binding.rowSss.setOnClickListener {
             startActivity(SssEntryActivity.intent(requireContext()))
-        }
-
-        binding.rowLocation.setOnClickListener {
-            startActivity(LocationConsentActivity.intent(requireContext()))
         }
 
         binding.buttonSignOut.setOnClickListener { confirmSignOut() }
@@ -119,122 +94,6 @@ class AccountFragment : BaseFragment() {
     override fun onResume() {
         super.onResume()
 
-        renderReminder()
-        // Re-read on every return: a session can be stopped from the notification or
-        // from the consent screen, and a stale "recording" line here would be the one
-        // place in the app that lies about it.
-        _binding?.textLocationState?.setText(
-            if (DutyLocationService.isRunning) {
-                R.string.location_on_duty
-            } else {
-                R.string.location_off_duty
-            },
-        )
-    }
-
-    /**
-     * Shows what the agent will actually get: the time they are nudged, and the bank's
-     * deadline beside it. Two lines rather than one because they are different facts,
-     * and an agent who thinks their 4:30 nudge *is* the deadline will file late.
-     */
-    private fun renderReminder() {
-        val binding = _binding ?: return
-
-        val due = ReportReminderPlan.parseDueTime(session.reportDueTime)
-        val lead = ReportReminderPlan.sanitiseLead(session.reportReminderLeadMinutes)
-        val allowed = session.reportReminderAllowed
-        val enabled = allowed && session.reportReminderEnabled
-
-        binding.switchReminder.isChecked = enabled
-        binding.rowReminder.isEnabled = allowed
-        binding.switchReminder.isEnabled = allowed
-
-        binding.textReminderState.text = when {
-            !allowed -> getString(R.string.account_reminder_blocked)
-            !enabled -> getString(R.string.account_reminder_off)
-            else -> {
-                val remindAt = ReportReminderPlan.DueTime(
-                    hour = ((due.minuteOfDay - lead + 1440) % 1440) / 60,
-                    minute = ((due.minuteOfDay - lead + 1440) % 1440) % 60,
-                )
-                getString(
-                    R.string.account_reminder_at,
-                    Formatters.time(remindAt.format()),
-                    Formatters.time(due.format()),
-                )
-            }
-        }
-    }
-
-    private fun toggleReminder() {
-        // The bank's switch is not the agent's to override.
-        if (!session.reportReminderAllowed) {
-            showMessage(getString(R.string.account_reminder_blocked), binding.root)
-            return
-        }
-
-        if (session.reportReminderEnabled) {
-            session.reportReminderEnabled = false
-            ReportReminderScheduler.reschedule(requireContext(), session)
-            renderReminder()
-            showMessage(getString(R.string.report_reminder_disabled), binding.root)
-            return
-        }
-
-        requestNotificationsIfNeeded()
-        chooseLeadTime()
-    }
-
-    /** Switching on and choosing how early are one decision, so they are one dialog. */
-    private fun chooseLeadTime() {
-        val labels = resources.getStringArray(R.array.report_reminder_lead_labels)
-        val current = leadOptions.indexOf(
-            ReportReminderPlan.sanitiseLead(session.reportReminderLeadMinutes),
-        ).takeIf { it >= 0 } ?: 0
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.report_reminder_lead_title)
-            .setSingleChoiceItems(labels, current) { dialog, which ->
-                session.reportReminderLeadMinutes = leadOptions[which]
-                session.reportReminderEnabled = true
-                ReportReminderScheduler.reschedule(requireContext(), session)
-                renderReminder()
-
-                val due = ReportReminderPlan.parseDueTime(session.reportDueTime)
-                val minuteOfDay = (due.minuteOfDay - leadOptions[which] + 1440) % 1440
-                showMessage(
-                    getString(
-                        R.string.report_reminder_saved,
-                        Formatters.time(
-                            String.format(
-                                java.util.Locale.US,
-                                "%02d:%02d",
-                                minuteOfDay / 60,
-                                minuteOfDay % 60,
-                            ),
-                        ),
-                    ),
-                    binding.root,
-                )
-                dialog.dismiss()
-            }
-            .setNegativeButton(R.string.action_cancel, null)
-            .show()
-    }
-
-    private fun requestNotificationsIfNeeded() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return
-        }
-
-        val granted = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!granted) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     }
 
     private fun bindUser() {

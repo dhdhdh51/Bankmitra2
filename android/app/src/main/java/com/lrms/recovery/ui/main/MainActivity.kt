@@ -1,6 +1,11 @@
 package com.lrms.recovery.ui.main
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
 import androidx.lifecycle.lifecycleScope
@@ -9,6 +14,7 @@ import com.lrms.recovery.reminder.ReportReminderScheduler
 import com.lrms.recovery.R
 import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.databinding.ActivityMainBinding
+import com.lrms.recovery.location.DutyLocationService
 import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.ui.account.AccountFragment
 import com.lrms.recovery.ui.leads.LeadsFragment
@@ -28,6 +34,40 @@ class MainActivity : BaseActivity() {
     private lateinit var binding: ActivityMainBinding
 
     private var activeItemId = R.id.nav_leads
+
+    /**
+     * Asked for once, here, rather than when the agent switches a reminder on.
+     *
+     * There is no switch any more, so there is no moment where the agent opts in - and on
+     * Android 13+ a notification nobody allowed is dropped silently, which would leave the
+     * daily reminder appearing to work and simply never arriving. The result is ignored:
+     * refusing is allowed, and nagging about it on every launch is the fastest way to have
+     * the whole app muted.
+     */
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* declined is a valid answer */ }
+
+    /**
+     * The location permission, asked for by the operating system and nowhere else.
+     *
+     * There used to be an in-app notice screen that asked first and only then requested
+     * the permission. It is gone, so this dialog is the whole of the question - which
+     * means somebody has to raise it, and the shell every signed-in agent lands on is the
+     * only place that sees every session.
+     *
+     * Granting it starts recording immediately; there is no separate duty switch for the
+     * agent to leave off. Refusing is not re-asked in the app: Android stops showing the
+     * dialog once it has been refused twice, and a launch that opens on a permission
+     * prompt is a launch an agent learns to dismiss without reading.
+     */
+    private val locationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { granted ->
+        if (granted.values.any { it }) {
+            startRecordingLocation()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +90,92 @@ class MainActivity : BaseActivity() {
         binding.bottomNav.selectedItemId = activeItemId
 
         refreshReportDeadline()
+        requestNotificationsIfNeeded()
+        requestLocationIfNeeded()
+    }
+
+    /** No-op below Android 13, where notifications need no permission. */
+    private fun requestNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!granted) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    /**
+     * Either asks the operating system for location, or - if it is already held - gets
+     * recording going.
+     *
+     * The permission dialog IS the consent. There used to be a second in-app notice with
+     * its own acknowledgement and its own duty switch, and it could disagree with the OS
+     * setting: an agent could grant the permission and still have every coordinate refused
+     * by the server, with no indication anywhere of why their visits carried no location.
+     */
+    private fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestLocationIfNeeded() {
+        // Only asks. Starting is onResume's job, which runs on every entry to the app
+        // including the one straight after this dialog is answered.
+        if (hasLocationPermission()) {
+            return
+        }
+
+        locationPermission.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+        )
+    }
+
+    /**
+     * Records the consent server-side, then starts the duty session.
+     *
+     * IN THAT ORDER, and that is the whole reason this is one method. The server refuses
+     * uploaded coordinates with a 412 until consent is on file, and the service treats a
+     * 412 as withdrawn consent and stops itself - so starting the two in parallel on a
+     * fresh install is a race that ends with recording switched off until the next launch.
+     *
+     * Consent is recorded rather than assumed because the audit trail is the point: which
+     * notice version was in force, when, from which device. The version comes from the
+     * server, not a constant baked into whichever build happened to be installed. The
+     * whole thing is latched, so it costs one pair of calls per install; a failure is
+     * simply retried on the next launch.
+     */
+    private fun startRecordingLocation() {
+        if (session.locationConsentRecorded) {
+            DutyLocationService.start(this)
+            return
+        }
+
+        lifecycleScope.launch {
+            val notice = repository.locationNotice()
+            if (notice !is ApiResult.Success) {
+                return@launch
+            }
+
+            val accepted = repository.acceptLocationNotice(
+                version = notice.data.version,
+                deviceInfo = Build.MANUFACTURER + " " + Build.MODEL,
+            )
+
+            if (accepted is ApiResult.Success) {
+                session.locationConsentRecorded = true
+                DutyLocationService.start(this@MainActivity)
+            }
+        }
     }
 
     /**
@@ -74,6 +200,11 @@ class MainActivity : BaseActivity() {
             }
             session.reportReminderAllowed = result.data.reportReminder
 
+            // How the alarm behaves once it fires, also the bank's to decide. Cached for
+            // the same reason as the deadline: the alarm has to work with no network.
+            session.reportReminderRepeatMinutes = result.data.reportReminderRepeatMinutes
+            session.reportReminderUntilHour = result.data.reportReminderUntilHour
+
             ReportReminderScheduler.reschedule(this@MainActivity, session)
         }
     }
@@ -81,6 +212,16 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         refreshUnreadBadge()
+
+        // Picks recording back up on the way into the app. Two cases need it: the
+        // permission granted from the system settings screen rather than the dialog, and
+        // the Stop action in the ongoing notification - which Android requires us to
+        // offer. Stop ends the session that is running; it is not a setting, so the next
+        // time the agent opens the app recording resumes. What is captured is the bank's
+        // decision, in the same way the reminder time is.
+        if (hasLocationPermission() && !DutyLocationService.isRunning) {
+            startRecordingLocation()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

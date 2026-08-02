@@ -71,6 +71,7 @@ HEADINGS = [
     '### Adding staff photographs, report approval and custom fields to an existing install',
     '### Adding geo-tagged agent photographs and signatures to an existing install',
     '### Adding the full banking columns, panel signatures and agent access to an existing install',
+    '### Splitting KCC from OD-2, and making the alarm persist, on an existing install',
 ]
 
 chunks = []
@@ -128,6 +129,13 @@ db lrms_upg < "$ROOT/schema.sql"
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
+DELETE FROM `settings`
+ WHERE `setting_key` IN ('daily_report_reminder_repeat_minutes', 'daily_report_reminder_until_hour');
+
+ALTER TABLE `loan_accounts`
+  DROP KEY `idx_loan_facility_renewal`,
+  DROP COLUMN `facility_type`;
+
 DELETE FROM `role_permissions`
  WHERE `role_id` = 3
    AND `permission_id` IN (
@@ -336,9 +344,23 @@ for label, sql in [
     ('the upgraded database has the same foreign key count',
      "SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE()"),
     ('the same permissions exist', "SELECT COUNT(*) FROM permissions"),
+    # A settings row the migration forgot is a blank field on the admin screen and a
+    # default the app silently falls back to - which is exactly how a reminder ends up
+    # firing at the wrong time on an upgraded install and nowhere else.
+    ('the same settings exist', "SELECT COUNT(*) FROM settings"),
 ]:
     a, b = q('lrms_fresh', sql)[0][0], q('lrms_upg', sql)[0][0]
     results.append((label, a == b, f'schema.sql={a} upgraded={b}'))
+
+SETTING_KEYS = "SELECT setting_key FROM settings ORDER BY setting_key"
+fresh_keys = {r[0] for r in q('lrms_fresh', SETTING_KEYS)}
+upg_keys = {r[0] for r in q('lrms_upg', SETTING_KEYS)}
+results.append(('every setting key exists after the upgrade',
+                fresh_keys - upg_keys == set(),
+                'missing: ' + ', '.join(sorted(fresh_keys - upg_keys))))
+results.append(('and none the shipped schema does not have',
+                upg_keys - fresh_keys == set(),
+                'extra: ' + ', '.join(sorted(upg_keys - fresh_keys))))
 
 # Grants per role: a permission row nobody holds is a screen nobody can reach.
 GRANTS = ("SELECT r.role_name, GROUP_CONCAT(p.code ORDER BY p.code) FROM role_permissions rp "
@@ -362,7 +384,7 @@ case "$RESULTS" in
   *) echo "!! comparison failed to run:"; cat "$WORK/compare.out"; exit 1 ;;
 esac
 
-EXPECTED_COMPARISONS=11
+EXPECTED_COMPARISONS=14
 BEFORE=$((PASS + FAIL))
 
 eval "$(printf '%s' "$RESULTS" | python3 -c '

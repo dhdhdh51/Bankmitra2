@@ -4,6 +4,8 @@ import java.util.Calendar
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -79,42 +81,82 @@ class ReportReminderPlanTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `a negative lead time is clamped to zero`() {
-        // A negative lead would put the reminder AFTER the deadline, which quietly
-        // lets somebody opt out of a deadline they are still assessed against.
-        assertEquals(0, ReportReminderPlan.sanitiseLead(-30))
-        assertEquals(0, ReportReminderPlan.sanitiseLead(Int.MIN_VALUE))
+    fun `the agent has no lead time and no switch any more`() {
+        // Both existed. They are gone on purpose: the deadline is the bank's and the agent
+        // is measured against it, so a reminder the measured person can move earlier - or
+        // switch off - is not a reminder. This test exists so the feature cannot quietly
+        // come back through a merge.
+        val plan = ReportReminderPlan::class.java
+        val names = plan.declaredMethods.map { it.name }
+
+        assertFalse("sanitiseLead should not exist", names.any { it.contains("sanitiseLead") })
+        assertFalse("no MAX_LEAD_MINUTES", plan.declaredFields.any { it.name.contains("LEAD") })
     }
 
     @Test
-    fun `an absurd lead time is clamped to the maximum`() {
-        assertEquals(ReportReminderPlan.MAX_LEAD_MINUTES, ReportReminderPlan.sanitiseLead(99_999))
+    fun `the repeat interval is clamped to something a person can live with`() {
+        // A server value of 1 would be a phone buzzing every minute, which is not a firmer
+        // reminder - it is an uninstalled app.
+        assertEquals(ReportReminderPlan.MIN_REPEAT_MINUTES, ReportReminderPlan.sanitiseRepeat(1))
+        assertEquals(240, ReportReminderPlan.sanitiseRepeat(99_999))
+        assertEquals(15, ReportReminderPlan.sanitiseRepeat(15))
     }
 
     @Test
-    fun `a negative lead cannot push the trigger past the deadline`() {
-        // Wednesday 1 Apr 2026, 09:00. Deadline 17:00.
-        val now = at(2026, 4, 1, 9, 0)
-        val trigger = ReportReminderPlan.nextTriggerAt("17:00", -120, now, ist)
-        val (day, hour, minute) = fields(trigger)
+    fun `zero means one reminder and no repeating`() {
+        // A real choice, not a mistake to be clamped away: some branches want a single
+        // nudge at the deadline.
+        assertEquals(0, ReportReminderPlan.sanitiseRepeat(0))
+        assertEquals(0, ReportReminderPlan.sanitiseRepeat(-5))
+        assertNull(
+            ReportReminderPlan.nextRetryAt(at(2026, 4, 1, 17, 0), 0, 22, ist),
+        )
+    }
 
-        assertEquals(1, day)
+    @Test
+    fun `an unfiled report is nudged again on the bank's interval`() {
+        val now = at(2026, 4, 1, 17, 0)
+        val retry = ReportReminderPlan.nextRetryAt(now, 15, 22, ist)
+
+        assertNotNull("a retry should be booked well before the cutoff", retry)
+        val (_, hour, minute) = fields(retry!!)
         assertEquals(17, hour)
-        assertEquals(0, minute)
+        assertEquals(15, minute)
     }
 
-    // -----------------------------------------------------------------------
-    // Never in the past
-    // -----------------------------------------------------------------------
+    @Test
+    fun `repeats stop at the cutoff rather than running through the night`() {
+        // "Until it is submitted" cannot literally mean all night. An alarm at 2 am does
+        // not get a report filed; it gets the app's notifications switched off, which
+        // loses the reminders that were working.
+        assertNull(
+            "a repeat that would land after the cutoff is refused",
+            ReportReminderPlan.nextRetryAt(at(2026, 4, 1, 21, 55), 15, 22, ist),
+        )
+        assertNotNull(
+            "one that lands before it is fine",
+            ReportReminderPlan.nextRetryAt(at(2026, 4, 1, 21, 40), 15, 22, ist),
+        )
+    }
+
+    @Test
+    fun `the cutoff hour is clamped to a real hour`() {
+        assertEquals(23, ReportReminderPlan.sanitiseUntilHour(99))
+        assertEquals(0, ReportReminderPlan.sanitiseUntilHour(-4))
+        assertEquals(22, ReportReminderPlan.sanitiseUntilHour(22))
+    }
 
     @Test
     fun `before the deadline the reminder is today`() {
         val now = at(2026, 4, 1, 9, 0)          // Wednesday
-        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", 30, now, ist))
+        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", now, ist))
 
         assertEquals(1, day)
-        assertEquals(16, hour)
-        assertEquals(30, minute)
+        // ON the deadline, not before it. There used to be an agent-chosen lead time that
+        // moved this earlier; it is gone, so the first nudge is the deadline itself and the
+        // repeats carry it from there.
+        assertEquals(17, hour)
+        assertEquals(0, minute)
     }
 
     @Test
@@ -122,7 +164,7 @@ class ReportReminderPlanTest {
         // An alarm set for a past instant fires on the spot on some OEM builds, so an
         // agent opening the app at 8 pm would be nagged every single time.
         val now = at(2026, 4, 1, 20, 0)         // Wednesday evening
-        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist))
+        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", now, ist))
 
         assertEquals(2, day)
         assertEquals(17, hour)
@@ -134,14 +176,14 @@ class ReportReminderPlanTest {
         // Equal-to-now would fire the same instant it was scheduled, which reads as a
         // spurious notification on launch.
         val now = at(2026, 4, 1, 17, 0)
-        val (day, _, _) = fields(ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist))
+        val (day, _, _) = fields(ReportReminderPlan.nextTriggerAt("17:00", now, ist))
         assertEquals(2, day)
     }
 
     @Test
     fun `one minute before the deadline still fires today`() {
         val now = at(2026, 4, 1, 16, 59)
-        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist))
+        val (day, hour, minute) = fields(ReportReminderPlan.nextTriggerAt("17:00", now, ist))
 
         assertEquals(1, day)
         assertEquals(17, hour)
@@ -151,7 +193,7 @@ class ReportReminderPlanTest {
     @Test
     fun `the trigger is always in the future`() {
         val now = at(2026, 4, 1, 23, 59)
-        assertTrue(ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist) > now)
+        assertTrue(ReportReminderPlan.nextTriggerAt("17:00", now, ist) > now)
     }
 
     // -----------------------------------------------------------------------
@@ -164,7 +206,7 @@ class ReportReminderPlanTest {
         // system, so a reminder on one is pure nuisance - and nuisance is how a
         // reminder gets switched off altogether.
         val now = at(2026, 4, 4, 20, 0)
-        val trigger = ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist)
+        val trigger = ReportReminderPlan.nextTriggerAt("17:00", now, ist)
         val calendar = Calendar.getInstance(ist).apply { timeInMillis = trigger }
 
         assertEquals(Calendar.MONDAY, calendar.get(Calendar.DAY_OF_WEEK))
@@ -175,7 +217,7 @@ class ReportReminderPlanTest {
     fun `a Sunday morning reminder moves to Monday`() {
         val now = at(2026, 4, 5, 8, 0)          // Sunday
         val calendar = Calendar.getInstance(ist).apply {
-            timeInMillis = ReportReminderPlan.nextTriggerAt("17:00", 0, now, ist)
+            timeInMillis = ReportReminderPlan.nextTriggerAt("17:00", now, ist)
         }
 
         assertEquals(Calendar.MONDAY, calendar.get(Calendar.DAY_OF_WEEK))
@@ -188,7 +230,7 @@ class ReportReminderPlanTest {
         var now = at(2026, 3, 30, 0, 0)
         repeat(14 * 24) {
             val calendar = Calendar.getInstance(ist).apply {
-                timeInMillis = ReportReminderPlan.nextTriggerAt("17:30", 45, now, ist)
+                timeInMillis = ReportReminderPlan.nextTriggerAt("17:30", now, ist)
             }
             assertFalse(
                 "a Sunday trigger was produced from $now",
@@ -207,7 +249,6 @@ class ReportReminderPlanTest {
         assertTrue(
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = true,
-                enabledByAgent = true,
                 lastSubmittedIso = "2026-03-31",
                 todayIso = "2026-04-01",
                 dayOfWeek = Calendar.WEDNESDAY,
@@ -222,7 +263,6 @@ class ReportReminderPlanTest {
         assertFalse(
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = true,
-                enabledByAgent = true,
                 lastSubmittedIso = "2026-04-01",
                 todayIso = "2026-04-01",
                 dayOfWeek = Calendar.WEDNESDAY,
@@ -231,12 +271,11 @@ class ReportReminderPlanTest {
     }
 
     @Test
-    fun `the bank's switch overrides the agent's`() {
+    fun `the bank's switch is the only switch`() {
         assertFalse(
-            "an agent cannot opt in when the bank has turned it off",
+            "nothing is shown when the bank has turned reminders off",
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = false,
-                enabledByAgent = true,
                 lastSubmittedIso = null,
                 todayIso = "2026-04-01",
                 dayOfWeek = Calendar.WEDNESDAY,
@@ -245,11 +284,12 @@ class ReportReminderPlanTest {
     }
 
     @Test
-    fun `an agent who switched it off is not reminded`() {
-        assertFalse(
+    fun `an agent cannot switch it off, so it still fires`() {
+        // The inverse of the test that used to be here. There is no agent-side switch, so
+        // an agent who has not filed is reminded whatever they would have preferred.
+        assertTrue(
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = true,
-                enabledByAgent = false,
                 lastSubmittedIso = null,
                 todayIso = "2026-04-01",
                 dayOfWeek = Calendar.WEDNESDAY,
@@ -264,7 +304,6 @@ class ReportReminderPlanTest {
         assertFalse(
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = true,
-                enabledByAgent = true,
                 lastSubmittedIso = null,
                 todayIso = "2026-04-05",
                 dayOfWeek = Calendar.SUNDAY,
@@ -277,7 +316,6 @@ class ReportReminderPlanTest {
         assertTrue(
             ReportReminderPlan.shouldNotify(
                 enabledOnServer = true,
-                enabledByAgent = true,
                 lastSubmittedIso = null,
                 todayIso = "2026-04-01",
                 dayOfWeek = Calendar.WEDNESDAY,

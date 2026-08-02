@@ -165,21 +165,21 @@ class SessionStore(context: Context) {
         get() = prefs.getBoolean(KEY_REPORT_ALLOWED, true)
         set(value) = prefs.edit().putBoolean(KEY_REPORT_ALLOWED, value).apply()
 
-    /** The agent's own switch. Defaults on: an unasked-for deadline still applies. */
-    var reportReminderEnabled: Boolean
-        get() = prefs.getBoolean(KEY_REPORT_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_REPORT_ENABLED, value).apply()
-
     /**
-     * How many minutes before the deadline this agent wants nudging.
+     * How often the alarm re-fires until the report is in, in minutes, from /meta.
      *
-     * Only ever forward. See ReportReminderPlan: a lead time that could go negative
-     * would let somebody quietly move the reminder past the deadline they are still
-     * assessed against.
+     * The bank's number, not the agent's. There used to be an agent-side switch and an
+     * agent-side lead time here; both are gone. A reminder that the person being measured
+     * against the deadline can move or silence is not a reminder.
      */
-    var reportReminderLeadMinutes: Int
-        get() = prefs.getInt(KEY_REPORT_LEAD, 0)
-        set(value) = prefs.edit().putInt(KEY_REPORT_LEAD, value).apply()
+    var reportReminderRepeatMinutes: Int
+        get() = prefs.getInt(KEY_REPORT_REPEAT, 15)
+        set(value) = prefs.edit().putInt(KEY_REPORT_REPEAT, value).apply()
+
+    /** The hour repeats stop at, from /meta. Overnight alarms get the app silenced. */
+    var reportReminderUntilHour: Int
+        get() = prefs.getInt(KEY_REPORT_UNTIL, 22)
+        set(value) = prefs.edit().putInt(KEY_REPORT_UNTIL, value).apply()
 
     /**
      * The last date this agent filed anything, `yyyy-MM-dd`.
@@ -190,6 +190,18 @@ class SessionStore(context: Context) {
     var lastReportSubmittedDate: String?
         get() = prefs.getString(KEY_REPORT_LAST_SUBMIT, null)
         set(value) = prefs.edit().putString(KEY_REPORT_LAST_SUBMIT, value).apply()
+
+    /**
+     * Whether the OS location permission has been reported to the server as consent.
+     *
+     * A local latch so the app does not repeat the call on every launch. Deliberately NOT
+     * cleared with the session: the record belongs to the agent account on the server, and
+     * re-posting it for the same install adds nothing. It is not authoritative either - the
+     * server decides - so a phone that loses this flag simply posts once more.
+     */
+    var locationConsentRecorded: Boolean
+        get() = prefs.getBoolean(KEY_LOCATION_CONSENT_SENT, false)
+        set(value) = prefs.edit().putBoolean(KEY_LOCATION_CONSENT_SENT, value).apply()
 
     var lastEmployeeCode: String?
         get() = prefs.getString(KEY_LAST_CODE, null)
@@ -216,8 +228,6 @@ class SessionStore(context: Context) {
             // behind by the previous agent would silently deny the next one their
             // reminder - on their first day, when they need it most.
             .remove(KEY_REPORT_LAST_SUBMIT)
-            .remove(KEY_REPORT_LEAD)
-            .remove(KEY_REPORT_ENABLED)
             .apply()
     }
 
@@ -237,9 +247,10 @@ class SessionStore(context: Context) {
         private const val KEY_DEVICE_TOKEN = "device_token"
         private const val KEY_REPORT_DUE = "report_due_time"
         private const val KEY_REPORT_ALLOWED = "report_reminder_allowed"
-        private const val KEY_REPORT_ENABLED = "report_reminder_enabled"
-        private const val KEY_REPORT_LEAD = "report_reminder_lead"
+        private const val KEY_REPORT_REPEAT = "report_reminder_repeat"
+        private const val KEY_REPORT_UNTIL = "report_reminder_until"
         private const val KEY_REPORT_LAST_SUBMIT = "report_last_submitted"
+        private const val KEY_LOCATION_CONSENT_SENT = "location_consent_sent"
 
         private const val EXPIRY_MARGIN_MS = 30_000L
     }

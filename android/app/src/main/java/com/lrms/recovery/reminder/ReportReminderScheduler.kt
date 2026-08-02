@@ -1,10 +1,12 @@
 package com.lrms.recovery.reminder
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.lrms.recovery.data.local.SessionStore
 
 /**
@@ -31,6 +33,9 @@ object ReportReminderScheduler {
     /** How late the system may fire it. Ten minutes is invisible for a reminder. */
     private const val WINDOW_MS = 10L * 60L * 1000L
 
+    /** Tighter, so a 15-minute repeat is not a 25-minute one. */
+    private const val RETRY_WINDOW_MS = 2L * 60L * 1000L
+
     /**
      * Cancels and re-registers the reminder from whatever is currently stored.
      *
@@ -48,17 +53,16 @@ object ReportReminderScheduler {
 
         val intent = pendingIntent(context)
 
-        // The bank's switch wins over the agent's. An agent can silence their own
-        // reminder; only the bank can decide nobody gets one.
-        if (!session.reportReminderAllowed || !session.reportReminderEnabled) {
+        // The bank's switch is the only switch. There used to be an agent-side one beside
+        // it; a reminder the person being measured can silence is not a reminder.
+        if (!session.reportReminderAllowed) {
             manager.cancel(intent)
-            Log.i(TAG, "daily reminder is off; alarm cancelled")
+            Log.i(TAG, "the bank has daily reminders off; alarm cancelled")
             return
         }
 
         val triggerAt = ReportReminderPlan.nextTriggerAt(
             dueTime = session.reportDueTime,
-            leadMinutes = session.reportReminderLeadMinutes,
             nowMillis = System.currentTimeMillis(),
         )
 
@@ -66,6 +70,68 @@ object ReportReminderScheduler {
         manager.setWindow(AlarmManager.RTC_WAKEUP, triggerAt, WINDOW_MS, intent)
 
         Log.i(TAG, "daily reminder scheduled for $triggerAt")
+    }
+
+    /**
+     * Books the next nudge for a report that still has not been filed.
+     *
+     * Returns true when a repeat was booked, false when today's repeats are spent - and
+     * the caller then books tomorrow's deadline instead. That distinction is the whole
+     * mechanism: the alarm keeps coming back through the evening and goes quiet overnight,
+     * rather than either giving up after one notification or ringing at 3 am.
+     *
+     * A tighter window than the daily alarm, because a fifteen-minute repeat with a
+     * ten-minute slop is not really a fifteen-minute repeat.
+     */
+    fun scheduleRetry(context: Context, session: SessionStore): Boolean {
+        val manager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
+
+        if (!session.reportReminderAllowed) {
+            return false
+        }
+
+        val retryAt = ReportReminderPlan.nextRetryAt(
+            nowMillis = System.currentTimeMillis(),
+            repeatMinutes = session.reportReminderRepeatMinutes,
+            untilHour = session.reportReminderUntilHour,
+        ) ?: return false
+
+        val intent = pendingIntent(context)
+        manager.cancel(intent)
+        manager.setWindow(AlarmManager.RTC_WAKEUP, retryAt, RETRY_WINDOW_MS, intent)
+
+        Log.i(TAG, "report still not filed; nudging again at $retryAt")
+        return true
+    }
+
+    /**
+     * Takes the reminder notification off the screen.
+     *
+     * Explicit rather than automatic, because the notification is deliberately not
+     * auto-cancelling: a nudge that vanishes on the first accidental swipe is a nudge that
+     * did not happen. Called the moment a report is filed, so the way to make it go away is
+     * to do the thing it asks for.
+     */
+    fun clearNotification(context: Context) {
+        try {
+            ContextCompat.getSystemService(context, NotificationManager::class.java)
+                ?.cancel(ReportReminderReceiver.NOTIFICATION_ID)
+        } catch (_: SecurityException) {
+            // The agent has declined notifications; there is nothing on screen to clear.
+        }
+    }
+
+    /**
+     * Called when the agent files anything that counts as their daily report.
+     *
+     * Records the date, clears the nudge and drops back to the daily schedule in one place,
+     * so no caller can do two of those three and leave the alarm repeating at somebody who
+     * has already done the work.
+     */
+    fun markReportSubmitted(context: Context, session: SessionStore, todayIso: String) {
+        session.lastReportSubmittedDate = todayIso
+        clearNotification(context)
+        reschedule(context, session)
     }
 
     fun cancel(context: Context) {

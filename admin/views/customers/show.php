@@ -146,6 +146,23 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
                 <h2><?= icon('user') ?> Borrower details</h2>
+                <?php
+                /*
+                 * Edit sits on the card, not only in the page header.
+                 *
+                 * There was one "Edit borrower" button at the top of a page that scrolls
+                 * for several screens, so by the time somebody is looking at the field
+                 * they want to correct, the way to correct it is off-screen and reads as
+                 * absent. The fragment lands them on the matching card of the edit form
+                 * rather than at the top of it.
+                 */
+                ?>
+                <?php if (can('customers.update')): ?>
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit') . '#borrower') ?>">
+                        <?= icon('edit') ?> Edit these details
+                    </a>
+                <?php endif; ?>
             </div>
             <div class="lrms-card-body">
                 <dl class="lrms-dl">
@@ -231,6 +248,12 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
                 <h2><?= icon('money') ?> Loan details</h2>
+                <?php if (can('customers.update')): ?>
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit') . '#loan') ?>">
+                        <?= icon('edit') ?> Edit these figures
+                    </a>
+                <?php endif; ?>
             </div>
             <div class="lrms-card-body">
                 <dl class="lrms-dl">
@@ -282,6 +305,22 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                         <div>
                             <dt>Asset classification</dt>
                             <dd><span class="lrms-badge badge-pending"><?= e((string) $classification) ?></span></dd>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($lead['facility_type'])): ?>
+                        <div>
+                            <dt>Facility</dt>
+                            <dd>
+                                <?= e(\App\Models\LoanAccount::FACILITIES[(string) $lead['facility_type']]
+                                    ?? (string) $lead['facility_type']) ?>
+                                <?php if (in_array((string) $lead['facility_type'], ['kcc', 'od2'], true)): ?>
+                                    <span class="text-muted" style="font-size:.75rem">
+                                        appears in the
+                                        <?= e((string) $lead['facility_type']) === 'kcc' ? 'KCC' : 'OD-2' ?>
+                                        renewal worklist
+                                    </span>
+                                <?php endif; ?>
+                            </dd>
                         </div>
                     <?php endif; ?>
                     <?php if (($lead['days_past_due'] ?? null) !== null): ?>

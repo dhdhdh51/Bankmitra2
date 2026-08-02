@@ -294,6 +294,12 @@ final class ImportService
                             'guarantor_name'        => self::nullable($values['guarantor_name'], 150),
                             'maturity_date'         => self::parseDate($values['maturity_date']),
                             'purpose'               => self::nullable($values['purpose'], 150),
+
+                            // Read off the loan type the sheet already carries, so KCC and
+                            // OD-2 renewals become two queues instead of one list.
+                            'facility_type'         => self::parseFacility(
+                                self::nullable($values['loan_type'], 80)
+                            ),
                         ], static fn ($value): bool => $value !== null);
 
                         $existing = $db->first(
@@ -949,6 +955,48 @@ final class ImportService
         }
 
         return max($min, min($max, (int) $digits));
+    }
+
+    /**
+     * Which renewable facility a loan type describes, or null when it says neither.
+     *
+     * Read off `loan_type` rather than asking for another column, because the bank's own
+     * product / scheme / facility heading already lands there and already says "KCC" or
+     * "OD-2". Adding a second column for the same fact would mean two answers that can
+     * disagree.
+     *
+     * Deliberately conservative. "KCC", "Kisan Credit Card", "CKCC" and "OD-2" are
+     * unambiguous; a bare "OD" or "Overdraft" is NOT, because a plain overdraft is not the
+     * OD-2 facility this queue is about, and a wrong guess would put an account into a
+     * worklist somebody works through by hand. Anything unrecognised returns null - "not
+     * determined" is a state the panel can show and a person can correct, which is more
+     * use than a confident mistake.
+     */
+    private static function parseFacility(?string $loanType): ?string
+    {
+        if ($loanType === null || trim($loanType) === '') {
+            return null;
+        }
+
+        // Collapse to letters and digits so "OD-2", "OD 2" and "od2" are one key, and
+        // pad with spaces so word boundaries can be tested on the original text too.
+        $key = strtolower((string) preg_replace('/[^a-z0-9]/i', '', $loanType));
+
+        // OD-2 first: "kcc od2" should be read as the OD-2 facility, since an account
+        // only lands in that queue once it has been converted.
+        foreach (['od2', 'odii', 'od02', 'overdraft2', 'overdraftii'] as $needle) {
+            if (str_contains($key, $needle)) {
+                return 'od2';
+            }
+        }
+
+        foreach (['kcc', 'ckcc', 'kisancreditcard', 'kisancard'] as $needle) {
+            if (str_contains($key, $needle)) {
+                return 'kcc';
+            }
+        }
+
+        return null;
     }
 
     /**

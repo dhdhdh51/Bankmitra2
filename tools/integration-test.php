@@ -1179,7 +1179,95 @@ check('reopened timeline event',
     (int) $db->scalar("SELECT COUNT(*) FROM visit_history WHERE loan_account_id = ? AND event_type = 'reopened'", [(int) $ln1003b['id']]) === 1);
 
 // ---------------------------------------------------------------------------
-section('All 8 reports + exports');
+section('Every report type + exports');
+
+// One account of each renewable facility, so the two renewal worklists have something to
+// render. Imported rather than inserted, because the facility is DERIVED from the loan
+// type the sheet carries - so this also proves the derivation end to end rather than
+// trusting a unit test of the parser.
+$facilityCsv = $workDir . '/facilities.csv';
+file_put_contents($facilityCsv, implode("\n", [
+    'Branch,Loan Account Number,Customer Name,Village,Loan Type,Outstanding Amount,Renewal Due Date',
+    'BR001,KCCACC001,Kcc Borrower,Kotri,Kisan Credit Card,90000,' . date('d/m/Y', strtotime('+12 days')),
+    'BR001,OD2ACC001,Od2 Borrower,Kotri,OD-2,140000,' . date('d/m/Y', strtotime('-9 days')),
+    // A plain overdraft is deliberately NOT read as the OD-2 facility, so this one must
+    // land in neither worklist.
+    'BR001,ODXACC001,Plain Od Borrower,Kotri,Overdraft,50000,' . date('d/m/Y', strtotime('+20 days')),
+]));
+ImportService::run(
+    ['name' => 'facilities.csv', 'tmp_name' => $facilityCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($facilityCsv)],
+    null, null, 1, 'System Administrator'
+);
+
+check('a KCC loan type is recognised as the KCC facility',
+    (string) LoanAccount::findByNumber('KCCACC001')['facility_type'] === 'kcc',
+    (string) (LoanAccount::findByNumber('KCCACC001')['facility_type'] ?? 'null'));
+check('an OD-2 loan type is recognised as the OD-2 facility',
+    (string) LoanAccount::findByNumber('OD2ACC001')['facility_type'] === 'od2',
+    (string) (LoanAccount::findByNumber('OD2ACC001')['facility_type'] ?? 'null'));
+check('a plain overdraft is left undetermined rather than guessed into a worklist',
+    LoanAccount::findByNumber('ODXACC001')['facility_type'] === null,
+    (string) (LoanAccount::findByNumber('ODXACC001')['facility_type'] ?? 'null'));
+
+// The whole point of splitting them: each worklist holds its own facility and nothing
+// else. One combined list meant forty OD-2 renewals buried inside three hundred KCC ones.
+$kccList = ReportService::build('kcc-renewal', ['date_from' => date('Y-m-d', strtotime('-1 year')), 'date_to' => date('Y-m-d')]);
+$od2List = ReportService::build('od2-renewal', ['date_from' => date('Y-m-d', strtotime('-1 year')), 'date_to' => date('Y-m-d')]);
+
+$kccAccounts = array_column($kccList['rows'], 'loan_account_number');
+$od2Accounts = array_column($od2List['rows'], 'loan_account_number');
+
+check('the KCC worklist holds the KCC account', in_array('KCCACC001', $kccAccounts, true));
+check('and not the OD-2 one', !in_array('OD2ACC001', $kccAccounts, true));
+check('the OD-2 worklist holds the OD-2 account', in_array('OD2ACC001', $od2Accounts, true));
+check('and not the KCC one', !in_array('KCCACC001', $od2Accounts, true));
+check('neither claims the plain overdraft',
+    !in_array('ODXACC001', $kccAccounts, true) && !in_array('ODXACC001', $od2Accounts, true));
+check('the two lists do not overlap at all',
+    array_intersect($kccAccounts, $od2Accounts) === []);
+
+// A lapsed renewal is stated in words, because "-9" in a days column reads as a typo.
+$od2Row = null;
+foreach ($od2List['rows'] as $row) {
+    if ((string) $row['loan_account_number'] === 'OD2ACC001') {
+        $od2Row = $row;
+        break;
+    }
+}
+check('an overdue renewal says so in words',
+    $od2Row !== null && str_contains((string) $od2Row['renewal_state'], 'overdue'),
+    (string) ($od2Row['renewal_state'] ?? 'null'));
+check('and the summary counts it', str_contains(
+    implode(' ', array_map(
+        static fn (array $s): string => $s['label'] . '=' . $s['value'],
+        $od2List['summary']
+    )),
+    'Renewal overdue=1'
+), json_encode($od2List['summary']));
+
+// A closed account never needs renewing, so it must not sit in a worklist somebody works
+// down by hand.
+$db->update('loan_accounts', ['current_status' => 'closed'], ['loan_account_number' => 'KCCACC001']);
+$kccAfterClose = ReportService::build('kcc-renewal', ['date_from' => date('Y-m-d', strtotime('-1 year')), 'date_to' => date('Y-m-d')]);
+check('a closed account drops out of the worklist',
+    !in_array('KCCACC001', array_column($kccAfterClose['rows'], 'loan_account_number'), true));
+$db->update('loan_accounts', ['current_status' => 'pending'], ['loan_account_number' => 'KCCACC001']);
+
+// An account with no renewal date is the one nobody is tracking, so it is included and
+// sorted last rather than hidden - which would make the list look complete.
+$db->update('loan_accounts', ['ckcc_renewal_due_date' => null], ['loan_account_number' => 'KCCACC001']);
+$kccNoDate = ReportService::build('kcc-renewal', ['date_from' => date('Y-m-d', strtotime('-1 year')), 'date_to' => date('Y-m-d')]);
+$noDateAccounts = array_column($kccNoDate['rows'], 'loan_account_number');
+check('an account with no renewal date is still listed',
+    in_array('KCCACC001', $noDateAccounts, true));
+check('and sorted last, after everything with a date',
+    array_search('KCCACC001', $noDateAccounts, true) === count($noDateAccounts) - 1,
+    implode(',', $noDateAccounts));
+$db->update(
+    'loan_accounts',
+    ['ckcc_renewal_due_date' => date('Y-m-d', strtotime('+12 days'))],
+    ['loan_account_number' => 'KCCACC001']
+);
 
 $filters = [
     'date'      => date('Y-m-d'),
@@ -2072,6 +2160,60 @@ check('the reminder master switch defaults on', Settings::bool('daily_report_rem
 Settings::updateMany(['daily_report_reminder_enabled' => '0'], null);
 check('and can be turned off for everyone', Settings::bool('daily_report_reminder_enabled') === false);
 Settings::updateMany(['daily_report_reminder_enabled' => '1'], null);
+
+// The alarm repeats until the report is in, and both numbers are the bank's. Same
+// treatment as the deadline: whatever a browser posted is clamped on the way out, because
+// the settings screen has no per-type validation and these drive an alarm on a phone.
+foreach ([
+    ['15',  15],
+    ['30',  30],
+    ['0',    0],   // A real choice: one reminder, no repeating.
+    ['1',    5],   // A phone buzzing every minute is not a firmer reminder.
+    ['4',    5],
+    ['600', 240],
+    ['',    15],
+    ['abc', 15],
+    ['-5',  15],   // Not numeric once the sign is there, so it falls back.
+] as [$stored, $expected]) {
+    Settings::updateMany(['daily_report_reminder_repeat_minutes' => $stored], null);
+    $resolved = \App\Controllers\Api\MetaController::reminderRepeatMinutes();
+    check(
+        sprintf('repeat %s resolves to %d', $stored === '' ? '(blank)' : $stored, $expected),
+        $resolved === $expected,
+        (string) $resolved
+    );
+}
+
+foreach ([
+    ['22', 22],
+    ['0',   0],
+    ['23', 23],
+    ['24', 23],
+    ['99', 23],
+    ['',   22],
+    ['xx', 22],
+] as [$stored, $expected]) {
+    Settings::updateMany(['daily_report_reminder_until_hour' => $stored], null);
+    $resolved = \App\Controllers\Api\MetaController::reminderUntilHour();
+    check(
+        sprintf('cutoff hour %s resolves to %d', $stored === '' ? '(blank)' : $stored, $expected),
+        $resolved === $expected,
+        (string) $resolved
+    );
+}
+
+Settings::updateMany([
+    'daily_report_reminder_repeat_minutes' => '15',
+    'daily_report_reminder_until_hour'     => '22',
+], null);
+
+// The agent has no say in any of it, which is the point of moving these server-side. If a
+// per-agent override ever appears in the settings table, this fails and says why.
+$agentOwned = (int) $db->scalar(
+    "SELECT COUNT(*) FROM settings
+      WHERE setting_key LIKE '%reminder%' AND setting_key LIKE '%agent%'"
+);
+check('no per-agent reminder setting exists', $agentOwned === 0, (string) $agentOwned);
 
 // ---------------------------------------------------------------------------
 section('Hand-corrected loan figures survive the next import');

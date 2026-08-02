@@ -22,6 +22,7 @@ import com.lrms.recovery.location.GeoStamp
 import com.lrms.recovery.ui.photo.PhotoUploadActivity
 import com.lrms.recovery.ui.signature.SignatureActivity
 import com.lrms.recovery.util.FileStore
+import com.lrms.recovery.reminder.ReportReminderScheduler
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
 import java.io.File
@@ -862,7 +863,16 @@ class VisitReportActivity : BaseActivity() {
                 // Filing a visit is reporting. rollUpDay() counts report_submitted the
                 // same way, so the reminder must agree with it - otherwise an agent who
                 // spent the day on visits still gets told they have not reported.
-                session.lastReportSubmittedDate = Formatters.todayIso()
+                //
+                // Goes through the scheduler rather than setting the date directly: the
+                // reminder now REPEATS until the report is in, so recording the date
+                // without also clearing the notification and rebooking the daily alarm
+                // would leave it nudging somebody who has already done the work.
+                ReportReminderScheduler.markReportSubmitted(
+                    this@VisitReportActivity,
+                    session,
+                    Formatters.todayIso(),
+                )
             }
 
             submitting = false

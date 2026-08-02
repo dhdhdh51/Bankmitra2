@@ -10,6 +10,7 @@ import com.lrms.recovery.data.ApiResult
 import com.lrms.recovery.data.remote.SssDayPayload
 import com.lrms.recovery.databinding.ActivitySssEntryBinding
 import com.lrms.recovery.ui.BaseActivity
+import com.lrms.recovery.reminder.ReportReminderScheduler
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
 
@@ -147,7 +148,14 @@ class SssEntryActivity : BaseActivity() {
                     // filed. Recorded against the day the server accepted, not the
                     // device's idea of today, so a wrong phone clock cannot silence
                     // a reminder that is still due.
-                    session.lastReportSubmittedDate = result.data.date
+                    // Via the scheduler: the reminder repeats until the report is in, so
+                    // the notification has to come down and the daily alarm has to be
+                    // rebooked in the same breath as recording the date.
+                    ReportReminderScheduler.markReportSubmitted(
+                        this@SssEntryActivity,
+                        session,
+                        result.data.date,
+                    )
                     showMessage(getString(R.string.sss_saved, result.data.total), binding.root)
                     // Re-read rather than trusting what was typed: the counted
                     // figures may have moved since the screen opened.

@@ -1,7 +1,17 @@
 <?php
 /**
- * Borrower contact details. Loan figures are not editable: they come from the
- * core banking Excel import and would be overwritten by the next upload.
+ * Borrower contact details and loan figures, all editable. Every figure changed here
+ * is stamped into loan_accounts.manual_overrides so the next import leaves it alone and
+ * reports that it skipped it.
+ *
+ * Reached from the page header or from either card on the borrower profile, whose links
+ * carry #borrower / #loan so somebody correcting one field is not dropped at the top of
+ * the whole form.
+ *
+ * This file's own comment used to say loan figures were not editable because the import
+ * would overwrite them. That stopped being true when the override tracking landed, and
+ * the stale comment is worth mentioning only because it is exactly the kind that gets
+ * believed by the next person reading it.
  *
  * @var array<string,mixed>        $lead
  * @var array<string,mixed>        $old
@@ -51,7 +61,7 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
               novalidate data-no-double-submit>
             <?= csrf_field() ?>
 
-            <div class="lrms-card">
+            <div class="lrms-card" id="borrower">
                 <div class="lrms-card-head"><h2>Borrower details</h2></div>
                 <div class="lrms-card-body">
                     <div class="row g-3">
@@ -118,7 +128,7 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                 </div>
             </div>
 
-            <div class="lrms-card mt-3">
+            <div class="lrms-card mt-3" id="loan">
                 <div class="lrms-card-head"><h2>Loan figures</h2></div>
                 <div class="lrms-card-body">
                     <div class="row g-3">
@@ -175,6 +185,28 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                                    id="npa_date" name="npa_date" value="<?= $value('npa_date') ?>">
                             <?= field_error($errors, 'npa_date') ?>
                             <div class="form-text">Clearing it removes the NPA flag too.</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="facility_type">Facility</label>
+                            <?php $currentFacility = $value('facility_type'); ?>
+                            <select class="form-select<?= has_error($errors, 'facility_type') ?>"
+                                    id="facility_type" name="facility_type">
+                                <option value="">Not determined</option>
+                                <?php foreach (\App\Models\LoanAccount::FACILITIES as $key => $label): ?>
+                                    <option value="<?= e($key) ?>" <?= $currentFacility === $key ? 'selected' : '' ?>>
+                                        <?= e($label) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?= field_error($errors, 'facility_type') ?>
+                            <div class="form-text">
+                                Read off the loan type on import. KCC and OD-2 have their own
+                                renewal worklists, so this decides which one this account appears in.
+                            </div>
+                            <?php if (isset($overriddenSet['facility_type'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
                         </div>
 
                         <div class="col-md-4">

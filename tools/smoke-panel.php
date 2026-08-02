@@ -194,6 +194,19 @@ function tempPng(int $w = 40, int $h = 20, array $rgb = [10, 40, 90]): string
     return $path;
 }
 
+/**
+ * A throwaway CSV on disk, for the endpoints that take a real upload.
+ *
+ * @param list<string> $lines
+ */
+function tempCsv(array $lines): string
+{
+    $path = sys_get_temp_dir() . '/lrms_smoke_' . bin2hex(random_bytes(6)) . '.csv';
+    file_put_contents($path, implode("\n", $lines) . "\n");
+
+    return $path;
+}
+
 function page(string $label, string $path, int $expected = 200, ?string $mustContain = null): string
 {
     global $base;
@@ -330,6 +343,19 @@ preg_match('#/customers/(\d+)"#', $customers, $leadMatch);
 $leadId = (int) ($leadMatch[1] ?? 1);
 
 $profile = page('GET /customers/{id}', '/customers/' . $leadId, 200, 'Borrower details');
+
+// Edit has to be reachable from the card holding the field you want to change. There was
+// one button at the top of a page that scrolls for several screens, which reads as absent
+// by the time you have found the wrong value.
+check('the borrower card offers an edit control',
+    str_contains($profile, '/edit#borrower'));
+check('the loan card offers one of its own',
+    str_contains($profile, '/edit#loan'));
+
+$editAnchors = request($base . '/customers/' . $leadId . '/edit')['body'];
+check('the edit form has a borrower anchor to land on',
+    str_contains($editAnchors, 'id="borrower"'));
+check('and a loan anchor', str_contains($editAnchors, 'id="loan"'));
 check('profile shows loan details', str_contains($profile, 'Loan details'));
 check('profile shows the timeline', str_contains($profile, 'lrms-timeline'));
 check('profile timeline notes append-only', str_contains($profile, 'Append-only history'));
@@ -531,6 +557,168 @@ page('GET /promises kept', '/promises?status=kept', 200);
 
 page('GET /import', '/import', 200, 'Excel Import');
 page('GET /import/history', '/import/history', 200, 'Import history');
+
+// The mapping screen, which nothing exercised before. Detection knows 35 columns and a
+// real file carries eight, so this is the screen that turned into twenty-five
+// consecutive rows reading "not in this file" with the two that mattered lost in the
+// middle of them.
+$previewCsvPath = tempCsv([
+    'Branch,Loan Account Number,Customer Name,Village,Outstanding Amount,Overdue Amount,Asset Classification,DPD',
+    'BR001,SMOKEMAP01,Mapping Borrower,Kotri,120000,15000,SS,95',
+]);
+$previewPage = postMultipart(
+    $base . '/import/preview',
+    ['_csrf' => csrfToken(request($base . '/import')['body'])],
+    ['lead_file' => $previewCsvPath]
+);
+check('the import preview renders', $previewPage['status'] === 200
+    && str_contains($previewPage['body'], 'Column mapping'), 'HTTP ' . $previewPage['status']);
+
+if (str_contains($previewPage['body'], 'Column mapping')) {
+    $mapBody = $previewPage['body'];
+
+    // Everything the file carries is proposed up front.
+    foreach (['Loan Account Number', 'Customer Name', 'Outstanding Amount',
+              'Asset Classification', 'Days Past Due'] as $expected) {
+        check("the mapping table proposes {$expected}", str_contains($mapBody, $expected));
+    }
+
+    // The fields the file does not carry are counted once and folded away, not listed
+    // as row after row of the same answer.
+    check('the fields not in the file are folded behind a disclosure',
+        str_contains($mapBody, 'more fields') && str_contains($mapBody, '<details'));
+    check('and are counted so the number is visible without opening it',
+        preg_match('/\d+\s*\n?\s*more fields?/', $mapBody) === 1);
+
+    // The regression itself. Measured as which fields are VISIBLE above the disclosure
+    // rather than by counting the phrase: every select needs a "not in this file"
+    // option, so the phrase legitimately appears 35 times - but 34 of those are inside
+    // closed dropdowns and one was a table row you had to scroll past.
+    [$visibleArea, $foldedArea] = explode('<details', $mapBody, 2);
+
+    check('a column the file carries is visible without opening anything',
+        str_contains($visibleArea, 'Asset Classification'));
+    check('a column it does not carry is not a row in the main table',
+        !str_contains($visibleArea, 'Guarantor Name'));
+    check('and is inside the folded section instead',
+        str_contains($foldedArea, 'Guarantor Name'));
+    check('the em-dash filler is gone', substr_count($mapBody, '&mdash; not in this file &mdash;') === 0);
+
+    // The main table should now be about the size of the file, not the size of the
+    // detector's vocabulary.
+    $visibleRows = substr_count($visibleArea, 'name="column_map[');
+    check('the main table is the size of the file, not of the field list',
+        $visibleRows <= 12, 'rows=' . $visibleRows);
+
+    // Still a working form: a hand-mapped field inside the disclosure posts like any
+    // other, which is the whole reason the rows are kept rather than dropped.
+    check('every field still has a mapping control',
+        substr_count($mapBody, 'name="column_map[') >= 35,
+        'controls=' . substr_count($mapBody, 'name="column_map['));
+}
+
+@unlink($previewCsvPath);
+
+// ---------------------------------------------------------------------------
+// Assigning a past import again.
+//
+// This was previously possible only in the same breath as the upload, which made it a
+// one-shot decision: whoever imported either picked the right agent at that moment, or
+// the leads sat unassigned until somebody selected them off the borrower list by hand.
+//
+// Brings its OWN batch rather than redealing the seeded one. An earlier version of this
+// section distributed a seeded import, which silently moved leads between agents and
+// broke four later API assertions about the phone number of whichever lead AGT001
+// happened to hold first. A test that rearranges shared fixtures is a trap for the next
+// suite along.
+// Mobile AND Aadhaar on every row: these leads end up in an agent's list, and a later
+// suite inspects the PII of whichever lead that agent holds. A fixture that is thinner
+// than the seeded data makes the next assertion fail somewhere unrelated.
+$batchCsvPath = tempCsv([
+    'Branch,Loan Account Number,Customer Name,Mobile,Aadhaar,Village,Outstanding Amount',
+    'BR001,SMOKEBATCH01,Batch Borrower One,9812300001,234567800001,Kotri,45000',
+    'BR001,SMOKEBATCH02,Batch Borrower Two,9812300002,234567800002,Kotri,52000',
+    'BR001,SMOKEBATCH03,Batch Borrower Three,9812300003,234567800003,Kotri,61000',
+]);
+$batchImport = postMultipart(
+    $base . '/import',
+    ['_csrf' => csrfToken(request($base . '/import')['body']), 'default_agent_id' => ''],
+    ['lead_file' => $batchCsvPath]
+);
+check('a batch was imported unassigned to test with', $batchImport['status'] === 200,
+    'HTTP ' . $batchImport['status']);
+@unlink($batchCsvPath);
+
+$historyPage = request($base . '/import/history');
+check('the history screen offers assignment', str_contains($historyPage['body'], 'Assign&hellip;')
+    || str_contains($historyPage['body'], 'Assign…'), 'no assign control rendered');
+check('and states how much of each batch is still unassigned',
+    str_contains($historyPage['body'], 'unassigned') || str_contains($historyPage['body'], 'all assigned'));
+
+// The newest row is the batch just uploaded; history is ordered created_at DESC.
+preg_match('#/import/(\d+)/assign#', $historyPage['body'], $batchMatch);
+$batchId = (int) ($batchMatch[1] ?? 0);
+check('the imported batch is addressable from the history', $batchId > 0);
+
+if ($batchId > 0) {
+    // Distributing a whole batch, including the leads that already have an owner, is the
+    // rebalance somebody does when a branch gains a second BC.
+    $distributed = request($base . '/import/' . $batchId . '/assign', [
+        '_csrf'       => csrfToken($historyPage['body']),
+        'assign_mode' => 'distribute',
+    ]);
+    check('a past batch can be distributed evenly', $distributed['status'] === 200
+        && str_contains($distributed['body'], 'assigned'), 'HTTP ' . $distributed['status']);
+
+    // Handing the batch to one named agent still works, because assigning a village to a
+    // person is a real need that even distribution does not cover.
+    $historyAgain = request($base . '/import/history');
+    preg_match('#name="agent_id"[^>]*>.*?<option value="(\d+)"#s', $historyAgain['body'], $agentMatch);
+    $someAgentId = (int) ($agentMatch[1] ?? 0);
+
+    if ($someAgentId > 0) {
+        $toOneAgent = request($base . '/import/' . $batchId . '/assign', [
+            '_csrf'       => csrfToken($historyAgain['body']),
+            'assign_mode' => 'agent',
+            'agent_id'    => (string) $someAgentId,
+        ]);
+        check('or handed to one named agent', $toOneAgent['status'] === 200
+            && str_contains($toOneAgent['body'], 'assigned'), 'HTTP ' . $toOneAgent['status']);
+    }
+
+    // Asking for one agent without naming one must be refused rather than silently
+    // falling back to distributing, which would be a different action than the one asked
+    // for.
+    $noAgent = request($base . '/import/' . $batchId . '/assign', [
+        '_csrf'       => csrfToken(request($base . '/import/history')['body']),
+        'assign_mode' => 'agent',
+    ]);
+    check('choosing "one agent" without naming one is refused',
+        str_contains($noAgent['body'], 'Choose an agent'), 'HTTP ' . $noAgent['status']);
+
+    // And a batch whose leads are all assigned says so instead of reporting a hollow
+    // success, when the caller asked to touch only the unassigned ones.
+    $onlyUnassigned = request($base . '/import/' . $batchId . '/assign', [
+        '_csrf'           => csrfToken(request($base . '/import/history')['body']),
+        'assign_mode'     => 'distribute',
+        'only_unassigned' => '1',
+    ]);
+    check('"only the ones nobody has" reports honestly when there are none',
+        str_contains($onlyUnassigned['body'], 'already assigned')
+        || str_contains($onlyUnassigned['body'], 'assigned'),
+        'HTTP ' . $onlyUnassigned['status']);
+
+    // The point of the whole screen: those leads have an owner now, and it happened
+    // after the import rather than during it.
+    $batchLead = request($base . '/customers?search=SMOKEBATCH01');
+    check('the batch lead is findable', str_contains($batchLead['body'], 'SMOKEBATCH01'));
+    // Matched on the badge, not the word: "Unassigned only" is a filter label on every
+    // list page, so the bare substring was true whatever the data said.
+    check('a lead from the batch is no longer unassigned',
+        !str_contains($batchLead['body'], 'badge-pending">Unassigned'), 'still shows the unassigned badge');
+    check('and the history now says the batch is fully assigned',
+        str_contains(request($base . '/import/history')['body'], 'all assigned'));
+}
 
 $template = request($base . '/import/template');
 check('import template downloads', $template['status'] === 200 && str_starts_with($template['body'], "PK\x03\x04"),

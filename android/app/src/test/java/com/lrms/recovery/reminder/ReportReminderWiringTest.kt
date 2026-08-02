@@ -151,16 +151,75 @@ class ReportReminderWiringTest {
     // -----------------------------------------------------------------------
 
     @Test
-    fun `the bank's switch overrides the agent's`() {
+    fun `the bank's switch is the only switch`() {
+        // There used to be an agent-side switch and an agent-side lead time beside it.
+        // Both are gone: the deadline is the bank's, the agent is measured against it, and
+        // a reminder the measured person can move or silence is not a reminder.
         assertTrue(
-            "the scheduler must honour both switches",
-            Regex("""reportReminderAllowed[\s\S]{0,80}reportReminderEnabled""")
-                .containsMatchIn(code(scheduler)),
+            "the scheduler must honour the bank's switch",
+            code(scheduler).contains("reportReminderAllowed"),
+        )
+        assertFalse(
+            "no agent-side enable flag may come back",
+            code(scheduler).contains("reportReminderEnabled")
+                || session.contains("reportReminderEnabled"),
+        )
+        assertFalse(
+            "and no agent-side lead time either",
+            session.contains("reportReminderLeadMinutes"),
+        )
+        assertFalse(
+            "the account screen must offer nothing about the reminder at all",
+            code(account).contains("reportReminder") || code(account).contains("rowReminder"),
+        )
+    }
+
+    @Test
+    fun `the alarm keeps coming back until the report is filed`() {
+        // One notification at the deadline is one swipe from being nobody's problem until
+        // tomorrow. It re-fires on the bank's interval instead.
+        assertTrue(
+            "the scheduler must be able to book a repeat",
+            code(scheduler).contains("fun scheduleRetry"),
         )
         assertTrue(
-            "the account screen must refuse to switch it on when the bank has it off",
-            Regex("""reportReminderAllowed[\s\S]{0,200}return""").containsMatchIn(code(account)),
+            "the receiver must book one after nudging",
+            Regex("""notify\([\s\S]{0,400}scheduleRetry""").containsMatchIn(code(receiver)),
         )
+        assertTrue(
+            "and fall back to the daily alarm when today's repeats are spent",
+            Regex("""scheduleRetry\([\s\S]{0,200}reschedule""").containsMatchIn(code(receiver)),
+        )
+        assertTrue(
+            "the repeat interval and cutoff must come from the server, not the phone",
+            session.contains("reportReminderRepeatMinutes") && session.contains("reportReminderUntilHour"),
+        )
+    }
+
+    @Test
+    fun `filing the report takes the reminder down`() {
+        // The stop condition. Recording the date without clearing the notification and
+        // rebooking the daily alarm would leave it repeating at somebody who has already
+        // done the work - which is exactly what the repeat must never do.
+        assertTrue(
+            "the scheduler must own the whole 'submitted' transition",
+            code(scheduler).contains("fun markReportSubmitted"),
+        )
+
+        for (screen in listOf(
+            "src/main/java/com/lrms/recovery/ui/visit/VisitReportActivity.kt",
+            "src/main/java/com/lrms/recovery/ui/sss/SssEntryActivity.kt",
+        )) {
+            val text = File(screen).readText()
+            assertTrue(
+                "$screen must go through markReportSubmitted",
+                text.contains("markReportSubmitted"),
+            )
+            assertFalse(
+                "$screen must not set the date directly and leave the alarm running",
+                Regex("""session\.lastReportSubmittedDate\s*=""").containsMatchIn(text),
+            )
+        }
     }
 
     @Test
@@ -189,13 +248,16 @@ class ReportReminderWiringTest {
     fun `notification permission is requested, not assumed`() {
         // On Android 13+ a notification the agent never allowed is dropped silently,
         // so the reminder would appear on and simply never arrive.
+        // Asked for on launch now rather than when a switch is flipped, because there is
+        // no switch: without this the reminder would appear to work and never arrive.
+        val main = File("src/main/java/com/lrms/recovery/ui/main/MainActivity.kt").readText()
         assertTrue(
             "POST_NOTIFICATIONS must be requested at runtime",
-            code(account).contains("POST_NOTIFICATIONS"),
+            main.contains("POST_NOTIFICATIONS"),
         )
         assertTrue(
-            "and a refusal must be explained rather than left silent",
-            account.contains("report_reminder_notifications_needed"),
+            "and only when the platform needs it",
+            main.contains("TIRAMISU"),
         )
     }
 
@@ -215,7 +277,13 @@ class ReportReminderWiringTest {
             "it must open SssEntryActivity",
             code(receiver).contains("SssEntryActivity"),
         )
-        assertTrue("and be dismissible", code(receiver).contains("setAutoCancel(true)"))
+        // Deliberately NOT dismissible. It has to still be there until the report is in,
+        // and auto-cancel would clear it the moment the agent opened the form and backed
+        // out again - which is precisely the case the repeat exists for.
+        assertTrue(
+            "it must survive a swipe",
+            code(receiver).contains("setAutoCancel(false)") && code(receiver).contains("setOngoing(true)"),
+        )
     }
 
     @Test

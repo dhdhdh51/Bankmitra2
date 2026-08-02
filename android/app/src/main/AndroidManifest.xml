@@ -184,11 +184,5 @@
             android:label="@string/sss_title"
             android:theme="@style/Theme.LRMS" />
 
-        <activity
-            android:name=".ui.location.LocationConsentActivity"
-            android:exported="false"
-            android:label="@string/location_notice_title"
-            android:theme="@style/Theme.LRMS" />
-
     </application>
 </manifest>

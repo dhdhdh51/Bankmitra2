@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Models\LoanAccount;
 use App\Services\BcPerformanceService;
 use App\Core\Settings;
 
@@ -66,6 +67,21 @@ final class ReportService
             'label'       => 'BC Daily Report',
             'description' => 'Per-agent visits, contacts, PTP and SSS enrolments (APY, PMJJBY, PMSBY, PMJDY) against the day\'s target',
         ],
+        // Two rows, not one.
+        //
+        // KCC and OD-2 both renew against ckcc_renewal_due_date and used to be reviewed
+        // as a single list. They are not one queue: the volumes differ by an order of
+        // magnitude, the paperwork differs, and a branch reviews them separately - so one
+        // undifferentiated list meant forty OD-2 renewals buried inside three hundred KCC
+        // ones.
+        'kcc-renewal' => [
+            'label'       => 'KCC Renewal Worklist',
+            'description' => 'Kisan Credit Card accounts by renewal due date, soonest first',
+        ],
+        'od2-renewal' => [
+            'label'       => 'OD-2 Renewal Worklist',
+            'description' => 'OD-2 accounts by renewal due date, soonest first',
+        ],
     ];
 
     public static function isValidType(string $type): bool
@@ -99,6 +115,10 @@ final class ReportService
             'agent'     => self::agentWise($filters),
             'promise'   => self::promiseWise($filters),
             'bc-daily'  => self::bcDaily($filters),
+            // One method, two facilities: the two worklists differ only in which accounts
+            // they contain, and duplicating the query would let them drift apart.
+            'kcc-renewal' => self::renewalWorklist($filters, 'kcc'),
+            'od2-renewal' => self::renewalWorklist($filters, 'od2'),
             default     => throw new \InvalidArgumentException('Unknown report type: ' . $type),
         };
     }
@@ -1354,5 +1374,143 @@ final class ReportService
     private static function filename(string $type): string
     {
         return 'lrms_' . str_replace('-', '_', $type) . '_report_' . date('Ymd_His');
+    }
+
+    // =======================================================================
+    // 10 & 11. RENEWAL WORKLISTS  (KCC and OD-2, separately)
+    // =======================================================================
+
+    /**
+     * Accounts of one facility, ordered by how soon the renewal is due.
+     *
+     * A worklist rather than a summary: every other report aggregates, but nobody renews
+     * an average. This is the list a branch works down, so it is one row per account with
+     * the borrower, the village, who is on it and how many days are left.
+     *
+     * Accounts with no renewal date are included and sorted last. They are the ones most
+     * likely to be wrong - a KCC with no due date recorded is a KCC nobody is tracking -
+     * and dropping them would make the worklist look complete when it is not.
+     *
+     * @param  array<string,mixed> $filters
+     * @param  'kcc'|'od2'         $facility
+     * @return array<string,mixed>
+     */
+    private static function renewalWorklist(array $filters, string $facility): array
+    {
+        [$scope, $params] = self::leadScope($filters, 'la');
+
+        $label = LoanAccount::FACILITIES[$facility] ?? strtoupper($facility);
+
+        // Closed accounts are finished work and never need renewing.
+        $rows = Database::instance()->all(
+            "SELECT la.id,
+                    la.loan_account_number,
+                    c.name AS customer_name,
+                    c.village,
+                    la.loan_type,
+                    la.sanction_limit,
+                    la.outstanding_amount,
+                    la.overdue_amount,
+                    la.ckcc_renewal_due_date AS renewal_due_date,
+                    CASE
+                        WHEN la.ckcc_renewal_due_date IS NULL THEN NULL
+                        ELSE DATEDIFF(la.ckcc_renewal_due_date, CURDATE())
+                    END AS days_to_due,
+                    la.asset_classification,
+                    la.current_status,
+                    COALESCE(ag.name, '') AS agent_name
+               FROM loan_accounts la
+               JOIN customers c ON c.id = la.customer_id
+               LEFT JOIN users ag ON ag.id = la.assigned_agent_id
+              WHERE la.facility_type = ?
+                AND la.current_status <> 'closed'
+                {$scope}
+              ORDER BY la.ckcc_renewal_due_date IS NULL,
+                       la.ckcc_renewal_due_date ASC,
+                       la.overdue_amount DESC",
+            array_merge([$facility], $params)
+        );
+
+        // Said in words on the report, because "-14" in a days column is read as a typo
+        // more often than as "this lapsed a fortnight ago".
+        $overdue = 0;
+        $dueSoon = 0;
+        $noDate = 0;
+        foreach ($rows as $index => $row) {
+            $days = $row['days_to_due'] === null ? null : (int) $row['days_to_due'];
+
+            if ($days === null) {
+                $noDate++;
+                $rows[$index]['renewal_state'] = 'No due date recorded';
+                continue;
+            }
+            if ($days < 0) {
+                $overdue++;
+                $rows[$index]['renewal_state'] = abs($days) . ' day(s) overdue';
+                continue;
+            }
+            if ($days <= 30) {
+                $dueSoon++;
+            }
+            $rows[$index]['renewal_state'] = $days === 0 ? 'Due today' : 'in ' . $days . ' day(s)';
+        }
+
+        $columns = [
+            ['key' => 'loan_account_number',  'label' => 'Loan Account',   'type' => 'text',  'width' => 1.5],
+            ['key' => 'customer_name',        'label' => 'Borrower',       'type' => 'text',  'width' => 1.6],
+            ['key' => 'village',              'label' => 'Village',        'type' => 'text',  'width' => 1.1],
+            ['key' => 'agent_name',           'label' => 'Agent',          'type' => 'text',  'width' => 1.3],
+            ['key' => 'renewal_due_date',     'label' => 'Renewal Due',    'type' => 'date',  'width' => 1.1],
+            ['key' => 'renewal_state',        'label' => 'Status',         'type' => 'text',  'width' => 1.3],
+            ['key' => 'sanction_limit',       'label' => 'Limit',          'type' => 'money', 'width' => 1.2],
+            ['key' => 'outstanding_amount',   'label' => 'Outstanding',    'type' => 'money', 'width' => 1.3],
+            ['key' => 'overdue_amount',       'label' => 'Overdue',        'type' => 'money', 'width' => 1.2],
+            ['key' => 'asset_classification', 'label' => 'Classification', 'type' => 'text',  'width' => 1.2],
+        ];
+
+        $rows = self::castRows($rows, $columns);
+
+        // Money only. Summing a due date or a day count would produce a number that means
+        // nothing, and sumTotals() cannot know that on its own.
+        $totals = self::sumTotals($rows, array_values(array_filter(
+            $columns,
+            static fn (array $column): bool => $column['type'] === 'money'
+        )), 'loan_account_number', 'TOTAL');
+
+        if ($totals !== null) {
+            $totals['customer_name'] = '';
+            $totals['village'] = '';
+            $totals['agent_name'] = '';
+            $totals['renewal_due_date'] = null;
+            $totals['renewal_state'] = sprintf('%d account(s)', count($rows));
+            $totals['asset_classification'] = '';
+        }
+
+        $headline = sprintf(
+            '%d overdue, %d due within 30 days, %d with no date recorded',
+            $overdue,
+            $dueSoon,
+            $noDate
+        );
+
+        return [
+            'type'     => $facility === 'kcc' ? 'kcc-renewal' : 'od2-renewal',
+            'title'    => $label . ' Renewal Worklist',
+            'subtitle' => self::subtitle($filters, $headline),
+            'columns'  => $columns,
+            'rows'     => $rows,
+            'totals'   => $totals,
+            // Every report in this service returns a summary and the API reads it
+            // unconditionally, so omitting it is a 500 rather than a missing panel.
+            'summary'  => [
+                ['label' => 'Facility',            'value' => $label],
+                ['label' => 'Accounts',            'value' => (string) count($rows)],
+                ['label' => 'Renewal overdue',     'value' => (string) $overdue],
+                ['label' => 'Due within 30 days',  'value' => (string) $dueSoon],
+                ['label' => 'No due date on file', 'value' => (string) $noDate],
+            ],
+            'landscape' => true,
+            'filename' => self::filename($facility === 'kcc' ? 'kcc-renewal' : 'od2-renewal'),
+        ];
     }
 }

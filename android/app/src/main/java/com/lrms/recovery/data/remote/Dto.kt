@@ -401,8 +401,12 @@ data class MetaPayload(
     @SerializedName("min_version") val minVersion: String? = null,
     /** The bank's daily report deadline, `HH:mm`. Drives the on-device alarm. */
     @SerializedName("report_due_time") val reportDueTime: String? = null,
-    /** The bank's master switch for the reminder. Overrides the agent's own. */
+    /** The bank's master switch for the reminder. There is no agent-side one. */
     @SerializedName("report_reminder") val reportReminder: Boolean = true,
+    /** How often the alarm re-fires until the report is in. 0 = one reminder only. */
+    @SerializedName("report_reminder_repeat_minutes") val reportReminderRepeatMinutes: Int = 15,
+    /** The hour repeats stop at, so the phone is quiet overnight. */
+    @SerializedName("report_reminder_until_hour") val reportReminderUntilHour: Int = 22,
 )
 
 data class AgentDashboardPayload(

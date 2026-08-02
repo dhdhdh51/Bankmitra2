@@ -287,6 +287,18 @@ CREATE TABLE `loan_accounts` (
   -- becoming untrustworthy. Shape: {"column": {"by": userId, "at": "Y-m-d H:i:s"}}.
   `manual_overrides`     JSON         DEFAULT NULL COMMENT 'hand-edited columns the import must not clobber',
   `loan_type`            VARCHAR(80)  DEFAULT NULL,
+  -- Which renewable facility this account is, so KCC and OD-2 can be worked as the two
+  -- separate queues they actually are.
+  --
+  -- They were one queue. `ckcc_renewal_due_date` covers both and the renewal report
+  -- covered both, so a branch with three hundred KCC renewals and forty OD-2 renewals got
+  -- one undifferentiated list - which is not how the work is divided, done or reviewed.
+  --
+  -- Derived from `loan_type` on import rather than needing a new column in the sheet: the
+  -- bank's own product / scheme / facility heading already lands there, and it already
+  -- says "KCC" or "OD-2". Correctable by hand afterwards like any other figure, because a
+  -- product name is not always a facility name.
+  `facility_type`        ENUM('kcc','od2','other') DEFAULT NULL COMMENT 'NULL = the file did not say',
   `outstanding_amount`   DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `overdue_amount`       DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `npa_date`             DATE         DEFAULT NULL,
@@ -372,6 +384,9 @@ CREATE TABLE `loan_accounts` (
   -- Recovery work is prioritised by classification within a branch, so that ordering
   -- gets an index rather than a filesort over every lead the branch holds.
   KEY `idx_loan_classification` (`branch_id`, `asset_classification`),
+  -- The two renewal worklists are exactly this: one facility, one branch, ordered by the
+  -- date the renewal is due.
+  KEY `idx_loan_facility_renewal` (`branch_id`, `facility_type`, `ckcc_renewal_due_date`),
   KEY `idx_loan_followup` (`next_followup_date`),
   KEY `idx_loan_ckcc_renewal` (`ckcc_renewal_due_date`),
   -- Drives the "which accounts can we settle" worklist.
@@ -1551,7 +1566,17 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   -- code, because the settings screen has no per-type validation and a blank here
   -- must not mean "no deadline".
   ('daily_report_due_time','17:00',         'notifications', 'Daily report due by',               'select', 0, 0, 'The app reminds agents at this time. Keep the sss-reminder --final cron entry on the same hour.', 3),
-  ('daily_report_reminder_enabled','1',     'notifications', 'Remind agents to submit',           'select', 0, 0, 'Turns the in-app daily alarm off for everyone. Agents can also switch off their own.', 4),
+  ('daily_report_reminder_enabled','1',     'notifications', 'Remind agents to submit',           'select', 0, 0, 'Turns the in-app daily alarm off for everyone. An agent cannot switch off their own.', 4),
+  -- The alarm repeats until the report is in, and both numbers are the bank's, not the
+  -- agent's. A single notification at the deadline is dismissed in one swipe and then it
+  -- is nobody's problem until tomorrow; repeating it makes the deadline mean something.
+  --
+  -- The cutoff exists because "until it is submitted" cannot literally mean all night. An
+  -- alarm at 2 am is not a reminder, it is a reason to turn notifications off for the app
+  -- entirely - which would take the useful reminders with it. It resumes at the deadline
+  -- on the next working day, so an unfiled report is not forgotten either.
+  ('daily_report_reminder_repeat_minutes','15','notifications','Repeat the alarm every (minutes)','number', 0, 0, 'The alarm re-fires this often until the agent submits. 0 turns repeating off and leaves one reminder at the deadline.', 5),
+  ('daily_report_reminder_until_hour','22',  'notifications', 'Stop repeating at (hour, 0-23)',    'number', 0, 0, 'Repeats stop at this hour and resume at the deadline on the next working day. An alarm through the night gets the app silenced.', 6),
 
   ('backup_retention_days','14',            'backup',  'Backup retention (days)', 'number', 0, 0, 'Older .sql files are pruned', 1),
   ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text',   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2),

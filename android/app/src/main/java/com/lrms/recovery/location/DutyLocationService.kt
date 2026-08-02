@@ -35,11 +35,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Records the agent's position for the duration of a duty session.
  *
+ * A session begins when a signed-in agent opens the app and the location permission is
+ * held. There is no start button, deliberately: what the bank measures is not the
+ * measured person's setting, in the same way the daily reminder time is not.
+ *
  * A FOREGROUND service, not a background one, and that is the whole design rather
  * than a technical detail: Android forces a permanent notification for as long as
- * this runs, so an agent can always see that recording is on and can always turn it
- * off. `ACCESS_BACKGROUND_LOCATION` is deliberately never requested - it would allow
- * collection with nothing on screen to say so, which is a different product.
+ * this runs, so an agent can always see that recording is on.
+ * `ACCESS_BACKGROUND_LOCATION` is deliberately never requested - it would allow
+ * collection with nothing on screen to say so, which is a different product. The
+ * consequence is honest and intended: close the app and recording stops.
  *
  * Uses the platform [LocationManager] rather than Play Services. The agents this is
  * for carry cheap phones, some without Google Play Services at all, and one more
@@ -83,10 +88,20 @@ class DutyLocationService : Service() {
             return START_NOT_STICKY
         }
 
-        // Two independent gates. Either one missing means we do not start: no
-        // permission, or no acknowledgement of the notice.
+        // The permission is the gate on this side. The other gate is the server's: it
+        // answers 412 until consent is on file, and that is handled where the points are
+        // uploaded rather than guessed at here.
         if (!hasLocationPermission()) {
             stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // A start for a session that is already recording is a no-op, not a second
+        // session. The app asks for one on every entry - it has to, because the ongoing
+        // notification's Stop action can end a session while the app is in the background
+        // - and registering a second set of listeners on the same providers would double
+        // every fix and leave one set behind when the first is removed.
+        if (active) {
             return START_NOT_STICKY
         }
 
@@ -94,9 +109,10 @@ class DutyLocationService : Service() {
         beginUpdates()
         active = true
 
-        // START_STICKY would have Android silently restart this after the process
-        // dies, resuming recording without the agent choosing to. A duty session is
-        // something the agent starts on purpose, every time.
+        // START_STICKY would have Android silently restart this after the process died,
+        // with no activity on screen and nobody to notice it had come back wrong. The app
+        // starts a session every time it is opened, which covers the same ground while
+        // recording stays tied to something visible.
         return START_NOT_STICKY
     }
 
@@ -247,8 +263,10 @@ class DutyLocationService : Service() {
             .setContentText(getString(R.string.location_notice_short))
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setContentIntent(open)
-            // An always-available way to stop, in the notification itself. Making
-            // somebody hunt through settings to turn off tracking is not consent.
+            // Stop ends the session that is running. It is not a setting: the next time
+            // the app is opened, recording resumes. It stays because a foreground service
+            // an agent cannot end at all is the kind of thing that gets an app's
+            // notifications switched off wholesale, which would take the reminder with it.
             .addAction(0, getString(R.string.location_stop_duty), stop)
             .setOngoing(true)
             .setSilent(true)

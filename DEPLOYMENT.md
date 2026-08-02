@@ -684,12 +684,12 @@ Everything in the repository is covered by runnable checks.
 | --- | --- |
 | `php tools/selftest-core.php` | 236 checks — crypto, JWT, XLSX, PDF (including image embedding), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 24 checks — 35 tables, 57 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
-| `sh tools/integration-test.sh` | 709 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
-| `sh tools/verify-upgrade-sql.sh` | 14 checks — **runs the migration chain in section 10 of this document** on a populated pre-release database and compares the result against `schema.sql` |
+| `sh tools/integration-test.sh` | 752 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo and signatures |
+| `sh tools/verify-upgrade-sql.sh` | 17 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 287 panel + 221 API checks over real HTTP |
-| `sh tools/verify-android.sh` | 220 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 324 panel + 227 API checks over real HTTP |
+| `sh tools/verify-android.sh` | 225 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 19 checks — release signing works, and the unsigned fallback really is uninstallable |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
@@ -740,8 +740,12 @@ By design, and worth confirming against your compliance requirements:
   `bc_location_logs`). Before you deploy, satisfy yourself about all of the
   following, because each one is a control this system relies on:
   - the location notice text in `TrackingService::notice()` matches what you
-    actually tell your agents, in writing, outside the app as well as inside it;
-  - agents have acknowledged it — until they do, nothing is recorded for them;
+    actually tell your agents, **in writing, outside the app** — the app no longer shows
+    that text to them, so this is now the only place they read it. The notice is still
+    versioned and still what the consent record points at;
+  - the app is not asking a second time: consent is the operating system's permission
+    dialog, posted server-side once the permission is held, and recording starts on its
+    own from there — there is no switch an agent leaves off;
   - `location_retention_days` is set to a period you can justify (default 90);
   - `cron/purge-location-logs.php` is actually scheduled, otherwise the retention
     promise in the notice is false;
@@ -914,9 +918,11 @@ ALTER TABLE `audit_logs`
 ```
 
 **Before you turn this on**, work through the checklist in §8 — the notice text,
-the acknowledgements, the retention period, and the purge cron. Nothing is recorded
-for an agent until they have acknowledged, so the safe order is: deploy, set
-`location_retention_days`, schedule the purge, then roll out the consent screen.
+the retention period, and the purge cron. Nothing is recorded for an agent until consent is
+on file, and the app posts that the first time it runs with the location permission held, so
+the safe order is: deploy, set `location_retention_days`, schedule the purge, *then* roll
+out the APK. Turn that order around and the first day's points are recorded with no purge
+scheduled to age them out.
 
 ```
 15 3 * * * /usr/local/bin/php /home/USER/public_html/cron/purge-location-logs.php
@@ -1435,6 +1441,95 @@ Afterwards:
   borrower list and can reach nothing else — no dashboard, no visits, no reports, no other
   agent's borrowers.
 - No new APK is needed for any of this.
+
+### Splitting KCC from OD-2, and making the alarm persist, on an existing install
+
+One column, one index, two settings — and a backfill that matters: without it both renewal
+worklists are empty on an existing database, because nothing has told it which accounts are
+which.
+
+```sql
+-- 1. Which renewable facility an account is, so KCC and OD-2 become the two separate
+--    queues they already were in practice. They both renew against
+--    ckcc_renewal_due_date and used to be reviewed as one list, which buried forty OD-2
+--    renewals inside three hundred KCC ones.
+ALTER TABLE `loan_accounts`
+  ADD COLUMN `facility_type` ENUM('kcc','od2','other') DEFAULT NULL
+      COMMENT 'NULL = the file did not say' AFTER `loan_type`,
+  ADD KEY `idx_loan_facility_renewal` (`branch_id`, `facility_type`, `ckcc_renewal_due_date`);
+
+-- 2. Backfill from the loan type already on the row. New imports derive this
+--    automatically; existing rows need telling once, or both worklists open empty.
+--
+--    OD-2 is matched FIRST: an account whose type reads "KCC OD-2" has been converted, and
+--    belongs in the OD-2 queue. A bare "OD" or "Overdraft" is deliberately left NULL - a
+--    plain overdraft is not the OD-2 facility, and a wrong guess puts an account into a
+--    list somebody works through by hand.
+UPDATE `loan_accounts`
+   SET `facility_type` = 'od2'
+ WHERE `facility_type` IS NULL
+   AND (
+     REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%od2%'
+     OR REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%odii%'
+     OR REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%overdraft2%'
+     OR REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%overdraftii%'
+   );
+
+UPDATE `loan_accounts`
+   SET `facility_type` = 'kcc'
+ WHERE `facility_type` IS NULL
+   AND (
+     REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%kcc%'
+     OR REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%kisancreditcard%'
+     OR REPLACE(REPLACE(LOWER(`loan_type`), '-', ''), ' ', '') LIKE '%kisancard%'
+   );
+
+-- 3. How the daily alarm behaves once it fires. Both are the bank's numbers, not the
+--    agent's - the app no longer has any control over the reminder at all.
+INSERT INTO `settings`
+  (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `is_secret`, `is_required`, `hint`, `sort_order`)
+VALUES
+  ('daily_report_reminder_repeat_minutes','15','notifications','Repeat the alarm every (minutes)','number', 0, 0, 'The alarm re-fires this often until the agent submits. 0 turns repeating off and leaves one reminder at the deadline.', 5),
+  ('daily_report_reminder_until_hour','22','notifications','Stop repeating at (hour, 0-23)','number', 0, 0, 'Repeats stop at this hour and resume at the deadline on the next working day. An alarm through the night gets the app silenced.', 6)
+ON DUPLICATE KEY UPDATE `setting_key` = `setting_key`;
+```
+
+Check the backfill did something sensible before relying on the worklists:
+
+```sql
+SELECT `facility_type`, COUNT(*) FROM `loan_accounts` GROUP BY `facility_type`;
+```
+
+Anything that came out `NULL` and should not have can be set from the borrower's own page —
+the facility is a normal editable field, and correcting it is recorded like any other
+hand-edit so the next import leaves it alone.
+
+**A new APK is required for the reminder changes.** The app side of this release removes the
+agent's control over the daily alarm and makes it repeat until the report is filed:
+
+- The reminder switch and the "nudge me 30 minutes early" picker are **gone** from the app.
+  The deadline is the bank's and the agent is measured against it, so a reminder the
+  measured person can move or silence was not doing its job. Set the time, the repeat
+  interval and the cutoff hour under **Settings → Notifications**; every agent picks the
+  change up the next time they open the app.
+- The alarm now **re-fires every 15 minutes until the report is in**, and the notification
+  no longer disappears on a swipe. It stops the instant a visit or the day's SSS figures are
+  filed. It also stops at 22:00 and resumes at the deadline the next working day — "until it
+  is submitted" cannot literally mean all night, because an alarm at 2 am gets the app's
+  notifications switched off entirely and takes the working reminders with it.
+- The in-app **location consent screen is gone**. Granting the operating system's location
+  permission is now the whole of it, recorded once server-side for the audit trail. There is
+  no longer an in-app toggle that can disagree with the OS setting — which was a real trap:
+  an agent could grant the permission and still have every coordinate refused, with nothing
+  anywhere explaining why their visits carried no location.
+- **Recording starts by itself**, as soon as a signed-in agent opens the app with the
+  permission held. The Start-duty button went with the consent screen: there is no switch
+  for an agent to leave off. Android still requires the ongoing notification, and its
+  **Stop** still ends the running session — but it is not a setting, so recording resumes
+  the next time the app is opened. Signing out stops it.
+
+An older APK against the new server keeps working; it simply still shows its own reminder
+controls and still asks about location separately.
 
 ### Renaming to D2 Recovery on an existing install
 

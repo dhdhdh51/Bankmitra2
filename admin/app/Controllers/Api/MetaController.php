@@ -25,6 +25,12 @@ final class MetaController extends Controller
      */
     private const DEFAULT_DUE_TIME = '17:00';
 
+    /** Fifteen minutes is firm without being a phone nobody can put down. */
+    private const DEFAULT_REPEAT_MINUTES = 15;
+
+    /** Late enough to catch an agent still out, early enough not to wake a household. */
+    private const DEFAULT_UNTIL_HOUR = 22;
+
     /**
      * Unauthenticated health/version probe. The app calls this before the login
      * screen so it can show a "please update" prompt without a valid session.
@@ -85,7 +91,57 @@ final class MetaController extends Controller
             // each phone - and changing it here moves every agent's reminder.
             'report_due_time'  => self::reportDueTime(),
             'report_reminder'  => Settings::bool('daily_report_reminder_enabled'),
+
+            // How the alarm behaves once it has fired. Both are the bank's numbers, sent
+            // to the phone rather than configured on it, because an agent who can move
+            // their own reminder can move it past the deadline they are measured against.
+            'report_reminder_repeat_minutes' => self::reminderRepeatMinutes(),
+            'report_reminder_until_hour'     => self::reminderUntilHour(),
         ]);
+    }
+
+    /**
+     * How often the alarm re-fires until the report is in, in minutes.
+     *
+     * Clamped rather than trusted, like the deadline: the settings screen has no
+     * per-type validation, so a browser can post anything. A 0 means "one reminder and
+     * no repeating", which is a real choice. Anything below 5 is refused rather than
+     * honoured - a phone buzzing every minute is not a firmer reminder, it is an
+     * uninstalled app.
+     */
+    public static function reminderRepeatMinutes(): int
+    {
+        $raw = trim((string) (Settings::get('daily_report_reminder_repeat_minutes', '') ?? ''));
+
+        if (!preg_match('/^\d{1,4}$/', $raw)) {
+            return self::DEFAULT_REPEAT_MINUTES;
+        }
+
+        $minutes = (int) $raw;
+
+        if ($minutes === 0) {
+            return 0;
+        }
+
+        return max(5, min(240, $minutes));
+    }
+
+    /**
+     * The hour repeats stop at, 0-23.
+     *
+     * "Until it is submitted" cannot literally mean all night: an alarm at 2 am gets the
+     * app's notifications switched off entirely, which loses the reminders that were
+     * working. Repeats stop here and resume at the deadline on the next working day.
+     */
+    public static function reminderUntilHour(): int
+    {
+        $raw = trim((string) (Settings::get('daily_report_reminder_until_hour', '') ?? ''));
+
+        if (!preg_match('/^\d{1,2}$/', $raw)) {
+            return self::DEFAULT_UNTIL_HOUR;
+        }
+
+        return min(23, max(0, (int) $raw));
     }
 
     /**

@@ -179,15 +179,33 @@ These are hard product constraints, not missing features:
 
 ### The daily report reminder
 
-The deadline is bank policy; the nudge is the agent's. They are stored and controlled
-separately, on purpose.
+**All of it is the bank's. None of it is the agent's.** That is a change: the app used to
+carry a reminder switch and a "nudge me 30 minutes early" picker, and both are gone. A
+reminder that the person being measured against the deadline can move or silence is not
+doing the job it exists for, and the panel is responsive, so an operator can set it from
+their own phone anyway.
 
-The **deadline** is a server setting (`daily_report_due_time`, default 17:00) changed
-in the panel — which is responsive, so an operator can move it from their phone and
-every agent's alarm follows the next time they open the app. The **reminder** is the
-agent's own: they can be nudged earlier than the deadline, or switch it off, from the
-Account tab. What they cannot do is move it *later* — that would quietly let somebody
-opt out of a deadline they are still assessed against.
+Three settings, all under **Settings → Notifications**, all arriving on the phone through
+`/meta`:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `daily_report_due_time` | 17:00 | When the first nudge fires |
+| `daily_report_reminder_repeat_minutes` | 15 | How often it comes back until the report is in. 0 means one reminder and no repeating |
+| `daily_report_reminder_until_hour` | 22 | When repeats stop for the night |
+
+**It keeps coming until the report is filed.** One notification at the deadline is one
+swipe away from being nobody's problem until tomorrow, so it re-fires on the bank's
+interval and the notification does not vanish when brushed aside. It stops the instant a
+visit or the day's SSS figures are filed — the way to make it go away is to do the thing it
+is asking for. Every value is clamped on the way out of the server (a repeat of 1 minute
+becomes 5, an hour of 99 becomes 23) because the settings screen has no per-type validation
+and these drive an alarm on somebody's phone.
+
+**And it stops overnight.** "Until it is submitted" cannot literally mean all night: an
+alarm at 2 am does not get a report submitted, it gets the app's notifications switched off
+entirely and takes the working reminders with it. Repeats stop at the cutoff and resume at
+the deadline on the next working day, so an unfiled report is not forgotten either.
 
 It is a **local alarm, not a push**. Firebase is not in the APK at all, so a
 server-driven push could not reach the phone; and for agents on patchy rural
@@ -237,21 +255,35 @@ coordinates.
 Earlier releases captured **no** location at all, and this section said so. The
 operator has since decided to record it, so the honest statement is now:
 
-- ✅ **Location IS recorded** — an agent's position while they are on duty in the
-  app, and the position at the moment a visit photo is taken.
-- ✅ **Consent is enforced in code, not in a handbook.** An agent must be shown a
-  written notice and acknowledge it before a single point can be stored;
-  `TrackingService::record()` throws otherwise. The notice is versioned, so
-  changing what is collected forces a fresh acknowledgement rather than stretching
-  the old one over new collection.
-- ✅ **An agent can withdraw.** Collection stops immediately.
+- ✅ **Location IS recorded** — an agent's position during a duty session, and the
+  position at the moment a visit photo is taken.
+- ✅ **The agent does not start it.** A duty session begins on its own when a signed-in
+  agent opens the app and the permission is held; there is no Start button and no switch
+  left in the off position. What the bank measures is not the measured person's setting,
+  for the same reason the daily reminder time is not. The ongoing notification Android
+  requires is still there, and its **Stop** ends the session that is running — it is not a
+  setting, so recording resumes the next time the app is opened.
+- ✅ **Consent is the operating system's permission dialog, and nothing else asks twice.**
+  This also changed. There used to be a second, in-app consent notice with its own on/off
+  control, and it could disagree with the OS setting — an agent could grant the permission
+  and still have every coordinate refused by the server, with nothing anywhere explaining
+  why their visits carried no location. Granting the permission is now the whole of it.
+- ✅ **It is still recorded server-side, versioned, for the audit trail.** The app posts
+  the consent once, with the notice version the server is currently serving, so the record
+  says which notice applied, when, and from which device. `TrackingService::record()` still
+  throws without it — the gate did not move, only the second question the agent was asked.
+- ✅ **Withdrawal is the OS permission.** Revoking it in Android settings stops collection,
+  which is the one place an agent will think to look and the one that cannot disagree with
+  itself.
 - ✅ **It expires.** Points are deleted after the retention window (90 days by
   default) by `cron/purge-location-logs.php`. A permanent record of somebody's
   movements is a liability that grows.
 - ✅ **Reading somebody else's trail is audited**, like any other access to
   sensitive personal data. An agent reading their own is not.
 - ✅ **Off duty is off.** Points carry an `on_duty` flag and the app stops sending
-  when a duty session ends.
+  when a duty session ends — on sign-out, on **Stop**, or when the process dies. Nothing
+  is collected in the background: `ACCESS_BACKGROUND_LOCATION` is never requested, so
+  there is no collection without the notification that says it is happening.
 
 If you are deploying this, that last set of bullets is not decoration — a system
 that tracks staff without notice, without a way out and without an expiry date is
@@ -416,6 +448,20 @@ reach another branch's records by editing an ID in the URL.
 | Agent performance | Visits, promises made, promises kept, conversion |
 | Promise tracking | Due, overdue, kept and broken promises |
 | **BC Daily** | Per-agent visits, contacts, PTP, **APY / PMJJBY / PMSBY / PMJDY**, OD-2 renewals and recovery for one date, against that day's target |
+| **KCC Renewal Worklist** | Kisan Credit Card accounts by renewal due date, soonest first |
+| **OD-2 Renewal Worklist** | OD-2 accounts by renewal due date, soonest first |
+
+The two renewal worklists are separate rows on purpose. Both facilities renew against the
+same date column and used to be reviewed as one list, which buried forty OD-2 renewals
+inside three hundred KCC ones — they are not one queue, the volumes differ by an order of
+magnitude and the paperwork differs. Which facility an account is gets read off the loan
+type the bank's own file already carries, and is correctable by hand where a product name
+is not a facility name. A bare "OD" or "Overdraft" is deliberately left undetermined rather
+than guessed into a list somebody works down by hand.
+
+They are worklists rather than summaries — one row per account, because nobody renews an
+average. Accounts with no renewal date recorded are included and sorted last: those are the
+ones nobody is tracking, and dropping them would make the list look complete when it is not.
 
 The BC Daily report is worth one note. Visits are **counted, never entered** — the
 number is `COUNT(visit_reports)` for that agent and date, so there is no field
@@ -572,20 +618,20 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **236** — includes column detection against real bank-export shapes, the PDF image encoder and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **24** — 35 tables, 57 FKs, seeds, bcrypt login hash |
-| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **14** — the migration in `DEPLOYMENT.md` is extracted from the document and run on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **709** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph and signature, every banking column a recovery statement carries, and leads spread evenly across a branch |
+| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **17** — all four release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting, and grant by grant |
+| Integration | `sh tools/integration-test.sh` | **752** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph and signature, every banking column a recovery statement carries, and leads spread evenly across a branch |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **287** panel + **221** API |
-| Android | `sh tools/verify-android.sh` | **220** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **324** panel + **227** API |
+| Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
-| **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
+| **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **16** — the OS permission is the whole consent, recording starts without the agent, consent is posted before the first point, foreground-only, no background permission (a subset of the Android row) |
 | **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **15** — a camera capture may carry coordinates, a gallery pick may not, the capture source and time are sent rather than guessed, and the agent's own photograph is camera-only (a subset of the Android row) |
 | **SSS entry** | `:app:testDebugUnitTest` (`SssEntryTest`) | **11** — four typed schemes, and no field anywhere for typing a visit count (a subset of the Android row) |
-| **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **21** — real behavioural tests: never in the past, never on a Sunday, a lead time that cannot move past the deadline (a subset of the Android row) |
-| **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **14** — survives reboot, cannot stop rescheduling, no exact-alarm permission (a subset of the Android row) |
+| **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **24** — real behavioural tests: never in the past, never on a Sunday, and a repeat that keeps firing until the report is filed but stops at the cutoff hour (a subset of the Android row) |
+| **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **16** — survives reboot, cannot stop rescheduling, no exact-alarm permission, and filing the report is the only thing that clears it (a subset of the Android row) |
 | **Tab switching** | `:app:testDebugUnitTest` (`TabSwitchingTest`) | **9** — one source of truth for which tab is on screen; verified to fail against the old code (a subset of the Android row) |
 | Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
@@ -594,7 +640,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,877 assertions total** — the sum of the bold counts above, counting the seven
+**1,973 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -1034,6 +1080,48 @@ Kept here because they are the reason the tests exist:
     `loan_accounts` would have 47 columns when the answer is 45, which would have had an
     operator conclude a successful migration had failed. Both were found by checking the
     documentation against the database rather than against memory.
+69. **Growing the importer made the mapping screen unusable.** Detection went from 24
+    recognised columns to 35, and the mapping table renders one row per *field* rather than
+    per column in the file. A real export carries eight or ten, so the screen became
+    twenty-five consecutive rows reading "— not in this file —" with the two or three that
+    actually needed checking lost somewhere in the middle. Nothing broke, no test failed,
+    and the change that caused it was an improvement — which is how this kind of regression
+    ships. The table now leads with what was detected plus anything required and missing,
+    and folds the rest behind a count. The smoke test measures it by splitting the HTML at
+    the disclosure rather than counting the phrase, because every dropdown legitimately
+    contains "not in this file" and 34 of those were never visible.
+70. **A settings row a migration forgot would have been invisible.** `verify-upgrade-sql`
+    compared columns, indexes, foreign keys and grants — but not `settings`. A missing
+    settings row is a blank field on the admin screen and a default the app silently falls
+    back to, which is exactly how a reminder ends up firing at the wrong time on an
+    upgraded install and nowhere else. It now compares them by key and names the ones that
+    differ. Found while adding two settings, by asking what the harness would *not* have
+    caught.
+71. **The documented migration used column names the table does not have.** Two of them:
+    `setting_group` and `is_public`, where `settings` has `group_name` and `is_secret`.
+    Caught on the first run of the upgrade harness — the third time that harness has caught
+    a migration written in the same session as the schema it migrates to, and the reason it
+    extracts the SQL from the document rather than keeping its own copy.
+72. **Assignment was a one-shot decision disguised as a routine one.** Leads could only be
+    assigned in the same breath as the import that created them. Whoever uploaded either
+    picked the right agent at that moment, or the batch sat unassigned until somebody
+    selected two hundred rows off the borrower list by hand. Nothing in the UI said the
+    decision was final, which is what made it a trap rather than a limitation. The import
+    history now addresses any past batch: distribute it evenly, hand it to one agent, or
+    touch only the leads nobody has yet.
+73. **Removing the consent screen removed the only thing that ever started recording.**
+    The in-app location notice was taken out because the OS permission is the whole of the
+    consent — but that screen also held the Start-duty button and the only
+    `requestPermissions` call in the app. With it unreachable, `DutyLocationService` had no
+    caller: the permission would never be asked for, no session would ever begin, and the
+    app would have gone on looking healthy while capturing not one coordinate. Every test
+    passed, because the tests asserted the screen's *internals* and the file was still on
+    disk. Two lessons taken: a screen that is unreachable is deleted, not left orphaned
+    with tests pinning its behaviour; and the shell every signed-in agent lands on now asks
+    for the permission and starts the session — consent posted first, since the server
+    answers 412 until it is on file and the service reads a 412 as a withdrawal and stops
+    itself. `LocationTrackingTest` now asserts the live path, that signing out stops
+    recording, and that the deleted screen's strings went with it.
 
 ---
 

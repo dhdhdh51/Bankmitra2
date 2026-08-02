@@ -264,30 +264,14 @@
         true when location recording was added, so it was replaced rather than
         left to quietly mislead the person reading it.
     -->
-    <string name="account_location">Location and duty session</string>
     <string name="account_sss">Today\'s SSS enrolment</string>
-    <string name="account_reminder">Daily report reminder</string>
-    <string name="account_reminder_at">Reminds you at %1$s · report due %2$s</string>
-    <string name="account_reminder_off">Off</string>
-    <string name="account_reminder_blocked">Turned off for everyone by your bank</string>
 
     <!-- The daily report alarm -->
     <string name="report_reminder_title">Submit your daily report</string>
     <string name="report_reminder_body">Due by %1$s today.</string>
     <string name="report_reminder_body_long">Your daily report is due by %1$s today. Tap to enter today\'s enrolment figures — your visits are already counted.</string>
     <string name="report_reminder_channel_name">Daily report reminder</string>
-    <string name="report_reminder_channel_description">A once-a-day nudge before your report deadline. Never fires on a Sunday, and stays quiet once you have filed.</string>
-    <string name="report_reminder_lead_title">Remind me</string>
-    <string name="report_reminder_notifications_needed">Allow notifications so the reminder can reach you.</string>
-    <string name="report_reminder_saved">Reminder set for %1$s.</string>
-    <string name="report_reminder_disabled">Daily reminder switched off.</string>
-    <string-array name="report_reminder_lead_labels">
-        <item>At the deadline</item>
-        <item>15 minutes before</item>
-        <item>30 minutes before</item>
-        <item>1 hour before</item>
-        <item>2 hours before</item>
-    </string-array>
+    <string name="report_reminder_channel_description">A nudge at your report deadline, repeating until you have filed. Never fires on a Sunday, stops as soon as your report is in, and goes quiet for the night.</string>
 
     <!-- SSS enrolment, entered by the agent -->
     <string name="sss_title">SSS enrolment</string>
@@ -311,22 +295,18 @@
     <string name="sss_save">Save today\'s enrolment</string>
     <string name="sss_saved">Saved — %1$d enrolment(s) today.</string>
     <string name="sss_month_total">This month: %1$d enrolment(s) over %2$d day(s)</string>
-    <string name="location_notice_short">This app records your location while you are on duty, and when you take a visit photo. Tap to read the full notice.</string>
-    <string name="location_notice_title">Location recording notice</string>
-    <string name="location_notice_accept">I have read and understood this</string>
-    <string name="location_notice_required">You must acknowledge the location notice before you can start a duty session.</string>
-    <string name="location_withdraw">Withdraw consent for location recording</string>
-    <string name="location_withdraw_confirm">Recording will stop immediately. Visit reports that require a location may be affected — please speak to your supervisor. Withdraw consent?</string>
-    <string name="location_withdrawn">Location recording has been stopped.</string>
+    <!--
+      What the agent is told about location, and all of it. There is no acknowledgement
+      to give and no switch to set: granting the permission is the whole of the consent,
+      so the wording states plainly what happens and does not invite a tap that leads
+      nowhere. The strings for the old notice screen, its accept and withdraw actions
+      and the duty toggle are gone with the screen.
+    -->
+    <string name="location_notice_short">This app records your location while you are signed in, and when you take a visit photo.</string>
     <string name="location_on_duty">On duty — location is being recorded</string>
-    <string name="location_off_duty">Off duty — location is not being recorded</string>
-    <string name="location_start_duty">Start duty session</string>
     <string name="location_stop_duty">Stop</string>
     <string name="location_channel_name">Duty session</string>
     <string name="location_channel_description">Shown while your location is being recorded, so you can always tell that it is on.</string>
-    <string name="location_permission_needed">Location permission is needed to start a duty session.</string>
-    <string name="location_retention_note">Kept for %1$d days, then deleted automatically.</string>
-    <string name="location_notice_updated">This notice has been updated. Please read it again.</string>
 
     <!-- Content descriptions -->
     <string name="cd_call">Call customer</string>

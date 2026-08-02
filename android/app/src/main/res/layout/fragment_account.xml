@@ -481,56 +481,7 @@
                             is whether they are nudged and how far ahead. The subtitle
                             always shows the deadline so the two are never confused.
                         -->
-                        <LinearLayout
-                            android:id="@+id/rowReminder"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:background="?attr/selectableItemBackground"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:gravity="center_vertical"
-                            android:minHeight="@dimen/touch_target"
-                            android:orientation="horizontal"
-                            android:padding="14dp">
-
-                            <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
-                                android:contentDescription="@null"
-                                android:src="@drawable/ic_clock"
-                                app:tint="@color/lrms_slate" />
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="12dp"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/account_reminder"
-                                    android:textColor="?attr/colorOnSurface"
-                                    android:textSize="14sp" />
-
-                                <TextView
-                                    android:id="@+id/textReminderState"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:textColor="@color/lrms_muted"
-                                    android:textSize="12sp"
-                                    tools:text="Reminds you at 04:30 PM · report due 05:00 PM" />
-                            </LinearLayout>
-
-                            <com.google.android.material.materialswitch.MaterialSwitch
-                                android:id="@+id/switchReminder"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:clickable="false"
-                                android:focusable="false" />
-                        </LinearLayout>
+                        
 
                         <View
                             android:layout_width="match_parent"
@@ -590,56 +541,7 @@
                             also where they withdraw - so it is deliberately a permanent
                             row in Settings rather than a one-time prompt they can lose.
                         -->
-                        <LinearLayout
-                            android:id="@+id/rowLocation"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:background="?attr/selectableItemBackground"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:gravity="center_vertical"
-                            android:minHeight="@dimen/touch_target"
-                            android:orientation="horizontal"
-                            android:padding="14dp">
-
-                            <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
-                                android:contentDescription="@null"
-                                android:src="@drawable/ic_location"
-                                app:tint="@color/lrms_slate" />
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="12dp"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/account_location"
-                                    android:textColor="?attr/colorOnSurface"
-                                    android:textSize="14sp" />
-
-                                <TextView
-                                    android:id="@+id/textLocationState"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="@string/location_off_duty"
-                                    android:textColor="@color/lrms_muted"
-                                    android:textSize="12sp" />
-                            </LinearLayout>
-
-                            <ImageView
-                                android:layout_width="18dp"
-                                android:layout_height="18dp"
-                                android:contentDescription="@null"
-                                android:src="@drawable/ic_chevron_right"
-                                app:tint="@color/lrms_muted" />
-                        </LinearLayout>
+                        
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
