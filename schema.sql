@@ -780,7 +780,12 @@ CREATE TABLE `visit_history` (
                       -- Extend rather than reuse. A value missing from this list throws
                       -- on insert, and Timeline::record() is called inside the same
                       -- transaction as the action it records.
-                      'visit_approved','visit_rejected','visit_revised'
+                      'visit_approved','visit_rejected','visit_revised',
+                      -- Typed in by hand in the panel, not read out of a bank export.
+                      -- Deliberately not folded into 'lead_imported': "the core banking
+                      -- system says this account exists" and "an agent typed it in" carry
+                      -- very different weight when a figure is later disputed.
+                      'lead_created'
                     ) NOT NULL,
   `event_at`        DATETIME     NOT NULL,
   `actor_id`        INT UNSIGNED DEFAULT NULL COMMENT 'NULL = system',
@@ -1390,6 +1395,7 @@ INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
   ('roles.manage',          'Roles',       'Manage roles and permission sets'),
 
   ('customers.view',        'Customers',   'View customers and leads'),
+  ('customers.create',      'Customers',   'Add a borrower and loan account by hand'),
   ('customers.update',      'Customers',   'Update customer details'),
   ('customers.view_pii',    'Customers',   'View unmasked mobile and Aadhaar'),
 
@@ -1438,7 +1444,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 -- Branch Manager -> branch-scoped operational set
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 2, `id` FROM `permissions` WHERE `code` IN (
-    'dashboard.view','customers.view','customers.update','users.view',
+    'dashboard.view','customers.view','customers.create','customers.update','users.view',
     'leads.assign','leads.reassign','leads.close',
     'visits.view','promises.view','promises.update',
     'reports.view','reports.export','notifications.view','import.view',
@@ -1461,9 +1467,18 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 -- into loan_accounts.manual_overrides, so the correction is attributed and the next
 -- import leaves it alone. The panel restricts them to leads assigned to them - branch
 -- scope is not enough, because a branch holds several agents.
+--
+-- customers.create is granted for the same reason and is a separate permission rather
+-- than part of customers.update, because adding a borrower is not correcting one: an
+-- auditor holds customers.view and must never be able to invent an account. A branch
+-- hands an agent accounts on paper that the Excel export has not reached - a new NPA, a
+-- takeover, an account opened at a different branch - and until now the only way in was
+-- a spreadsheet somebody at head office had to build. The lead an agent creates is
+-- assigned to them and stamped 'lead_created', so a typed account is never mistaken for
+-- one the core banking system produced.
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 3, `id` FROM `permissions` WHERE `code` IN (
-    'dashboard.view','customers.view','customers.view_pii','customers.update',
+    'dashboard.view','customers.view','customers.view_pii','customers.create','customers.update',
     'custom_fields.manage',
     'visits.view','visits.create','promises.view','notifications.view'
   );

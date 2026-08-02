@@ -44,6 +44,22 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                 <?= icon('excel') ?> Export Excel
             </a>
         <?php endif; ?>
+        <?php
+        /*
+         * Adding one by hand, next to importing a file of them.
+         *
+         * An agent sees this and not the import button: they hold customers.create but not
+         * import.upload, which is the right split - a branch hands them an account on paper
+         * long before it reaches anybody's spreadsheet, and building a one-row Excel file
+         * to get it into the system is not a thing anybody does.
+         */
+        ?>
+        <?php if (can('customers.create')): ?>
+            <a href="<?= e(url('/customers/create')) ?>"
+               class="btn <?= can('import.upload') ? 'btn-outline-secondary' : 'btn-primary' ?> btn-sm">
+                <?= icon('plus') ?> Add borrower
+            </a>
+        <?php endif; ?>
         <?php if (can('import.upload')): ?>
             <a href="<?= e(url('/import')) ?>" class="btn btn-primary btn-sm">
                 <?= icon('upload') ?> Import leads

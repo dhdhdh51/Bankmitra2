@@ -52,6 +52,11 @@ return static function (Router $router): void {
     $router->get('/customers', [CustomerController::class, 'index']);
     $router->post('/customers/bulk', [CustomerController::class, 'bulk']);
     $router->get('/customers/export', [CustomerController::class, 'export']);
+    // Registered BEFORE /customers/{id}: {id} matches any segment, not just digits, and
+    // the first route to match wins - so a create form registered after it would be
+    // dispatched to show() with an id of 0 and answer "that loan account could not be
+    // found", which is a maddening thing to debug.
+    $router->form('/customers/create', [CustomerController::class, 'create']);
     $router->get('/customers/{id}', [CustomerController::class, 'show']);
     $router->form('/customers/{id}/edit', [CustomerController::class, 'edit']);
 
