@@ -15,22 +15,36 @@
                 "label": "Business"
             },
             {
-                "value": "job",
-                "label": "Job"
-            },
-            {
                 "value": "labour",
                 "label": "Labour"
             },
             {
+                "value": "service",
+                "label": "Service"
+            },
+            {
                 "value": "others",
-                "label": "Others"
+                "label": "Other"
+            }
+        ],
+        "genders": [
+            {
+                "value": "male",
+                "label": "Male"
+            },
+            {
+                "value": "female",
+                "label": "Female"
+            },
+            {
+                "value": "other",
+                "label": "Other"
             }
         ],
         "contact_flags": [
             {
                 "key": "customer_met",
-                "label": "Customer Met"
+                "label": "Borrower Met"
             },
             {
                 "key": "family_member_met",
@@ -42,7 +56,7 @@
             },
             {
                 "key": "phone_contact",
-                "label": "Phone Contact"
+                "label": "Mobile Contacted"
             },
             {
                 "key": "phone_switched_off",
@@ -127,18 +141,192 @@
                 "label": "Others"
             }
         ],
-        "report_types": [
+        "loan_types": [
             {
-                "value": "recovery",
-                "label": "Recovery Visit"
+                "value": "ckcc",
+                "label": "CKCC"
             },
             {
+                "value": "agri_term",
+                "label": "Agriculture Term Loan"
+            },
+            {
+                "value": "od",
+                "label": "OD"
+            },
+            {
+                "value": "cc",
+                "label": "CC"
+            },
+            {
+                "value": "msme",
+                "label": "MSME"
+            },
+            {
+                "value": "housing",
+                "label": "Housing"
+            },
+            {
+                "value": "other",
+                "label": "Other"
+            }
+        ],
+        "asset_classifications": [
+            {
+                "value": "standard",
+                "label": "Standard"
+            },
+            {
+                "value": "sma_0",
+                "label": "SMA-0"
+            },
+            {
+                "value": "sma_1",
+                "label": "SMA-1"
+            },
+            {
+                "value": "sma_2",
+                "label": "SMA-2"
+            },
+            {
+                "value": "npa",
+                "label": "NPA"
+            }
+        ],
+        "residence_verification": [
+            {
+                "value": "confirmed",
+                "label": "Confirmed"
+            },
+            {
+                "value": "not_confirmed",
+                "label": "Not Confirmed"
+            }
+        ],
+        "neighbour_verification": [
+            {
+                "value": "conducted",
+                "label": "Conducted"
+            },
+            {
+                "value": "not_conducted",
+                "label": "Not Conducted"
+            }
+        ],
+        "document_flags": [
+            {
+                "key": "doc_aadhaar",
+                "label": "Aadhaar Card"
+            },
+            {
+                "key": "doc_pan",
+                "label": "PAN Card"
+            },
+            {
+                "key": "doc_passbook",
+                "label": "Passbook"
+            },
+            {
+                "key": "doc_land_record",
+                "label": "Land Record"
+            },
+            {
+                "key": "doc_khatauni",
+                "label": "Khatauni"
+            },
+            {
+                "key": "doc_electricity_bill",
+                "label": "Electricity Bill"
+            },
+            {
+                "key": "doc_photograph",
+                "label": "Photograph"
+            },
+            {
+                "key": "doc_mobile_verified",
+                "label": "Mobile Verified"
+            },
+            {
+                "key": "doc_renewal_form",
+                "label": "Renewal Form"
+            },
+            {
+                "key": "doc_ots_consent_letter",
+                "label": "OTS Consent Letter"
+            },
+            {
+                "key": "doc_others",
+                "label": "Other"
+            }
+        ],
+        "evidence_flags": [
+            {
+                "key": "ev_borrower_photo",
+                "label": "Borrower Photograph"
+            },
+            {
+                "key": "ev_house_photo",
+                "label": "House Photograph"
+            },
+            {
+                "key": "ev_land_photo",
+                "label": "Land Photograph"
+            },
+            {
+                "key": "ev_aadhaar_copy",
+                "label": "Aadhaar Copy"
+            },
+            {
+                "key": "ev_passbook_copy",
+                "label": "Passbook Copy"
+            },
+            {
+                "key": "ev_gps_location",
+                "label": "GPS Location"
+            },
+            {
+                "key": "ev_renewal_form",
+                "label": "Renewal Form"
+            },
+            {
+                "key": "ev_ots_consent",
+                "label": "OTS Consent"
+            },
+            {
+                "key": "ev_others",
+                "label": "Other"
+            }
+        ],
+        "declaration": [
+            "I hereby certify that the information contained in this report has been collected and verified during my personal physical field visit through direct interaction with the borrower and/or other reliable local sources, wherever applicable. The details recorded herein represent the factual position observed and verified during the visit and have been documented fairly, accurately, objectively, and in good faith to the best of my knowledge and belief.",
+            "I further certify that no information has been intentionally concealed, altered, or misrepresented. The field verification has been conducted strictly in accordance with the applicable Reserve Bank of India (RBI) guidelines, the Bank's extant policies, operational instructions, the Fair Practices Code, and the prescribed Code of Conduct governing field verification, customer interaction, and recovery-related activities.",
+            "This report is submitted solely for the purpose of assessment, verification, recovery follow-up, and/or renewal processing, as applicable, and shall be subject to verification and acceptance by the Bank."
+        ],
+        "important_note": "This report is designed for use in KRM OTS, CKCC OD-2 Renewal, Recovery Follow-up, Pre-NPA Verification, and Post-NPA Verification cases. It is intended to support field verification, customer due diligence, recovery monitoring, renewal processing, and timely preventive action in accordance with the applicable RBI guidelines, the Bank's internal policies, and the Fair Practices Code.",
+        "report_types": [
+            {
                 "value": "ots",
-                "label": "KRM / OTS Settlement"
+                "label": "KRM OTS"
             },
             {
                 "value": "ckcc_renewal",
                 "label": "CKCC OD-2 Renewal"
+            },
+            {
+                "value": "recovery",
+                "label": "Recovery Follow-up"
+            },
+            {
+                "value": "pre_npa",
+                "label": "Pre-NPA Verification"
+            },
+            {
+                "value": "post_npa",
+                "label": "Post-NPA Verification"
+            },
+            {
+                "value": "other",
+                "label": "Other"
             }
         ],
         "ots": {
@@ -150,6 +338,10 @@
                 {
                     "value": "general_ots",
                     "label": "General OTS"
+                },
+                {
+                    "value": "other",
+                    "label": "Other"
                 }
             ],
             "approval_statuses": [
@@ -164,6 +356,76 @@
                 {
                     "value": "rejected",
                     "label": "Rejected"
+                }
+            ],
+            "customer_responses": [
+                {
+                    "value": "agreed",
+                    "label": "Agreed for OTS"
+                },
+                {
+                    "value": "requested_time",
+                    "label": "Requested Time"
+                },
+                {
+                    "value": "financial_difficulty",
+                    "label": "Financial Difficulty"
+                },
+                {
+                    "value": "refused",
+                    "label": "Refused OTS"
+                },
+                {
+                    "value": "not_eligible",
+                    "label": "Not Eligible"
+                }
+            ],
+            "recommendation_flags": [
+                {
+                    "key": "rec_proposal_recommended",
+                    "label": "OTS Proposal Recommended"
+                },
+                {
+                    "key": "rec_followup_required",
+                    "label": "Follow-up Required"
+                },
+                {
+                    "key": "rec_customer_refused",
+                    "label": "Customer Refused"
+                },
+                {
+                    "key": "rec_not_eligible",
+                    "label": "Not Eligible"
+                }
+            ],
+            "status_flags": [
+                {
+                    "key": "st_customer_contacted",
+                    "label": "Customer Contacted"
+                },
+                {
+                    "key": "st_customer_verified",
+                    "label": "Customer Verified"
+                },
+                {
+                    "key": "st_ots_accepted",
+                    "label": "OTS Accepted"
+                },
+                {
+                    "key": "st_ots_rejected",
+                    "label": "OTS Rejected"
+                },
+                {
+                    "key": "st_initial_deposit_received",
+                    "label": "Initial Deposit Received"
+                },
+                {
+                    "key": "st_ots_closed",
+                    "label": "OTS Closed"
+                },
+                {
+                    "key": "st_followup_required",
+                    "label": "Follow-up Required"
                 }
             ],
             "default_payable_percent": 22.5,
@@ -216,48 +478,14 @@
                     "label": "Aadhaar Authentication Completed"
                 }
             ],
-            "document_flags": [
-                {
-                    "key": "doc_aadhaar",
-                    "label": "Aadhaar Card"
-                },
-                {
-                    "key": "doc_pan",
-                    "label": "PAN Card"
-                },
-                {
-                    "key": "doc_passbook",
-                    "label": "Passbook"
-                },
-                {
-                    "key": "doc_land_record",
-                    "label": "Land Record"
-                },
-                {
-                    "key": "doc_khasra_khatauni",
-                    "label": "Khasra / Khatauni"
-                },
-                {
-                    "key": "doc_photograph",
-                    "label": "Photograph"
-                },
-                {
-                    "key": "doc_mobile_available",
-                    "label": "Mobile Available"
-                },
-                {
-                    "key": "doc_others",
-                    "label": "Other"
-                }
-            ],
             "consent_flags": [
                 {
                     "key": "willing_to_renew",
-                    "label": "Borrower willing to renew CKCC"
+                    "label": "Borrower Willing to Renew"
                 },
                 {
                     "key": "documents_handed_over",
-                    "label": "Documents handed over"
+                    "label": "Documents Handed Over"
                 },
                 {
                     "key": "renewal_form_signed",
@@ -275,23 +503,27 @@
             "recommendation_flags": [
                 {
                     "key": "rec_renew_immediately",
-                    "label": "CKCC Renewal should be processed immediately"
+                    "label": "Renewal Immediately Recommended"
                 },
                 {
                     "key": "rec_documents_submitted",
-                    "label": "Borrower has submitted all required documents"
+                    "label": "Documents Complete"
+                },
+                {
+                    "key": "rec_pending_documents",
+                    "label": "Pending Documents"
+                },
+                {
+                    "key": "rec_not_interested",
+                    "label": "Customer Not Interested"
+                },
+                {
+                    "key": "rec_branch_contact_urgent",
+                    "label": "Branch Follow-up Required"
                 },
                 {
                     "key": "rec_followup_required",
                     "label": "Follow-up Required"
-                },
-                {
-                    "key": "rec_not_interested",
-                    "label": "Customer not interested in renewal"
-                },
-                {
-                    "key": "rec_branch_contact_urgent",
-                    "label": "Branch should contact customer urgently"
                 },
                 {
                     "key": "rec_others",
@@ -309,27 +541,27 @@
                 },
                 {
                     "key": "st_documents_collected",
-                    "label": "Renewal Documents Collected"
+                    "label": "Documents Collected"
                 },
                 {
                     "key": "st_application_submitted",
-                    "label": "Renewal Application Submitted"
+                    "label": "Renewal Submitted"
                 },
                 {
                     "key": "st_ckcc_renewed",
-                    "label": "CKCC Renewed"
+                    "label": "Renewal Approved"
                 },
                 {
                     "key": "st_pending_at_branch",
                     "label": "Pending at Branch"
                 },
                 {
-                    "key": "st_followup_required",
-                    "label": "Follow-up Required"
-                },
-                {
                     "key": "st_became_npa",
                     "label": "Account Became NPA"
+                },
+                {
+                    "key": "st_followup_required",
+                    "label": "Follow-up Required"
                 }
             ]
         }

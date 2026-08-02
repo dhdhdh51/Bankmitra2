@@ -286,6 +286,12 @@ data class VisitReportDto(
     @SerializedName("recovery") val recovery: VisitRecoveryDto? = null,
     @SerializedName("non_payment_reason") val nonPaymentReason: VisitReasonDto? = null,
     @SerializedName("recommendation") val recommendation: VisitRecommendationDto? = null,
+    /** Section 7 of the printed form, keyed on the short document name. */
+    @SerializedName("documents_verified") val documentsVerified: Map<String, Any>? = null,
+    /** Section 10, and deliberately separate from [photos]: this is what was CLAIMED. */
+    @SerializedName("evidence_attached") val evidenceAttached: Map<String, Any>? = null,
+    @SerializedName("certification") val certification: VisitCertificationDto? = null,
+    @SerializedName("declaration") val declaration: VisitDeclarationDto? = null,
     @SerializedName("remarks") val remarks: String? = null,
     @SerializedName("source") val source: String = "",
     @SerializedName("app_version") val appVersion: String? = null,
@@ -295,8 +301,19 @@ data class VisitReportDto(
 data class VisitGeneralDto(
     @SerializedName("visit_date") val visitDate: String = "",
     @SerializedName("visit_time") val visitTime: String = "",
+    @SerializedName("report_type") val reportType: String = "",
+    @SerializedName("report_type_label") val reportTypeLabel: String? = null,
+    @SerializedName("report_type_other_text") val reportTypeOtherText: String? = null,
     @SerializedName("bc_code") val bcCode: String? = null,
     @SerializedName("branch") val branch: String = "",
+    // Stamped from the branch master rather than asked of the agent, so the printed
+    // header does not carry four spellings of the same regional office.
+    @SerializedName("branch_code") val branchCode: String? = null,
+    @SerializedName("regional_office") val regionalOffice: String? = null,
+    @SerializedName("zone") val zone: String? = null,
+    @SerializedName("linked_branch") val linkedBranch: String? = null,
+    @SerializedName("district") val district: String? = null,
+    @SerializedName("sp_cbc_name") val spCbcName: String? = null,
     @SerializedName("agent_name") val agentName: String = "",
     @SerializedName("village") val village: String? = null,
 )
@@ -304,19 +321,42 @@ data class VisitGeneralDto(
 data class VisitBorrowerDto(
     @SerializedName("customer_name") val customerName: String = "",
     @SerializedName("father_husband_name") val fatherHusbandName: String? = null,
+    @SerializedName("gender") val gender: String? = null,
+    @SerializedName("date_of_birth") val dateOfBirth: String? = null,
     @SerializedName("address") val address: String? = null,
     @SerializedName("mobile") val mobile: String? = null,
     @SerializedName("mobile_masked") val mobileMasked: String? = null,
+    @SerializedName("alt_mobile") val altMobile: String? = null,
+    @SerializedName("alt_mobile_masked") val altMobileMasked: String? = null,
     @SerializedName("aadhaar") val aadhaar: String? = null,
     @SerializedName("aadhaar_masked") val aadhaarMasked: String? = null,
+    // Under the same PII gate as the other two identifiers: a PAN is as good a key for
+    // joining a person's records together as an Aadhaar number.
+    @SerializedName("pan") val pan: String? = null,
+    @SerializedName("pan_masked") val panMasked: String? = null,
+    @SerializedName("addr_village") val addrVillage: String? = null,
+    @SerializedName("gram_panchayat") val gramPanchayat: String? = null,
+    @SerializedName("tehsil") val tehsil: String? = null,
+    @SerializedName("addr_district") val addrDistrict: String? = null,
+    @SerializedName("state") val state: String? = null,
+    @SerializedName("pin_code") val pinCode: String? = null,
 )
 
 data class VisitLoanDto(
     @SerializedName("loan_account_number") val loanAccountNumber: String = "",
+    @SerializedName("cif_number") val cifNumber: String? = null,
     @SerializedName("loan_type") val loanType: String? = null,
+    @SerializedName("loan_type_label") val loanTypeLabel: String? = null,
+    @SerializedName("loan_type_other_text") val loanTypeOtherText: String? = null,
+    @SerializedName("sanction_date") val sanctionDate: String? = null,
+    @SerializedName("sanction_limit") val sanctionLimit: Double? = null,
+    @SerializedName("drawing_power") val drawingPower: Double? = null,
     @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
+    @SerializedName("interest_overdue") val interestOverdue: Double? = null,
     @SerializedName("overdue_amount") val overdueAmount: Double = 0.0,
     @SerializedName("npa_date") val npaDate: String? = null,
+    @SerializedName("asset_classification") val assetClassification: String? = null,
+    @SerializedName("asset_classification_label") val assetClassificationLabel: String? = null,
     @SerializedName("current_status") val currentStatus: String? = null,
 )
 
@@ -334,6 +374,16 @@ data class VisitVerificationDto(
     @SerializedName("borrower_alive") val borrowerAlive: Boolean = true,
     @SerializedName("same_address") val sameAddress: Boolean = true,
     @SerializedName("shifted") val shifted: Boolean = false,
+    /**
+     * Null when the check was never run, which is NOT the same as failing it.
+     *
+     * Typed as a nullable String rather than a Boolean for exactly that reason: a
+     * Boolean has no third state, and Gson would deserialise a missing key as false -
+     * turning "nobody asked the neighbours" into "the neighbours were not asked and
+     * that is recorded as a negative finding".
+     */
+    @SerializedName("residence_verified") val residenceVerified: String? = null,
+    @SerializedName("neighbour_verification") val neighbourVerification: String? = null,
     @SerializedName("occupation") val occupation: String? = null,
     @SerializedName("occupation_other_text") val occupationOtherText: String? = null,
 )
@@ -367,6 +417,30 @@ data class VisitRecommendationDto(
     @SerializedName("ots") val ots: Boolean = false,
     @SerializedName("others") val others: Boolean = false,
     @SerializedName("other_text") val otherText: String? = null,
+    /** Section 9's free-prose box, separate from the observations. */
+    @SerializedName("general") val general: String? = null,
+)
+
+/** Section 12. The signature lines are not here: nothing fills them but a pen. */
+data class VisitCertificationDto(
+    @SerializedName("agent_name") val agentName: String = "",
+    @SerializedName("bc_code") val bcCode: String? = null,
+    @SerializedName("agent_mobile") val agentMobile: String? = null,
+    @SerializedName("supervisor_name") val supervisorName: String? = null,
+    @SerializedName("supervisor_designation") val supervisorDesignation: String? = null,
+    @SerializedName("supervisor_employee_id") val supervisorEmployeeId: String? = null,
+    @SerializedName("supervisor_verified_at") val supervisorVerifiedAt: String? = null,
+)
+
+/**
+ * Section 11: whether the declaration was accepted, and the words that were accepted.
+ *
+ * The text travels with the flag rather than being compiled into the APK, so the
+ * wording an agent agrees to and the wording printed on the page cannot drift apart.
+ */
+data class VisitDeclarationDto(
+    @SerializedName("accepted") val accepted: Boolean = false,
+    @SerializedName("text") val text: List<String> = emptyList(),
 )
 
 // ---------------------------------------------------------------------------
@@ -453,11 +527,31 @@ data class FormOptionsPayload(
     @SerializedName("recovery_flags") val recoveryFlags: List<FlagDto> = emptyList(),
     @SerializedName("reason_flags") val reasonFlags: List<FlagDto> = emptyList(),
     @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
+    @SerializedName("genders") val genders: List<OptionDto> = emptyList(),
+    @SerializedName("loan_types") val loanTypes: List<OptionDto> = emptyList(),
+    @SerializedName("asset_classifications") val assetClassifications: List<OptionDto> = emptyList(),
+    @SerializedName("residence_verification") val residenceVerification: List<OptionDto> = emptyList(),
+    @SerializedName("neighbour_verification") val neighbourVerification: List<OptionDto> = emptyList(),
+    /**
+     * Sections 7 and 10, asked on every case type.
+     *
+     * `document_flags` used to sit inside the `ckcc` block, which meant a recovery visit
+     * was never offered the checklist at all.
+     */
+    @SerializedName("document_flags") val documentFlags: List<FlagDto> = emptyList(),
+    @SerializedName("evidence_flags") val evidenceFlags: List<FlagDto> = emptyList(),
+    /** Section 11, sent rather than compiled in so the two copies cannot drift. */
+    @SerializedName("declaration") val declaration: List<String> = emptyList(),
+    @SerializedName("important_note") val importantNote: String? = null,
 )
 
 data class OtsOptions(
     @SerializedName("schemes") val schemes: List<OptionDto> = emptyList(),
     @SerializedName("approval_statuses") val approvalStatuses: List<OptionDto> = emptyList(),
+    /** Section 4's Customer Response row: why, not just whether. */
+    @SerializedName("customer_responses") val customerResponses: List<OptionDto> = emptyList(),
+    @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
+    @SerializedName("status_flags") val statusFlags: List<FlagDto> = emptyList(),
     /** Scheme defaults the form pre-fills; the agent can override both. */
     @SerializedName("default_payable_percent") val defaultPayablePercent: Double = 22.50,
     @SerializedName("default_initial_deposit_percent") val defaultDepositPercent: Double = 10.00,
@@ -467,7 +561,8 @@ data class CkccOptions(
     @SerializedName("due_buckets") val dueBuckets: List<OptionDto> = emptyList(),
     @SerializedName("kyc_statuses") val kycStatuses: List<OptionDto> = emptyList(),
     @SerializedName("eligibility_flags") val eligibilityFlags: List<FlagDto> = emptyList(),
-    @SerializedName("document_flags") val documentFlags: List<FlagDto> = emptyList(),
+    // No document_flags here any more: the checklist is on FormOptionsPayload, asked
+    // once for every case type. Two copies let one report answer it twice.
     @SerializedName("consent_flags") val consentFlags: List<FlagDto> = emptyList(),
     @SerializedName("recommendation_flags") val recommendationFlags: List<FlagDto> = emptyList(),
     @SerializedName("status_flags") val statusFlags: List<FlagDto> = emptyList(),

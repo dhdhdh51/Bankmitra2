@@ -11,6 +11,9 @@
             "address": "House 57, Gulabpura",
             "mobile": "9876510057",
             "mobile_masked": "XXXXXX0057",
+            "alt_mobile": null,
+            "alt_mobile_masked": null,
+            "alt_mobile_label": null,
             "aadhaar": null,
             "aadhaar_masked": "XXXX XXXX 0057",
             "bc_code": "BC-002",
@@ -29,7 +32,7 @@
             "last_visit_at": null,
             "next_followup_date": null,
             "remarks": null,
-            "created_at": "2026-07-31 15:45:35"
+            "created_at": "2026-08-02 15:53:03"
         },
         {
             "id": 51,
@@ -41,6 +44,9 @@
             "address": "House 51, Gulabpura",
             "mobile": "9876510051",
             "mobile_masked": "XXXXXX0051",
+            "alt_mobile": null,
+            "alt_mobile_masked": null,
+            "alt_mobile_label": null,
             "aadhaar": null,
             "aadhaar_masked": "XXXX XXXX 0051",
             "bc_code": "BC-004",
@@ -59,7 +65,7 @@
             "last_visit_at": null,
             "next_followup_date": null,
             "remarks": null,
-            "created_at": "2026-07-31 15:45:35"
+            "created_at": "2026-08-02 15:53:03"
         },
         {
             "id": 39,
@@ -71,6 +77,9 @@
             "address": "House 39, Gulabpura",
             "mobile": "9876510039",
             "mobile_masked": "XXXXXX0039",
+            "alt_mobile": null,
+            "alt_mobile_masked": null,
+            "alt_mobile_label": null,
             "aadhaar": null,
             "aadhaar_masked": "XXXX XXXX 0039",
             "bc_code": "BC-004",
@@ -86,10 +95,10 @@
             "assigned_agent_id": 3,
             "agent_name": "Ramesh Kumar",
             "visit_count": 1,
-            "last_visit_at": "2026-07-31 15:45:36",
-            "next_followup_date": "2026-08-07",
+            "last_visit_at": "2026-08-02 15:53:05",
+            "next_followup_date": "2026-08-09",
             "remarks": null,
-            "created_at": "2026-07-31 15:45:35"
+            "created_at": "2026-08-02 15:53:03"
         }
     ],
     "message": "",

@@ -177,31 +177,69 @@ abstract class Controller
             'id'              => (int) $visit['id'],
             'loan_account_id' => (int) $visit['loan_account_id'],
 
+            // Section 1 of the printed form.
             'general' => [
-                'visit_date' => (string) $visit['visit_date'],
-                'visit_time' => (string) $visit['visit_time'],
-                'bc_code'    => $visit['bc_code'] === null ? null : (string) $visit['bc_code'],
-                'branch'     => (string) ($visit['branch_name'] ?? ''),
-                'agent_name' => (string) $visit['agent_name'],
-                'village'    => $visit['village'] === null ? null : (string) $visit['village'],
+                'visit_date'      => (string) $visit['visit_date'],
+                'visit_time'      => (string) $visit['visit_time'],
+                'report_type'     => (string) ($visit['report_type'] ?? 'recovery'),
+                'report_type_label' => \App\Models\VisitReport::REPORT_TYPES[(string) ($visit['report_type'] ?? '')]
+                    ?? null,
+                'report_type_other_text' => $this->nullableText($visit['report_type_other_text'] ?? null),
+                'bc_code'         => $visit['bc_code'] === null ? null : (string) $visit['bc_code'],
+                'branch'          => (string) ($visit['branch_name'] ?? ''),
+                'branch_code'     => $this->nullableText($visit['branch_code'] ?? null),
+                'regional_office' => $this->nullableText($visit['regional_office'] ?? null),
+                'zone'            => $this->nullableText($visit['zone'] ?? null),
+                'linked_branch'   => $this->nullableText($visit['linked_branch'] ?? null),
+                'district'        => $this->nullableText($visit['district'] ?? null),
+                'sp_cbc_name'     => $this->nullableText($visit['sp_cbc_name'] ?? null),
+                'agent_name'      => (string) $visit['agent_name'],
+                'village'         => $visit['village'] === null ? null : (string) $visit['village'],
             ],
 
+            // Section 2.
             'borrower' => [
                 'customer_name'       => (string) $visit['customer_name'],
                 'father_husband_name' => $visit['father_husband_name'] === null ? null : (string) $visit['father_husband_name'],
+                'gender'              => $this->nullableText($visit['gender'] ?? null),
+                'date_of_birth'       => $this->nullableText($visit['date_of_birth'] ?? null),
                 'address'             => $visit['address'] === null ? null : (string) $visit['address'],
                 'mobile'              => $withPii ? ($visit['mobile'] ?? null) : null,
                 'mobile_masked'       => $visit['mobile_masked'] === null ? null : (string) $visit['mobile_masked'],
+                'alt_mobile'          => $withPii ? ($visit['alt_mobile'] ?? null) : null,
+                'alt_mobile_masked'   => $this->nullableText($visit['alt_mobile_masked'] ?? null),
                 'aadhaar'             => $withPii ? ($visit['aadhaar'] ?? null) : null,
                 'aadhaar_masked'      => $visit['aadhaar_masked'] === null ? null : (string) $visit['aadhaar_masked'],
+                // Under the same gate as the other two identifiers: a PAN is as good a
+                // key for joining a person's records together as an Aadhaar number.
+                'pan'                 => $withPii ? ($visit['pan'] ?? null) : null,
+                'pan_masked'          => $this->nullableText($visit['pan_masked'] ?? null),
+                'addr_village'        => $this->nullableText($visit['addr_village'] ?? null),
+                'gram_panchayat'      => $this->nullableText($visit['gram_panchayat'] ?? null),
+                'tehsil'              => $this->nullableText($visit['tehsil'] ?? null),
+                'addr_district'       => $this->nullableText($visit['addr_district'] ?? null),
+                'state'               => $this->nullableText($visit['state'] ?? null),
+                'pin_code'            => $this->nullableText($visit['pin_code'] ?? null),
             ],
 
+            // Section 3.
             'loan' => [
                 'loan_account_number' => (string) $visit['loan_account_number'],
+                'cif_number'          => $this->nullableText($visit['cif_number'] ?? null),
                 'loan_type'           => $visit['loan_type'] === null ? null : (string) $visit['loan_type'],
+                'loan_type_label'     => \App\Models\VisitReport::LOAN_TYPES[(string) ($visit['loan_type'] ?? '')]
+                    ?? ($visit['loan_type'] === null ? null : (string) $visit['loan_type']),
+                'loan_type_other_text' => $this->nullableText($visit['loan_type_other_text'] ?? null),
+                'sanction_date'       => $this->nullableText($visit['sanction_date'] ?? null),
+                'sanction_limit'      => $this->nullableAmount($visit['sanction_limit'] ?? null),
+                'drawing_power'       => $this->nullableAmount($visit['drawing_power'] ?? null),
                 'outstanding_amount'  => round((float) $visit['outstanding_amount'], 2),
+                'interest_overdue'    => $this->nullableAmount($visit['interest_overdue'] ?? null),
                 'overdue_amount'      => round((float) $visit['overdue_amount'], 2),
                 'npa_date'            => $visit['npa_date'] === null ? null : (string) $visit['npa_date'],
+                'asset_classification' => $this->nullableText($visit['asset_classification'] ?? null),
+                'asset_classification_label' =>
+                    \App\Models\VisitReport::ASSET_CLASSIFICATIONS[(string) ($visit['asset_classification'] ?? '')] ?? null,
                 'current_status'      => $visit['current_status'] === null ? null : (string) $visit['current_status'],
             ],
 
@@ -215,13 +253,26 @@ abstract class Controller
                 'family_member_relationship' => $visit['family_member_relationship'] === null ? null : (string) $visit['family_member_relationship'],
             ],
 
+            // Section 6.
             'verification' => [
                 'borrower_alive'        => (int) $visit['borrower_alive'] === 1,
                 'same_address'          => (int) $visit['same_address'] === 1,
                 'shifted'               => (int) $visit['shifted'] === 1,
+                // Null rather than false when the check was not run at all: "not
+                // confirmed" is an assertion, and silence is not.
+                'residence_verified'     => $this->nullableText($visit['residence_verified'] ?? null),
+                'neighbour_verification' => $this->nullableText($visit['neighbour_verification'] ?? null),
                 'occupation'            => $visit['occupation'] === null ? null : (string) $visit['occupation'],
                 'occupation_other_text' => $visit['occupation_other_text'] === null ? null : (string) $visit['occupation_other_text'],
             ],
+
+            // Section 7.
+            'documents_verified' => $this->flagStates($visit, \App\Models\VisitReport::DOCUMENT_FLAGS)
+                + ['other_text' => $this->nullableText($visit['doc_other_text'] ?? null)],
+
+            // Section 10.
+            'evidence_attached' => $this->flagStates($visit, \App\Models\VisitReport::EVIDENCE_FLAGS)
+                + ['other_text' => $this->nullableText($visit['ev_other_text'] ?? null)],
 
             'recovery' => [
                 'ready_to_pay'     => (int) $visit['ready_to_pay'] === 1,
@@ -252,13 +303,73 @@ abstract class Controller
                 'ots'                => (int) $visit['rec_ots'] === 1,
                 'others'             => (int) $visit['rec_others'] === 1,
                 'other_text'         => $visit['rec_other_text'] === null ? null : (string) $visit['rec_other_text'],
+                // Section 9's free-prose box, separate from the observations below.
+                'general'            => $this->nullableText($visit['general_recommendation'] ?? null),
             ],
 
+            // Section 12. The signature lines are not here: nothing fills them but a
+            // pen on the printed page.
+            'certification' => [
+                'agent_name'             => (string) $visit['agent_name'],
+                'bc_code'                => $visit['bc_code'] === null ? null : (string) $visit['bc_code'],
+                'agent_mobile'           => $this->nullableText($visit['agent_mobile'] ?? null),
+                'supervisor_name'        => $this->nullableText($visit['supervisor_name'] ?? null),
+                'supervisor_designation' => $this->nullableText($visit['supervisor_designation'] ?? null),
+                'supervisor_employee_id' => $this->nullableText($visit['supervisor_employee_id'] ?? null),
+                'supervisor_verified_at' => $this->nullableText($visit['supervisor_verified_at'] ?? null),
+            ],
+
+            // Section 11: whether the agent accepted the declaration, and the words
+            // they accepted. Sent together so the app can show them above the tick box
+            // without shipping its own copy that could drift out of step.
+            'declaration' => [
+                'accepted' => (int) ($visit['declaration_accepted'] ?? 0) === 1,
+                'text'     => \App\Models\VisitReport::DECLARATION,
+            ],
+
+            // Section 8.
             'remarks'     => $visit['remarks'] === null ? null : (string) $visit['remarks'],
             'source'      => (string) $visit['source'],
             'app_version' => $visit['app_version'] === null ? null : (string) $visit['app_version'],
             'created_at'  => (string) $visit['created_at'],
         ];
+    }
+
+    /**
+     * A flag group as `column => bool`, with the column prefix stripped.
+     *
+     * Keyed on the short name (`aadhaar`, not `doc_aadhaar`) so the app's DTO reads as
+     * the section it belongs to, and so renaming a column does not change the wire
+     * contract a released APK is parsing.
+     *
+     * @param  array<string,mixed>  $row
+     * @param  array<string,string> $map   column => label
+     * @return array<string,bool>
+     */
+    private function flagStates(array $row, array $map): array
+    {
+        $out = [];
+        foreach (array_keys($map) as $column) {
+            $short = preg_replace('/^(doc|ev|rec|st)_/', '', $column) ?? $column;
+            $out[$short] = (int) ($row[$column] ?? 0) === 1;
+        }
+        return $out;
+    }
+
+    /** A nullable string column, normalised to null rather than "". */
+    private function nullableText(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+        return $text === '' ? null : $text;
+    }
+
+    /** A nullable money column, rounded, or null when the field was left blank. */
+    private function nullableAmount(mixed $value): ?float
+    {
+        return $value === null || $value === '' ? null : round((float) $value, 2);
     }
 
     /**

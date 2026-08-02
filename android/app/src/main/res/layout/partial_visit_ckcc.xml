@@ -305,93 +305,12 @@
                 android:layout_marginBottom="6dp"
                 android:background="@color/lrms_border" />
 
-            <!-- ===== Documents available ===== -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/ckcc_group_documents"
-                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingBottom="4dp"
-                android:text="@string/ckcc_group_documents_helper"
-                android:textAppearance="@style/TextAppearance.LRMS.FieldValue"
-                android:textColor="@color/lrms_muted" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocAadhaar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_aadhaar" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocPan"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_pan" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocPassbook"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_passbook" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocLandRecord"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_land_record" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocKhasra"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_khasra" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocPhotograph"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_photograph" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocMobile"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_mobile" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/checkCkccDocOther"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="44dp"
-                android:text="@string/ckcc_doc_other" />
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/fieldCkccDocOtherText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:hint="@string/ckcc_doc_other_text"
-                android:visibility="gone"
-                tools:visibility="visible">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/inputCkccDocOtherText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textCapSentences"
-                    android:maxLines="1" />
-            </com.google.android.material.textfield.TextInputLayout>
+            <!-- ===== Documents available: NOT HERE ANY MORE =====
+                 The checklist moved to the main form, section 7, where the printed
+                 report has it and where every case type is asked it. Keeping a second
+                 copy on this section meant a renewal report answered the same eleven
+                 boxes twice and could disagree with itself, and a recovery visit had
+                 nowhere to record that an Aadhaar card was produced at all. -->
 
             <View
                 android:layout_width="match_parent"
@@ -501,6 +420,13 @@
                 android:layout_height="wrap_content"
                 android:minHeight="44dp"
                 android:text="@string/ckcc_rec_docs_submitted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkCkccRecPendingDocs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ckcc_rec_pending_documents" />
 
             <com.google.android.material.checkbox.MaterialCheckBox
                 android:id="@+id/checkCkccRecFollowup"

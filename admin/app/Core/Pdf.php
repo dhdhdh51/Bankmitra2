@@ -44,6 +44,15 @@ final class Pdf
     private string $subtitle;
     private string $footerNote;
 
+    /**
+     * The slim running header the printed forms use, or null for the standard band.
+     *
+     * See useRunningHeader(). A report export wants the tall branded band with its
+     * subtitle and generation time; a form that has to match a paper original wants one
+     * grey line and its own masthead underneath.
+     */
+    private ?string $runningHeader = null;
+
     /** @var list<array{label:string,width:float,align:string}> */
     private array $columns = [];
 
@@ -254,6 +263,405 @@ final class Pdf
             }
 
             $this->line($this->marginX, $top, $this->marginX + $this->contentWidth(), $top, '#eef1f5', 0.4);
+            $this->y = $top;
+        }
+
+        $this->y -= 4.0;
+    }
+
+    /**
+     * The masthead the printed form opens with.
+     *
+     * A filled navy panel with a gold rule around it, the organisation in white, the
+     * document's name in gold beneath it, and the strap lines under that. Reproduced
+     * because a form somebody files with a bank is recognised by its head before it is
+     * read - hand over a page that starts with a thin blue line and a left-aligned
+     * heading and it is a printout, not the form.
+     *
+     * @param list<string> $straplines Centred under the title, smallest text on the page.
+     */
+    public function titleBlock(string $organisation, string $title, array $straplines = []): void
+    {
+        $lineHeight = 11.0;
+        $height = 52.0 + (count($straplines) * $lineHeight);
+
+        $this->ensureSpace($height + 16.0);
+
+        $top = $this->y - $height;
+
+        // Gold frame, navy fill. Drawn as a slightly larger stroked rectangle behind the
+        // fill so the two do not fight over the same pixels on a cheap printer.
+        $this->rect($this->marginX - 1.5, $top - 1.5, $this->contentWidth() + 3.0, $height + 3.0, '#e3a008', false);
+        $this->rect($this->marginX, $top, $this->contentWidth(), $height, '#12325e', true);
+
+        $y = $top + $height - 22.0;
+        $this->textAt(
+            strtoupper(self::text($organisation)),
+            $this->marginX,
+            $y,
+            15.0,
+            true,
+            '#ffffff',
+            $this->contentWidth(),
+            'center'
+        );
+
+        $y -= 17.0;
+        $this->textAt(
+            strtoupper(self::text($title)),
+            $this->marginX,
+            $y,
+            11.0,
+            true,
+            '#e3a008',
+            $this->contentWidth(),
+            'center'
+        );
+
+        foreach ($straplines as $line) {
+            $y -= $lineHeight;
+            $this->textAt(
+                self::text($line),
+                $this->marginX,
+                $y,
+                8.0,
+                false,
+                '#c7d2e4',
+                $this->contentWidth(),
+                'center'
+            );
+        }
+
+        $this->y = $top - 12.0;
+    }
+
+    /**
+     * A tinted box for a block of text that is not a field: a declaration, a note.
+     *
+     * The form sets both apart from the fields around them, and it is right to: the
+     * declaration is the one paragraph on the page that somebody is agreeing to, and
+     * running it in the same grey as a helper line makes it look like guidance.
+     *
+     * @param list<string> $paragraphs
+     */
+    public function calloutBox(array $paragraphs, string $fillHex = '#fdf6e3', string $edgeHex = '#e3a008', string $textHex = '#3f3f46', ?string $heading = null): void
+    {
+        $paragraphs = array_values(array_filter($paragraphs, static fn (string $p): bool => trim($p) !== ''));
+        if ($paragraphs === []) {
+            return;
+        }
+
+        $inset = 9.0;
+        $size = 8.2;
+        $width = $this->contentWidth() - (2 * $inset);
+
+        // Measured first, so the box is drawn at the right height rather than being
+        // stretched to fit text that has already overflowed it.
+        $lines = [];
+        foreach ($paragraphs as $paragraph) {
+            $lines[] = self::wrap(self::text($paragraph), $width, $size, false);
+        }
+
+        $textHeight = 0.0;
+        foreach ($lines as $set) {
+            $textHeight += (count($set) * 10.4) + 4.0;
+        }
+
+        $headingHeight = $heading === null ? 0.0 : 13.0;
+        $height = $textHeight + $headingHeight + (2 * $inset) - 4.0;
+
+        $this->ensureSpace($height + 12.0);
+        $top = $this->y - $height;
+
+        $this->rect($this->marginX, $top, $this->contentWidth(), $height, $fillHex, true);
+        $this->rect($this->marginX, $top, $this->contentWidth(), $height, $edgeHex, false);
+        // A heavier bar down the leading edge, which is what makes it read as a callout
+        // rather than as a table cell.
+        $this->rect($this->marginX, $top, 2.6, $height, $edgeHex, true);
+
+        $y = $top + $height - $inset - 2.0;
+
+        if ($heading !== null) {
+            $this->textAt(self::text($heading), $this->marginX + $inset, $y - 6.0, 9.0, true, '#12325e');
+            $y -= $headingHeight;
+        }
+
+        foreach ($lines as $set) {
+            foreach ($set as $line) {
+                $y -= 10.4;
+                $this->textAt($line, $this->marginX + $inset, $y, $size, false, $textHex);
+            }
+            $y -= 4.0;
+        }
+
+        $this->y = $top - 10.0;
+    }
+
+    /**
+     * A row of form fields: a bold label, then a ruled line carrying the value.
+     *
+     * This is how the paper form asks for something - "Visit Date : ______" - and it is
+     * not the same thing as a key/value block. A label above a value reads as a report
+     * of what was recorded; a label beside a rule reads as a form, and the rule is what
+     * tells somebody holding the printout that a blank one is meant to be written on.
+     *
+     * @param array<string,string|int|float|null> $pairs
+     */
+    public function formFields(array $pairs, int $columnsPerRow = 2): void
+    {
+        $entries = [];
+        foreach ($pairs as $label => $value) {
+            $text = $value === null ? '' : trim((string) $value);
+
+            // A dash means "nothing was recorded", and on a form the way to say that is a
+            // blank rule - which is also what somebody filling one in by hand writes on.
+            // Printing "-" on the line instead reads as a value.
+            if ($text === '-' || $text === '—') {
+                $text = '';
+            }
+
+            $entries[] = [self::text((string) $label) . ' :', self::text($text)];
+        }
+        if ($entries === []) {
+            return;
+        }
+
+        $columnsPerRow = max(1, $columnsPerRow);
+        $cellWidth = $this->contentWidth() / $columnsPerRow;
+        // The label takes a fixed share so the rules line up down the page. Ragged rules
+        // are the thing that makes a generated form look generated.
+        //
+        // Sized off the widest label actually passed in, within limits, rather than a flat
+        // fraction: at three columns a flat 46% truncated "Aadhaar (Last 4 Digits)" to
+        // "Aadhaar (Last 4 Di...", and a form that abbreviates its own questions is not
+        // the form.
+        $widest = 0.0;
+        foreach ($entries as [$label, ]) {
+            $widest = max($widest, self::stringWidth($label, 7.8, true));
+        }
+        $labelWidth = max(
+            min($cellWidth * 0.40, 96.0),
+            min($widest + 8.0, $cellWidth * 0.62)
+        );
+
+        foreach (array_chunk($entries, $columnsPerRow) as $chunk) {
+            $this->ensureSpace(24.0);
+            $rowHeight = 19.0;
+            $top = $this->y - $rowHeight;
+
+            $x = $this->marginX;
+            foreach ($chunk as [$label, $value]) {
+                $this->textAt(
+                    self::fit($label, $labelWidth - 4.0, 7.8, true),
+                    $x + 2.0,
+                    $top + 5.0,
+                    7.8,
+                    true,
+                    '#1c2128'
+                );
+
+                $ruleLeft = $x + $labelWidth;
+                $ruleRight = $x + $cellWidth - 10.0;
+
+                $this->line($ruleLeft, $top + 3.0, $ruleRight, $top + 3.0, '#9aa1ab', 0.5);
+
+                if ($value !== '') {
+                    $this->textAt(
+                        self::fit($value, $ruleRight - $ruleLeft - 4.0, 8.6, false),
+                        $ruleLeft + 3.0,
+                        $top + 5.6,
+                        8.6,
+                        false,
+                        '#12325e'
+                    );
+                }
+
+                $x += $cellWidth;
+            }
+
+            $this->y = $top;
+        }
+
+        $this->y -= 4.0;
+    }
+
+    /**
+     * A numbered section band, the way the printed form heads its sections.
+     *
+     * Not the same thing as heading(): a filled band with a number in front of it is
+     * how somebody finds section 7 on a form they are holding, and on an eight-section
+     * document a row of identical bold lines gives a reader nothing to navigate by.
+     */
+    public function sectionBand(int $number, string $title): void
+    {
+        $this->ensureSpace(34.0);
+
+        $height = 20.0;
+        $this->y -= 14.0;
+        $top = $this->y - $height;
+
+        $this->rect($this->marginX, $top, $this->contentWidth(), $height, '#0b2a5b', true);
+        // The gold number the form uses, so the eye lands on the number and not the
+        // middle of the sentence next to it.
+        $this->textAt($number . '.', $this->marginX + 8.0, $top + 6.2, 9.6, true, '#e3a008');
+        $this->textAt(
+            strtoupper(self::text($title)),
+            $this->marginX + 26.0,
+            $top + 6.2,
+            9.6,
+            true,
+            '#ffffff'
+        );
+
+        $this->y = $top - 6.0;
+    }
+
+    /**
+     * The small label that names a group of tick boxes ("Case Type", "Gender").
+     */
+    public function groupLabel(string $text): void
+    {
+        $this->ensureSpace(16.0);
+        $this->y -= 12.0;
+        $this->textAt(self::text($text), $this->marginX, $this->y, 7.8, true, '#0f766e');
+        $this->y -= 2.0;
+    }
+
+    /**
+     * A grid of tick boxes, printed the way the form prints them.
+     *
+     * EVERY OPTION IS SHOWN, ticked or not, and this is a change of mind rather than an
+     * oversight. Printing only the ticked ones made a shorter page and a weaker
+     * document: a reader could not tell an unticked box from a question that was never
+     * on the form, so "Neighbour Verification: not conducted" and "this version of the
+     * report never asked" looked identical. On a form that a branch acts on and an
+     * auditor reads afterwards, the questions matter as much as the answers.
+     *
+     * @param list<array{label:string,checked:bool}> $items
+     */
+    public function checkboxGrid(array $items, int $columns = 3): void
+    {
+        $items = array_values($items);
+        if ($items === []) {
+            return;
+        }
+
+        $columns = max(1, $columns);
+        $cellWidth = $this->contentWidth() / $columns;
+        $box = 7.4;
+
+        foreach (array_chunk($items, $columns) as $chunk) {
+            // Measured before anything is drawn so a two-line label cannot overlap the
+            // row beneath it, and so a row never splits across a page break.
+            $lines = 1;
+            foreach ($chunk as $item) {
+                $lines = max($lines, count(self::wrap(
+                    self::text((string) $item['label']),
+                    $cellWidth - $box - 14.0,
+                    7.8,
+                    false
+                )));
+            }
+
+            $rowHeight = 8.0 + ($lines * 9.6);
+            $this->ensureSpace($rowHeight + 4.0);
+            $top = $this->y - $rowHeight;
+
+            $x = $this->marginX;
+            foreach ($chunk as $item) {
+                $checked = (bool) $item['checked'];
+                $boxY = $top + $rowHeight - $box - 5.0;
+
+                // The form draws these as a bordered table with a pale tint, and the tint
+                // is what separates one row of choices from the next when there are five
+                // such rows on a page. A ticked cell is picked out a shade stronger.
+                $this->rect($x, $top, $cellWidth, $rowHeight, $checked ? '#e8f0fd' : '#f4f7f8', true);
+                $this->rect($x, $top, $cellWidth, $rowHeight, '#d5dbe2', false);
+
+                $this->rect($x + 4.0, $boxY, $box, $box, $checked ? '#0b2a5b' : '#5f6b7a', false);
+
+                if ($checked) {
+                    // Two strokes rather than a filled square: a solid block reads as a
+                    // redaction on a photocopy, and a tick survives a fax.
+                    $this->line($x + 5.6, $boxY + 3.6, $x + 7.2, $boxY + 1.8, '#0b2a5b', 1.1);
+                    $this->line($x + 7.2, $boxY + 1.8, $x + 9.8, $boxY + 5.8, '#0b2a5b', 1.1);
+                }
+
+                $lineY = $top + $rowHeight - 11.4;
+                foreach (self::wrap(
+                    self::text((string) $item['label']),
+                    $cellWidth - $box - 18.0,
+                    7.8,
+                    $checked
+                ) as $line) {
+                    $this->textAt(
+                        $line,
+                        $x + $box + 10.0,
+                        $lineY,
+                        7.8,
+                        $checked,
+                        $checked ? '#12325e' : '#5f6b7a'
+                    );
+                    $lineY -= 9.6;
+                }
+
+                $x += $cellWidth;
+            }
+
+            $this->y = $top;
+        }
+
+        $this->y -= 4.0;
+    }
+
+    /**
+     * A blank ruled line for something that is filled in by hand after printing.
+     *
+     * Used for the two dates in the certification block. A key/value pair showing "-"
+     * says the field is empty; a ruled line says it is meant to be written on.
+     *
+     * @param array<string,string> $pairs label => value, blank for a rule
+     */
+    public function ruledFields(array $pairs, int $columnsPerRow = 2): void
+    {
+        $entries = [];
+        foreach ($pairs as $label => $value) {
+            $entries[] = [self::text((string) $label), self::text($value)];
+        }
+
+        $cellWidth = $this->contentWidth() / max(1, $columnsPerRow);
+
+        foreach (array_chunk($entries, $columnsPerRow) as $chunk) {
+            $this->ensureSpace(26.0);
+            $top = $this->y - 22.0;
+
+            $x = $this->marginX;
+            foreach ($chunk as [$label, $value]) {
+                $this->textAt(
+                    self::fit($label, $cellWidth - 10.0, 7.2, false),
+                    $x + 2.0,
+                    $top + 12.0,
+                    7.2,
+                    false,
+                    '#4b5563'
+                );
+
+                if ($value === '') {
+                    $this->line($x + 2.0, $top + 5.0, $x + $cellWidth - 12.0, $top + 5.0, '#8a919b', 0.6);
+                } else {
+                    $this->textAt(
+                        self::fit($value, $cellWidth - 10.0, 9.0, true),
+                        $x + 2.0,
+                        $top + 1.5,
+                        9.0,
+                        true,
+                        '#1c2128'
+                    );
+                }
+
+                $x += $cellWidth;
+            }
+
             $this->y = $top;
         }
 
@@ -715,7 +1123,37 @@ final class Pdf
     public function output(): string
     {
         $this->flushPage();
+        $this->stampPageNumbers();
         return $this->assemble();
+    }
+
+    /**
+     * Writes "Page 1 of 8" onto every page, once the total is known.
+     *
+     * Done here rather than in drawFooter() because a page cannot know how many will
+     * follow it. The alternative - a placeholder token replaced later - shifts the text
+     * by the difference in width between the token and the number, which on a centred
+     * footer is visible; and the printed form says "Page 1 of 8", so the total is not
+     * optional decoration.
+     *
+     * Appending to a finished content stream is safe: PDF content is a sequence of
+     * operators and this adds nothing that overlaps what is already drawn.
+     */
+    private function stampPageNumbers(): void
+    {
+        $total = count($this->pages);
+
+        foreach ($this->pages as $index => $stream) {
+            $label = sprintf('Page %d of %d', $index + 1, $total);
+            $width = self::stringWidth($label, 7.6, false);
+
+            $this->pages[$index] = $stream . sprintf(
+                "BT /F1 7.60 Tf 0.420 0.447 0.502 rg %.2F %.2F Td (%s) Tj ET\n",
+                $this->marginX + (($this->pageWidth - (2 * $this->marginX) - $width) / 2),
+                24.0,
+                self::escape($label)
+            );
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -745,6 +1183,32 @@ final class Pdf
 
     private function drawHeaderBand(): void
     {
+        if ($this->runningHeader !== null) {
+            // One grey line and a hairline rule, exactly what the paper form carries.
+            $this->textAt(
+                $this->runningHeader,
+                $this->marginX,
+                $this->pageHeight - 30.0,
+                7.6,
+                false,
+                '#6b7280',
+                $this->contentWidth(),
+                'right'
+            );
+            $this->line(
+                $this->marginX,
+                $this->pageHeight - 36.0,
+                $this->marginX + $this->contentWidth(),
+                $this->pageHeight - 36.0,
+                '#d5dbe2',
+                0.5
+            );
+
+            $this->y = $this->pageHeight - 46.0;
+
+            return;
+        }
+
         $bank = self::text((string) Settings::get('bank_name', ''));
         $appName = self::text((string) Settings::get('app_name', 'D2 Recovery'));
 
@@ -785,6 +1249,29 @@ final class Pdf
         $this->y = $y - 8.0;
     }
 
+    /**
+     * Replaces the running header on every page with the one the printed form uses.
+     *
+     * The form carries a single small grey line at the top of each page - the
+     * organisation, then the document's name - and nothing else. Our own header band is
+     * three lines tall and would push the masthead a third of the way down page one.
+     *
+     * Called immediately after construction, before anything is drawn, so page one's
+     * header is replaced rather than overdrawn.
+     */
+    public function useRunningHeader(string $text): void
+    {
+        $this->runningHeader = self::text($text);
+
+        // Page one has already had the tall band drawn into it by the constructor.
+        // Rewound and redrawn, because a form whose first page is laid out differently
+        // from the rest is the thing this method exists to avoid.
+        $this->buffer = '';
+        $this->y = $this->pageHeight - $this->marginTop;
+        $this->drawHeaderBand();
+        $this->drawFooter();
+    }
+
     private function drawFooter(): void
     {
         $footerY = 24.0;
@@ -796,16 +1283,10 @@ final class Pdf
             : 'D2 Recovery - Loan Recovery Management System';
 
         $this->textAt($left, $this->marginX, $footerY, 7.6, false, '#6b7280');
-        $this->textAt(
-            'Page ' . $this->pageNumber,
-            $this->marginX,
-            $footerY,
-            7.6,
-            false,
-            '#6b7280',
-            $this->contentWidth(),
-            'right'
-        );
+
+        // The page number is NOT written here. It reads "Page 1 of 8" on the printed
+        // form, and a page being drawn does not know how many will follow it, so
+        // stampPageNumbers() adds it to every page once the document is closed.
     }
 
     private function flushPage(): void

@@ -140,11 +140,16 @@ class VisitReportActivity : BaseActivity() {
 
         setUpReportType()
         setUpGeneral()
+        setUpBorrower()
+        setUpLoanDetails()
         setUpContact()
         setUpVerification()
+        setUpDocumentsVerified()
         setUpRecovery()
         setUpReasons()
         setUpRecommendations()
+        setUpEvidence()
+        setUpDeclaration()
         setUpAttachments()
         setUpOts()
         setUpCkcc()
@@ -175,6 +180,9 @@ class VisitReportActivity : BaseActivity() {
         val labels = VisitFormData.REPORT_TYPES.map { it.second }
         binding.inputReportType.setSimpleItems(labels.toTypedArray())
         binding.inputReportType.setText(labels.first(), false)
+
+        // Defaults to the first entry in the list, which is what setText() above shows.
+        form.reportType = VisitFormData.REPORT_TYPES.first().first
 
         binding.inputReportType.setOnItemClickListener { _, _, position, _ ->
             form.reportType = VisitFormData.REPORT_TYPES[position].first
@@ -209,7 +217,37 @@ class VisitReportActivity : BaseActivity() {
             ots.chipOtsScheme.text = VisitFormData.OTS_SCHEMES[position].second
             ots.chipOtsScheme.visibility = View.VISIBLE
             ots.fieldOtsScheme.error = null
+            ots.fieldOtsSchemeOther.visibility =
+                if (form.otsScheme == VisitFormData.OTS_SCHEME_OTHER) View.VISIBLE else View.GONE
         }
+        bindText(ots.inputOtsSchemeOther) {
+            form.otsSchemeOtherText = it
+            ots.fieldOtsSchemeOther.error = null
+        }
+
+        // WHY the borrower answered as they did. "Asked for time" and "refused
+        // outright" both leave the accepted switch off and lead to different next steps.
+        ots.inputOtsCustomerResponse.setSimpleItems(
+            VisitFormData.OTS_CUSTOMER_RESPONSES.map { it.second }.toTypedArray(),
+        )
+        ots.inputOtsCustomerResponse.setOnItemClickListener { _, _, position, _ ->
+            form.otsCustomerResponse = VisitFormData.OTS_CUSTOMER_RESPONSES[position].first
+        }
+
+        bindDate(ots.inputOtsExpectedDepositDate) { form.otsExpectedDepositDate = it }
+
+        ots.checkOtsRecProposal.setOnCheckedChangeListener { _, v -> form.otsRecProposalRecommended = v }
+        ots.checkOtsRecFollowup.setOnCheckedChangeListener { _, v -> form.otsRecFollowupRequired = v }
+        ots.checkOtsRecRefused.setOnCheckedChangeListener { _, v -> form.otsRecCustomerRefused = v }
+        ots.checkOtsRecNotEligible.setOnCheckedChangeListener { _, v -> form.otsRecNotEligible = v }
+
+        ots.checkOtsStContacted.setOnCheckedChangeListener { _, v -> form.otsStCustomerContacted = v }
+        ots.checkOtsStVerified.setOnCheckedChangeListener { _, v -> form.otsStCustomerVerified = v }
+        ots.checkOtsStAccepted.setOnCheckedChangeListener { _, v -> form.otsStOtsAccepted = v }
+        ots.checkOtsStRejected.setOnCheckedChangeListener { _, v -> form.otsStOtsRejected = v }
+        ots.checkOtsStDeposit.setOnCheckedChangeListener { _, v -> form.otsStInitialDepositReceived = v }
+        ots.checkOtsStClosed.setOnCheckedChangeListener { _, v -> form.otsStOtsClosed = v }
+        ots.checkOtsStFollowup.setOnCheckedChangeListener { _, v -> form.otsStFollowupRequired = v }
 
         ots.inputOtsApprovalStatus.setSimpleItems(
             VisitFormData.OTS_APPROVAL_STATUSES.map { it.second }.toTypedArray(),
@@ -329,7 +367,6 @@ class VisitReportActivity : BaseActivity() {
         bindText(c.inputCkccOutstanding) { form.ckccOutstanding = it }
         bindText(c.inputCkccInterestOverdue) { form.ckccInterestOverdue = it }
         bindText(c.inputCkccObservation) { form.ckccObservation = it }
-        bindText(c.inputCkccDocOtherText) { form.ckccDocOtherText = it }
         bindText(c.inputCkccRecOtherText) { form.ckccRecOtherText = it }
 
         bindDate(c.inputCkccSanctionDate) { form.ckccSanctionDate = it }
@@ -345,17 +382,8 @@ class VisitReportActivity : BaseActivity() {
         c.checkCkccMobileLinked.setOnCheckedChangeListener { _, v -> form.ckccMobileLinked = v }
         c.checkCkccAadhaarAuth.setOnCheckedChangeListener { _, v -> form.ckccAadhaarAuthCompleted = v }
 
-        c.checkCkccDocAadhaar.setOnCheckedChangeListener { _, v -> form.ckccDocAadhaar = v }
-        c.checkCkccDocPan.setOnCheckedChangeListener { _, v -> form.ckccDocPan = v }
-        c.checkCkccDocPassbook.setOnCheckedChangeListener { _, v -> form.ckccDocPassbook = v }
-        c.checkCkccDocLandRecord.setOnCheckedChangeListener { _, v -> form.ckccDocLandRecord = v }
-        c.checkCkccDocKhasra.setOnCheckedChangeListener { _, v -> form.ckccDocKhasraKhatauni = v }
-        c.checkCkccDocPhotograph.setOnCheckedChangeListener { _, v -> form.ckccDocPhotograph = v }
-        c.checkCkccDocMobile.setOnCheckedChangeListener { _, v -> form.ckccDocMobileAvailable = v }
-        c.checkCkccDocOther.setOnCheckedChangeListener { _, v ->
-            form.ckccDocOthers = v
-            c.fieldCkccDocOtherText.visibility = if (v) View.VISIBLE else View.GONE
-        }
+        // The document checklist is section 7 on the main form now, asked once for
+        // every case type - see setUpDocumentsVerified().
 
         c.checkCkccWilling.setOnCheckedChangeListener { _, v -> form.ckccWillingToRenew = v }
         c.checkCkccDocsHanded.setOnCheckedChangeListener { _, v -> form.ckccDocumentsHandedOver = v }
@@ -365,6 +393,7 @@ class VisitReportActivity : BaseActivity() {
 
         c.checkCkccRecRenewNow.setOnCheckedChangeListener { _, v -> form.ckccRecRenewImmediately = v }
         c.checkCkccRecDocsSubmitted.setOnCheckedChangeListener { _, v -> form.ckccRecDocumentsSubmitted = v }
+        c.checkCkccRecPendingDocs.setOnCheckedChangeListener { _, v -> form.ckccRecPendingDocuments = v }
         c.checkCkccRecFollowup.setOnCheckedChangeListener { _, v -> form.ckccRecFollowupRequired = v }
         c.checkCkccRecNotInterested.setOnCheckedChangeListener { _, v -> form.ckccRecNotInterested = v }
         c.checkCkccRecBranchUrgent.setOnCheckedChangeListener { _, v -> form.ckccRecBranchContactUrgent = v }
@@ -441,6 +470,25 @@ class VisitReportActivity : BaseActivity() {
         input.doAfterTextChanged { assign(it?.toString().orEmpty()) }
     }
 
+    /**
+     * A one-of-many dropdown that reports the stored value, not the label.
+     *
+     * Deliberately starts EMPTY rather than pre-selecting the first option. Every one of
+     * these is a question the agent is meant to answer, and a control that answers it for
+     * them by default records something nobody asserted - which on a verification form is
+     * the difference between "not confirmed" and "never asked".
+     *
+     * @param options value-to-label pairs, in the order the printed form lists them.
+     */
+    private fun bindChoice(
+        input: com.google.android.material.textfield.MaterialAutoCompleteTextView,
+        options: List<Pair<String, String>>,
+        assign: (String) -> Unit,
+    ) {
+        input.setSimpleItems(options.map { it.second }.toTypedArray())
+        input.setOnItemClickListener { _, _, position, _ -> assign(options[position].first) }
+    }
+
     /** Read-only field that opens a date picker and reports an ISO date. */
     private fun bindDate(input: android.widget.EditText, assign: (String) -> Unit) {
         input.setOnClickListener {
@@ -510,6 +558,155 @@ class VisitReportActivity : BaseActivity() {
             calendar.get(Calendar.MINUTE),
             false,
         ).show()
+    }
+
+    // =======================================================================
+    // 2. Borrower information
+    // =======================================================================
+
+    /**
+     * The identity fields the printed form asks for that the borrower record does not
+     * already hold.
+     *
+     * Every one is optional. An agent who cannot get a date of birth out of somebody at
+     * their own front door must still be able to file the visit that happened - the
+     * alternative is a form that refuses the report, and then the visit is recorded
+     * nowhere at all.
+     */
+    private fun setUpBorrower() {
+        bindChoice(binding.inputGender, VisitFormData.GENDERS) { form.gender = it }
+        bindDate(binding.inputDateOfBirth) { form.dateOfBirth = it }
+
+        bindText(binding.inputPan) {
+            form.panNumber = it
+            binding.fieldPan.error = null
+        }
+        bindText(binding.inputAddrVillage) { form.addrVillage = it }
+        bindText(binding.inputGramPanchayat) { form.gramPanchayat = it }
+        bindText(binding.inputTehsil) { form.tehsil = it }
+        bindText(binding.inputAddrDistrict) { form.addrDistrict = it }
+        bindText(binding.inputState) { form.state = it }
+        bindText(binding.inputPinCode) {
+            form.pinCode = it
+            binding.fieldPinCode.error = null
+        }
+    }
+
+    // =======================================================================
+    // 3. Loan account details
+    // =======================================================================
+
+    private fun setUpLoanDetails() {
+        bindText(binding.inputCifNumber) { form.cifNumber = it }
+
+        bindChoice(binding.inputLoanType, VisitFormData.LOAN_TYPES) {
+            form.loanType = it
+            binding.fieldLoanTypeOther.visibility =
+                if (it == VisitFormData.LOAN_TYPE_OTHER) View.VISIBLE else View.GONE
+        }
+        bindText(binding.inputLoanTypeOther) {
+            form.loanTypeOtherText = it
+            binding.fieldLoanTypeOther.error = null
+        }
+
+        bindChoice(binding.inputAssetClassification, VisitFormData.ASSET_CLASSIFICATIONS) {
+            form.assetClassification = it
+        }
+
+        bindDate(binding.inputSanctionDate) { form.sanctionDate = it }
+        bindText(binding.inputSanctionLimit) {
+            form.sanctionLimit = it
+            binding.fieldSanctionLimit.error = null
+        }
+        bindText(binding.inputDrawingPower) {
+            form.drawingPower = it
+            binding.fieldDrawingPower.error = null
+        }
+        bindText(binding.inputInterestOverdue) {
+            form.interestOverdue = it
+            binding.fieldInterestOverdue.error = null
+        }
+    }
+
+    // =======================================================================
+    // 7. Documents verified
+    // =======================================================================
+
+    /**
+     * What the borrower physically produced, asked on every case type.
+     *
+     * This checklist used to live inside the CKCC renewal section, so a recovery visit
+     * had nowhere to record that an Aadhaar card was shown - and a renewal report showed
+     * the same eleven boxes twice, once here and once there, free to disagree.
+     */
+    private fun setUpDocumentsVerified() {
+        binding.checkDocAadhaar.setOnCheckedChangeListener { _, v -> form.docAadhaar = v }
+        binding.checkDocPan.setOnCheckedChangeListener { _, v -> form.docPan = v }
+        binding.checkDocPassbook.setOnCheckedChangeListener { _, v -> form.docPassbook = v }
+        binding.checkDocLandRecord.setOnCheckedChangeListener { _, v -> form.docLandRecord = v }
+        binding.checkDocKhatauni.setOnCheckedChangeListener { _, v -> form.docKhatauni = v }
+        binding.checkDocElectricityBill.setOnCheckedChangeListener { _, v -> form.docElectricityBill = v }
+        binding.checkDocPhotograph.setOnCheckedChangeListener { _, v -> form.docPhotograph = v }
+        binding.checkDocMobileVerified.setOnCheckedChangeListener { _, v -> form.docMobileVerified = v }
+        binding.checkDocRenewalForm.setOnCheckedChangeListener { _, v -> form.docRenewalForm = v }
+        binding.checkDocOtsConsent.setOnCheckedChangeListener { _, v -> form.docOtsConsentLetter = v }
+        binding.checkDocOthers.setOnCheckedChangeListener { _, v ->
+            form.docOthers = v
+            binding.groupDocOther.visibility = if (v) View.VISIBLE else View.GONE
+        }
+        bindText(binding.inputDocOtherText) {
+            form.docOtherText = it
+            binding.fieldDocOtherText.error = null
+        }
+    }
+
+    // =======================================================================
+    // 10. Evidence attached
+    // =======================================================================
+
+    /**
+     * What the agent says this report carries.
+     *
+     * Not derived from the photographs actually attached, and that is the point: the
+     * panel prints this list next to the real counts, so a report claiming a passbook
+     * copy and carrying none is visible without opening the record.
+     */
+    private fun setUpEvidence() {
+        binding.checkEvBorrowerPhoto.setOnCheckedChangeListener { _, v -> form.evBorrowerPhoto = v }
+        binding.checkEvHousePhoto.setOnCheckedChangeListener { _, v -> form.evHousePhoto = v }
+        binding.checkEvLandPhoto.setOnCheckedChangeListener { _, v -> form.evLandPhoto = v }
+        binding.checkEvAadhaarCopy.setOnCheckedChangeListener { _, v -> form.evAadhaarCopy = v }
+        binding.checkEvPassbookCopy.setOnCheckedChangeListener { _, v -> form.evPassbookCopy = v }
+        binding.checkEvGpsLocation.setOnCheckedChangeListener { _, v -> form.evGpsLocation = v }
+        binding.checkEvRenewalForm.setOnCheckedChangeListener { _, v -> form.evRenewalForm = v }
+        binding.checkEvOtsConsent.setOnCheckedChangeListener { _, v -> form.evOtsConsent = v }
+        binding.checkEvOthers.setOnCheckedChangeListener { _, v ->
+            form.evOthers = v
+            binding.groupEvOther.visibility = if (v) View.VISIBLE else View.GONE
+        }
+        bindText(binding.inputEvOtherText) {
+            form.evOtherText = it
+            binding.fieldEvOtherText.error = null
+        }
+    }
+
+    // =======================================================================
+    // 11. Declaration
+    // =======================================================================
+
+    /**
+     * The RBI / Fair Practices Code declaration, and the one hard stop on this form.
+     *
+     * Everything else can be left blank and the report is still worth filing. A report
+     * submitted by somebody who did not certify it is a different thing: the declaration
+     * is printed in full on every copy, so an unticked box would put words in the
+     * agent's mouth.
+     */
+    private fun setUpDeclaration() {
+        binding.checkDeclaration.setOnCheckedChangeListener { _, checked ->
+            form.declarationAccepted = checked
+            if (checked) binding.textDeclarationError.visibility = View.GONE
+        }
     }
 
     // =======================================================================
@@ -583,6 +780,17 @@ class VisitReportActivity : BaseActivity() {
         binding.switchShifted.setOnCheckedChangeListener { _, checked ->
             form.shifted = checked
         }
+
+        // Both start unselected and stay unselected until the agent picks one, because
+        // "not confirmed" is a claim about a check somebody ran and silence is not.
+        bindChoice(
+            binding.inputResidenceVerified,
+            VisitFormData.RESIDENCE_VERIFICATION,
+        ) { form.residenceVerified = it }
+        bindChoice(
+            binding.inputNeighbourVerification,
+            VisitFormData.NEIGHBOUR_VERIFICATION,
+        ) { form.neighbourVerification = it }
 
         // Occupation chips, built from the shared enum so app and server agree.
         VisitFormData.OCCUPATIONS.forEach { (value, label) ->
@@ -714,6 +922,8 @@ class VisitReportActivity : BaseActivity() {
             form.recOtherText = it?.toString().orEmpty()
             binding.fieldRecOther.error = null
         }
+
+        bindText(binding.inputGeneralRecommendation) { form.generalRecommendation = it }
 
         binding.inputRemarks.doAfterTextChanged { form.remarks = it?.toString().orEmpty() }
     }
@@ -849,20 +1059,42 @@ class VisitReportActivity : BaseActivity() {
         errors["reason_other_text"]?.let { binding.fieldReasonOther.error = it }
         errors["rec_other_text"]?.let { binding.fieldRecOther.error = it }
         errors["occupation_other_text"]?.let { binding.fieldOccupationOther.error = it }
+        errors["pan_number"]?.let { binding.fieldPan.error = it }
+        errors["pin_code"]?.let { binding.fieldPinCode.error = it }
+        errors["loan_type_other_text"]?.let { binding.fieldLoanTypeOther.error = it }
+        errors["sanction_limit"]?.let { binding.fieldSanctionLimit.error = it }
+        errors["drawing_power"]?.let { binding.fieldDrawingPower.error = it }
+        errors["interest_overdue"]?.let { binding.fieldInterestOverdue.error = it }
+        errors["doc_other_text"]?.let { binding.fieldDocOtherText.error = it }
+        errors["ev_other_text"]?.let { binding.fieldEvOtherText.error = it }
+        errors["ots_scheme_other_text"]?.let { binding.sectionOts.fieldOtsSchemeOther.error = it }
 
         errors["contact"]?.let { message ->
             binding.textContactError.text = message
             binding.textContactError.visibility = View.VISIBLE
         }
 
-        // Scroll to the first problem so the agent is not left hunting for it.
+        errors["declaration_accepted"]?.let { binding.textDeclarationError.visibility = View.VISIBLE }
+
+        // Scroll to the first problem so the agent is not left hunting for it. Ordered
+        // the way the form is, so the agent is taken to the earliest thing that is wrong
+        // rather than to whichever error the map happened to yield first.
         binding.scrollView.post {
             val target: View = when {
                 errors.containsKey("visit_date") || errors.containsKey("visit_time") -> binding.cardGeneral
+                errors.containsKey("pan_number") || errors.containsKey("pin_code") -> binding.cardBorrower
+                errors.containsKey("loan_type_other_text") || errors.containsKey("sanction_limit")
+                    || errors.containsKey("drawing_power")
+                    || errors.containsKey("interest_overdue") -> binding.cardLoanDetails
                 errors.containsKey("contact") || errors.containsKey("family_member_name") -> binding.cardContact
                 errors.containsKey("occupation_other_text") -> binding.cardVerification
+                errors.containsKey("doc_other_text") -> binding.cardDocumentsVerified
                 errors.containsKey("promise_amount") || errors.containsKey("promise_date") -> binding.cardRecovery
                 errors.containsKey("reason_other_text") -> binding.cardReasons
+                errors.containsKey("ev_other_text") -> binding.cardEvidence
+                // Last, because it is the last thing on the form and the most likely
+                // single reason a completed report will not submit.
+                errors.containsKey("declaration_accepted") -> binding.cardDeclaration
                 else -> binding.cardRecommendations
             }
             binding.scrollView.smoothScrollTo(0, target.top)
@@ -880,6 +1112,9 @@ class VisitReportActivity : BaseActivity() {
             "promise_amount" -> binding.fieldPromiseAmount.error = message
             "promise_date" -> binding.fieldPromiseDate.error = message
             "remarks" -> binding.fieldRemarks.error = message
+            "pan_number" -> binding.fieldPan.error = message
+            "pin_code" -> binding.fieldPinCode.error = message
+            "general_recommendation" -> binding.fieldGeneralRecommendation.error = message
         }
     }
 

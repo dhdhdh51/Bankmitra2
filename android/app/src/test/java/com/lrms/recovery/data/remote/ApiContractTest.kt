@@ -291,14 +291,17 @@ class ApiContractTest {
     }
 
     @Test
-    fun `form options carry the three report types and their option lists`() {
+    fun `form options carry every case type and option list on the printed form`() {
         val payload = need("form options", envelope<FormOptionsPayload>("form_options").data)
 
         // The dropdown posts one of these values back. If the server renames one,
         // the app would post something the enum rejects and the extra section would
         // be silently dropped from the report.
         val types = payload.reportTypes.map { it.value }
-        assertEquals(listOf("recovery", "ots", "ckcc_renewal"), types)
+        assertEquals(
+            listOf("ots", "ckcc_renewal", "recovery", "pre_npa", "post_npa", "other"),
+            types,
+        )
         assertTrue("each type needs a label", payload.reportTypes.all { it.label.isNotBlank() })
         assertEquals(
             "the app's hard-coded list must match the server's",
@@ -306,9 +309,78 @@ class ApiContractTest {
             com.lrms.recovery.domain.VisitFormData.REPORT_TYPES.map { it.first },
         )
 
+        // Sections 7 and 10 are asked on EVERY case type, so they sit at the top level
+        // of the payload. `document_flags` used to be inside the ckcc block, which meant
+        // a recovery visit was never offered the checklist at all.
+        val docKeys = payload.documentFlags.map { it.key }
+        assertEquals(11, docKeys.size)
+        assertTrue("aadhaar", docKeys.contains("doc_aadhaar"))
+        assertTrue("khatauni", docKeys.contains("doc_khatauni"))
+        assertTrue("electricity bill", docKeys.contains("doc_electricity_bill"))
+        assertTrue("OTS consent letter", docKeys.contains("doc_ots_consent_letter"))
+
+        val evidenceKeys = payload.evidenceFlags.map { it.key }
+        assertEquals(9, evidenceKeys.size)
+        assertTrue("borrower photograph", evidenceKeys.contains("ev_borrower_photo"))
+        assertTrue("GPS location", evidenceKeys.contains("ev_gps_location"))
+
+        // Section 11 travels with the options rather than being compiled into the APK,
+        // so the wording an agent accepts and the wording printed on the page are one
+        // text with one owner.
+        assertEquals(3, payload.declaration.size)
+        assertTrue(
+            "the declaration must name the RBI",
+            payload.declaration.joinToString(" ").contains("Reserve Bank of India"),
+        )
+        assertTrue("and the closing note must be present", !payload.importantNote.isNullOrBlank())
+
+        // Single-choice rows the form draws as tick boxes.
+        assertEquals(listOf("male", "female", "other"), payload.genders.map { it.value })
+        assertEquals(
+            listOf("standard", "sma_0", "sma_1", "sma_2", "npa"),
+            payload.assetClassifications.map { it.value },
+        )
+        assertEquals(7, payload.loanTypes.size)
+        assertEquals(
+            listOf("confirmed", "not_confirmed"),
+            payload.residenceVerification.map { it.value },
+        )
+        assertEquals(
+            listOf("conducted", "not_conducted"),
+            payload.neighbourVerification.map { it.value },
+        )
+        // And the app's own copies of them, which is what the dropdowns are built from
+        // when the phone is offline.
+        assertEquals(
+            payload.genders.map { it.value },
+            com.lrms.recovery.domain.VisitFormData.GENDERS.map { it.first },
+        )
+        assertEquals(
+            payload.assetClassifications.map { it.value },
+            com.lrms.recovery.domain.VisitFormData.ASSET_CLASSIFICATIONS.map { it.first },
+        )
+        assertEquals(
+            payload.loanTypes.map { it.value },
+            com.lrms.recovery.domain.VisitFormData.LOAN_TYPES.map { it.first },
+        )
+        assertEquals(
+            payload.occupations.map { it.value },
+            com.lrms.recovery.domain.VisitFormData.OCCUPATIONS.map { it.first },
+        )
+
         val ots = need("ots options", payload.ots)
-        assertEquals(listOf("krm_ots", "general_ots"), ots.schemes.map { it.value })
+        assertEquals(listOf("krm_ots", "general_ots", "other"), ots.schemes.map { it.value })
         assertEquals(listOf("pending", "approved", "rejected"), ots.approvalStatuses.map { it.value })
+        assertEquals(
+            listOf("agreed", "requested_time", "financial_difficulty", "refused", "not_eligible"),
+            ots.customerResponses.map { it.value },
+        )
+        assertEquals(
+            ots.customerResponses.map { it.value },
+            com.lrms.recovery.domain.VisitFormData.OTS_CUSTOMER_RESPONSES.map { it.first },
+        )
+        assertEquals(4, ots.recommendationFlags.size)
+        assertEquals(7, ots.statusFlags.size)
         // Scheme defaults. Wrong values here would pre-fill a wrong settlement.
         assertEquals(22.50, ots.defaultPayablePercent, 0.001)
         assertEquals(10.00, ots.defaultDepositPercent, 0.001)
@@ -318,22 +390,32 @@ class ApiContractTest {
             listOf("within_30", "within_15", "within_7", "overdue"),
             ckcc.dueBuckets.map { it.value },
         )
-        // These keys are exactly what the form posts back per checkbox.
-        val docKeys = ckcc.documentFlags.map { it.key }
-        assertTrue("aadhaar", docKeys.contains("doc_aadhaar"))
-        assertTrue("khasra/khatauni", docKeys.contains("doc_khasra_khatauni"))
         val consentKeys = ckcc.consentFlags.map { it.key }
         assertTrue("willing to renew", consentKeys.contains("willing_to_renew"))
         assertTrue("biometrics", consentKeys.contains("biometrics_completed"))
         val statusKeys = ckcc.statusFlags.map { it.key }
         assertTrue("renewed", statusKeys.contains("st_ckcc_renewed"))
         assertTrue("became NPA", statusKeys.contains("st_became_npa"))
+        assertTrue("documents still pending", ckcc.recommendationFlags.map { it.key }
+            .contains("rec_pending_documents"))
 
-        // No location capture exists anywhere in this product.
-        val everyKey = docKeys + consentKeys + statusKeys +
-            ckcc.eligibilityFlags.map { it.key } + ckcc.recommendationFlags.map { it.key }
+        // The renewal block must not carry its own copy of the document checklist. Two
+        // copies let one report answer the same eleven boxes twice, and the whole point
+        // of moving it was that there is one answer.
+        val ckccJson = load("form_options")
+        assertFalse(
+            "the renewal block must not repeat the document checklist",
+            ckccJson.substringAfter("\"ckcc\"").contains("doc_khasra_khatauni"),
+        )
+
+        // The renewal and settlement option lists never ask for a position. The report's
+        // own GPS is captured elsewhere and under consent; a tick box asking an agent to
+        // assert a location would be a different and worse thing.
+        val everyKey = consentKeys + statusKeys +
+            ckcc.eligibilityFlags.map { it.key } + ckcc.recommendationFlags.map { it.key } +
+            ots.recommendationFlags.map { it.key } + ots.statusFlags.map { it.key }
         assertTrue(
-            "no option may ask for GPS or location",
+            "no settlement or renewal option may ask for GPS or location",
             everyKey.none { it.contains("gps") || it.contains("location") || it.contains("lat") },
         )
     }
@@ -349,8 +431,11 @@ class ApiContractTest {
             visits.all { it.reportType.isNotBlank() },
         )
         assertTrue(
-            "report type must be one of the three known values",
-            visits.all { it.reportType in setOf("recovery", "ots", "ckcc_renewal") },
+            "report type must be one of the six known case types",
+            visits.all {
+                it.reportType in com.lrms.recovery.domain.VisitFormData.REPORT_TYPES
+                    .map { type -> type.first }.toSet()
+            },
         )
     }
 

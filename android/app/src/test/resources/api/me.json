@@ -17,12 +17,16 @@
             "must_change_password": false,
             "permissions": [
                 "dashboard.view",
+                "tracking.view",
                 "customers.view",
+                "customers.create",
+                "customers.update",
                 "customers.view_pii",
                 "visits.view",
                 "visits.create",
                 "promises.view",
-                "notifications.view"
+                "notifications.view",
+                "custom_fields.manage"
             ]
         },
         "app_version": "1.0.0",

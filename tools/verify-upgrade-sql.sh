@@ -77,6 +77,7 @@ HEADINGS = [
     '### Letting the panel add a borrower by hand',
     '### Recording what the agent finds out at the door',
     '### Seeing the location trail on a map',
+    '### Making the field visit report match the printed form',
 ]
 
 chunks = []
@@ -134,6 +135,115 @@ db lrms_upg < "$ROOT/schema.sql"
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
+--
+-- The visit report did not match the printed form: thirteen sections' worth of boxes had
+-- nowhere to go. Reversed in the opposite order to the migration - the renewal row's
+-- duplicated document checklist comes BACK first, because the report's copy of it is
+-- about to be dropped and the pre-release database is supposed to have one of them.
+ALTER TABLE `visit_ckcc_details`
+  ADD COLUMN `doc_aadhaar`         TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_pan`             TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_passbook`        TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_land_record`     TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_khasra_khatauni` TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_photograph`      TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_mobile_available` TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_others`          TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN `doc_other_text`      VARCHAR(255) DEFAULT NULL,
+  DROP COLUMN `rec_pending_documents`;
+
+ALTER TABLE `visit_ots_details`
+  MODIFY COLUMN `scheme` ENUM('krm_ots','general_ots') DEFAULT NULL,
+  DROP COLUMN `scheme_other_text`,
+  DROP COLUMN `customer_response`,
+  DROP COLUMN `expected_deposit_date`,
+  DROP COLUMN `rec_proposal_recommended`,
+  DROP COLUMN `rec_followup_required`,
+  DROP COLUMN `rec_customer_refused`,
+  DROP COLUMN `rec_not_eligible`,
+  DROP COLUMN `st_customer_contacted`,
+  DROP COLUMN `st_customer_verified`,
+  DROP COLUMN `st_ots_accepted`,
+  DROP COLUMN `st_ots_rejected`,
+  DROP COLUMN `st_initial_deposit_received`,
+  DROP COLUMN `st_ots_closed`,
+  DROP COLUMN `st_followup_required`;
+
+-- The occupation enum has to regain 'job' before 'service' can be taken away, or the
+-- MODIFY blanks every row it cannot represent.
+ALTER TABLE `visit_reports`
+  MODIFY COLUMN `occupation` ENUM('agriculture','dairy','business','labour','service','others','job')
+    DEFAULT NULL;
+UPDATE `visit_reports` SET `occupation` = 'job' WHERE `occupation` = 'service';
+
+ALTER TABLE `visit_reports`
+  MODIFY COLUMN `occupation` ENUM('agriculture','dairy','business','job','labour','others') DEFAULT NULL,
+  MODIFY COLUMN `report_type` ENUM('recovery','ots','ckcc_renewal') NOT NULL DEFAULT 'recovery',
+  MODIFY COLUMN `bc_code` VARCHAR(40) DEFAULT NULL,
+  MODIFY COLUMN `village` VARCHAR(150) DEFAULT NULL,
+  MODIFY COLUMN `address` VARCHAR(500) DEFAULT NULL,
+  MODIFY COLUMN `remarks` TEXT DEFAULT NULL,
+  DROP COLUMN `branch_code`,
+  DROP COLUMN `regional_office`,
+  DROP COLUMN `zone`,
+  DROP COLUMN `linked_branch`,
+  DROP COLUMN `district`,
+  DROP COLUMN `report_type_other_text`,
+  DROP COLUMN `gender`,
+  DROP COLUMN `date_of_birth`,
+  DROP COLUMN `alt_mobile_enc`,
+  DROP COLUMN `alt_mobile_hash`,
+  DROP COLUMN `alt_mobile_masked`,
+  DROP COLUMN `pan_enc`,
+  DROP COLUMN `pan_hash`,
+  DROP COLUMN `pan_masked`,
+  DROP COLUMN `addr_village`,
+  DROP COLUMN `gram_panchayat`,
+  DROP COLUMN `tehsil`,
+  DROP COLUMN `addr_district`,
+  DROP COLUMN `state`,
+  DROP COLUMN `pin_code`,
+  DROP COLUMN `cif_number`,
+  DROP COLUMN `loan_type_other_text`,
+  DROP COLUMN `sanction_date`,
+  DROP COLUMN `sanction_limit`,
+  DROP COLUMN `drawing_power`,
+  DROP COLUMN `interest_overdue`,
+  DROP COLUMN `asset_classification`,
+  DROP COLUMN `residence_verified`,
+  DROP COLUMN `neighbour_verification`,
+  DROP COLUMN `doc_aadhaar`,
+  DROP COLUMN `doc_pan`,
+  DROP COLUMN `doc_passbook`,
+  DROP COLUMN `doc_land_record`,
+  DROP COLUMN `doc_khatauni`,
+  DROP COLUMN `doc_electricity_bill`,
+  DROP COLUMN `doc_photograph`,
+  DROP COLUMN `doc_mobile_verified`,
+  DROP COLUMN `doc_renewal_form`,
+  DROP COLUMN `doc_ots_consent_letter`,
+  DROP COLUMN `doc_others`,
+  DROP COLUMN `doc_other_text`,
+  DROP COLUMN `general_recommendation`,
+  DROP COLUMN `ev_borrower_photo`,
+  DROP COLUMN `ev_house_photo`,
+  DROP COLUMN `ev_land_photo`,
+  DROP COLUMN `ev_aadhaar_copy`,
+  DROP COLUMN `ev_passbook_copy`,
+  DROP COLUMN `ev_gps_location`,
+  DROP COLUMN `ev_renewal_form`,
+  DROP COLUMN `ev_ots_consent`,
+  DROP COLUMN `ev_others`,
+  DROP COLUMN `ev_other_text`,
+  DROP COLUMN `declaration_accepted`,
+  DROP COLUMN `agent_mobile`,
+  DROP COLUMN `supervisor_designation`,
+  DROP COLUMN `supervisor_employee_id`;
+
+ALTER TABLE `branches`
+  DROP COLUMN `regional_office`,
+  DROP COLUMN `zone`;
+
 --
 -- The recorded trail could not be looked at by anybody, so there was no permission for a
 -- screen to sit behind.
@@ -354,7 +464,11 @@ def q(db, sql):
 # from the upgraded database is covered by the table-count and column comparisons below.
 TABLES = ['users','loan_accounts','visit_reports','visit_history',
           'visit_report_revisions','custom_field_definitions','custom_field_values',
-          'photos']
+          'photos',
+          # Added when the visit report was made to match the printed form. All three
+          # gained or lost columns in that release and none of them was being compared,
+          # so a migration that forgot half of section 4 would have passed.
+          'branches','visit_ots_details','visit_ckcc_details']
 tlist = "','".join(TABLES)
 results = []
 

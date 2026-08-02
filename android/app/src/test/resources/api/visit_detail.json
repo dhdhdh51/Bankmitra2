@@ -5,28 +5,58 @@
             "id": 22,
             "loan_account_id": 27,
             "general": {
-                "visit_date": "2026-07-30",
+                "visit_date": "2026-08-01",
                 "visit_time": "14:27:00",
+                "report_type": "recovery",
+                "report_type_label": "Recovery Follow-up",
+                "report_type_other_text": null,
                 "bc_code": "BC-001",
                 "branch": "Bhilwara Main",
+                "branch_code": "BR001",
+                "regional_office": null,
+                "zone": null,
+                "linked_branch": "Bhilwara Main",
+                "district": "Bhilwara",
+                "sp_cbc_name": null,
                 "agent_name": "Ramesh Kumar",
                 "village": "Gulabpura"
             },
             "borrower": {
                 "customer_name": "Sita Devi",
                 "father_husband_name": "Father of Sita Devi",
+                "gender": null,
+                "date_of_birth": null,
                 "address": "House 27, Gulabpura",
                 "mobile": "9876510027",
                 "mobile_masked": "XXXXXX0027",
+                "alt_mobile": null,
+                "alt_mobile_masked": null,
                 "aadhaar": "123410000027",
-                "aadhaar_masked": "XXXX XXXX 0027"
+                "aadhaar_masked": "XXXX XXXX 0027",
+                "pan": null,
+                "pan_masked": null,
+                "addr_village": null,
+                "gram_panchayat": null,
+                "tehsil": null,
+                "addr_district": null,
+                "state": "Rajasthan",
+                "pin_code": null
             },
             "loan": {
                 "loan_account_number": "LN00100027",
+                "cif_number": null,
                 "loan_type": "KCC",
+                "loan_type_label": "KCC",
+                "loan_type_other_text": null,
+                "sanction_date": null,
+                "sanction_limit": null,
+                "drawing_power": null,
                 "outstanding_amount": 110725,
+                "interest_overdue": null,
                 "overdue_amount": 17716,
                 "npa_date": "2024-04-28",
+                "asset_classification": null,
+                "asset_classification_label": null,
                 "current_status": "pending"
             },
             "contact": {
@@ -42,8 +72,36 @@
                 "borrower_alive": true,
                 "same_address": true,
                 "shifted": false,
+                "residence_verified": null,
+                "neighbour_verification": null,
                 "occupation": "dairy",
                 "occupation_other_text": null
+            },
+            "documents_verified": {
+                "aadhaar": false,
+                "pan": false,
+                "passbook": false,
+                "land_record": false,
+                "khatauni": false,
+                "electricity_bill": false,
+                "photograph": false,
+                "mobile_verified": false,
+                "renewal_form": false,
+                "ots_consent_letter": false,
+                "others": false,
+                "other_text": null
+            },
+            "evidence_attached": {
+                "borrower_photo": false,
+                "house_photo": false,
+                "land_photo": false,
+                "aadhaar_copy": false,
+                "passbook_copy": false,
+                "gps_location": false,
+                "renewal_form": false,
+                "ots_consent": false,
+                "others": false,
+                "other_text": null
             },
             "recovery": {
                 "ready_to_pay": true,
@@ -51,7 +109,7 @@
                 "interest_payment": false,
                 "ots": false,
                 "promise_amount": 20750,
-                "promise_date": "2026-08-02"
+                "promise_date": "2026-08-04"
             },
             "non_payment_reason": {
                 "financial_problem": false,
@@ -71,18 +129,60 @@
                 "rc": false,
                 "ots": false,
                 "others": false,
-                "other_text": null
+                "other_text": null,
+                "general": null
+            },
+            "certification": {
+                "agent_name": "Ramesh Kumar",
+                "bc_code": "BC-001",
+                "agent_mobile": "9822200001",
+                "supervisor_name": null,
+                "supervisor_designation": null,
+                "supervisor_employee_id": null,
+                "supervisor_verified_at": null
+            },
+            "declaration": {
+                "accepted": false,
+                "text": [
+                    "I hereby certify that the information contained in this report has been collected and verified during my personal physical field visit through direct interaction with the borrower and/or other reliable local sources, wherever applicable. The details recorded herein represent the factual position observed and verified during the visit and have been documented fairly, accurately, objectively, and in good faith to the best of my knowledge and belief.",
+                    "I further certify that no information has been intentionally concealed, altered, or misrepresented. The field verification has been conducted strictly in accordance with the applicable Reserve Bank of India (RBI) guidelines, the Bank's extant policies, operational instructions, the Fair Practices Code, and the prescribed Code of Conduct governing field verification, customer interaction, and recovery-related activities.",
+                    "This report is submitted solely for the purpose of assessment, verification, recovery follow-up, and/or renewal processing, as applicable, and shall be subject to verification and acceptance by the Bank."
+                ]
             },
             "remarks": "Customer agreed to pay after selling produce.",
             "source": "android",
             "app_version": "1.0.0",
-            "created_at": "2026-07-31 15:45:36"
+            "created_at": "2026-08-02 15:53:04"
         },
         "ots": null,
         "ckcc": null,
-        "photos": [],
-        "documents": [],
-        "signatures": []
+        "photos": [
+            {
+                "id": 22,
+                "kind": "photo",
+                "type": "customer",
+                "url": "/api/v1/media?f=photos%2F2026%2F08%2F20260802_155304_beacedd581a6f90f.jpg",
+                "title": "photos.jpg",
+                "created_at": "2026-08-02 15:53:04"
+            },
+            {
+                "id": 23,
+                "kind": "photo",
+                "type": "house",
+                "url": "/api/v1/media?f=photos%2F2026%2F08%2F20260802_155304_a83c8267003de42d.jpg",
+                "title": "photos.jpg",
+                "created_at": "2026-08-02 15:53:04"
+            },
+            {
+                "id": 24,
+                "kind": "photo",
+                "type": "agent",
+                "url": "/api/v1/media?f=photos%2F2026%2F08%2F20260802_155304_9672a70a5f61584e.jpg",
+                "title": "photos.jpg",
+                "created_at": "2026-08-02 15:53:04"
+            }
+        ],
+        "documents": []
     },
     "message": ""
 }

@@ -39,8 +39,8 @@ android {
         // Bumped on every release that changes the app. An agent comparing "which build
         // am I on" against what the bank sent out has nothing else to go by, and Android
         // will not install a lower versionCode over a higher one.
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -1618,9 +1618,12 @@ $ckccResult = VisitService::submit([
     'ckcc_details[aadhaar_seeded]'         => 1,
     'ckcc_details[mobile_linked]'          => 1,
     'ckcc_details[aadhaar_auth_completed]' => 1,
-    'ckcc_details[doc_aadhaar]'            => 1,
-    'ckcc_details[doc_passbook]'           => 1,
-    'ckcc_details[doc_khasra_khatauni]'    => 1,
+    // Section 7 of the printed form, and a TOP-LEVEL field now rather than part of
+    // the renewal section: the checklist is asked on every case type, and keeping a
+    // second copy on the renewal row let one report answer it twice.
+    'doc_aadhaar'                          => 1,
+    'doc_passbook'                         => 1,
+    'doc_khatauni'                         => 1,
     'ckcc_details[willing_to_renew]'       => 1,
     'ckcc_details[renewal_form_signed]'    => 1,
     'ckcc_details[ekyc_completed]'         => 1,
@@ -1659,10 +1662,14 @@ if ($ckccRow !== null) {
         'got ' . var_export($ckccRow['renewal_due_bucket'], true));
 
     check('KYC status stored', $ckccRow['kyc_status'] === 'complete');
-    check('document availability flags stored',
-        (int) $ckccRow['doc_aadhaar'] === 1
-        && (int) $ckccRow['doc_khasra_khatauni'] === 1
-        && (int) $ckccRow['doc_pan'] === 0);
+    check('the renewal row no longer carries its own document checklist',
+        !array_key_exists('doc_aadhaar', $ckccRow) && !array_key_exists('doc_khasra_khatauni', $ckccRow));
+
+    $ckccParent = VisitReport::find($ckccVisitId);
+    check('document availability flags stored on the report itself',
+        (int) $ckccParent['doc_aadhaar'] === 1
+        && (int) $ckccParent['doc_khatauni'] === 1
+        && (int) $ckccParent['doc_pan'] === 0);
     check('consent flags stored',
         (int) $ckccRow['willing_to_renew'] === 1 && (int) $ckccRow['renewal_form_signed'] === 1);
     check('agent observation stored',
@@ -1710,6 +1717,301 @@ check('deleting a visit cascades to its ots_details row',
 // this the first time round. Rebuild it rather than leaving the fixture wrong.
 LoanAccount::refreshVisitCounters($leadId);
 
+// ---------------------------------------------------------------------------
+section('The printed form, section by section');
+// ---------------------------------------------------------------------------
+// Everything the D2 Recovery "Field Visit Verification Report" asks for that this
+// system had nowhere to put. Each check below corresponds to a box or a line on the
+// paper form, and the reason they are worth asserting is that a field which silently
+// stops being saved looks exactly like a field an agent left blank.
+
+// The branch master carries the hierarchy, so it can be stamped onto the report
+// instead of being retyped at every doorstep.
+$db->query(
+    'UPDATE branches SET regional_office = ?, zone = ?, district = ? WHERE id = ?',
+    ['Ajmer Regional Office', 'North Zone', 'Bhilwara', $branchAId]
+);
+
+$formResult = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_date'      => date('Y-m-d'),
+    'visit_time'      => '11:15',
+    'report_type'     => 'pre_npa',
+    'customer_met'    => '1',
+
+    // 2. Borrower information
+    'gender'          => 'female',
+    'date_of_birth'   => '12/07/1979',
+    'pan_number'      => ' abcde1234f ',
+    'addr_village'    => 'Kotri',
+    'gram_panchayat'  => 'Kotri Gram Panchayat',
+    'tehsil'          => 'Mandal',
+    'addr_district'   => 'Bhilwara',
+    'state'           => 'Rajasthan',
+    'pin_code'        => '311001',
+
+    // 3. Loan account details
+    'cif_number'           => 'CIF554433',
+    'loan_type'            => 'ckcc',
+    'sanction_date'        => '2023-04-01',
+    'sanction_limit'       => '2,50,000',
+    'drawing_power'        => '2,25,000',
+    'interest_overdue'     => '4500.50',
+    'asset_classification' => 'SMA-2',
+
+    // 6. Physical verification
+    'occupation'             => 'service',
+    'residence_verified'     => 'confirmed',
+    'neighbour_verification' => 'conducted',
+
+    // 7. Documents verified
+    'doc_aadhaar'          => '1',
+    'doc_electricity_bill' => '1',
+    'doc_ots_consent_letter' => '1',
+    'doc_others'           => '1',
+    'doc_other_text'       => 'Ration card',
+
+    // 9. Recommendation
+    'general_recommendation' => 'Renew before the deadline and keep a monthly follow-up.',
+
+    // 10. Evidence attached
+    'ev_borrower_photo' => '1',
+    'ev_gps_location'   => '1',
+    'ev_others'         => '1',
+    'ev_other_text'     => 'Panchayat letter',
+
+    // 11 + 12
+    'declaration_accepted'    => '1',
+    'supervisor_name'         => 'S. Verma',
+    'supervisor_designation'  => 'Branch Manager',
+    'supervisor_employee_id'  => 'EMP-4477',
+    'supervisor_verified_at'  => date('Y-m-d'),
+], $agentCtx);
+
+$form = VisitReport::findWithPii((int) $formResult['visit_id']);
+check('a report can be filed as a Pre-NPA verification', (string) $form['report_type'] === 'pre_npa');
+
+// Section 1 - stamped from the branch master, not asked of the agent.
+check('the branch code is stamped from the branch master',
+    (string) $form['branch_code'] === 'BR001', (string) $form['branch_code']);
+check('the regional office is stamped from the branch master',
+    (string) $form['regional_office'] === 'Ajmer Regional Office');
+check('the zone is stamped from the branch master', (string) $form['zone'] === 'North Zone');
+check('the district is stamped from the branch master', (string) $form['district'] === 'Bhilwara');
+check('the linked branch is the branch the agent is attached to',
+    (string) $form['linked_branch'] === 'Bhilwara Main', (string) $form['linked_branch']);
+
+// Section 2.
+check('gender is stored', (string) $form['gender'] === 'female');
+check('a day-first date of birth is parsed', (string) $form['date_of_birth'] === '1979-07-12',
+    (string) $form['date_of_birth']);
+check('the PAN is not stored in plaintext',
+    $db->scalar('SELECT pan_enc FROM visit_reports WHERE id = ?', [(int) $form['id']]) !== 'ABCDE1234F');
+check('the PAN decrypts, normalised to upper case', (string) $form['pan'] === 'ABCDE1234F',
+    var_export($form['pan'], true));
+check('the PAN is masked to its last four characters',
+    (string) $form['pan_masked'] === 'XXXXXX234F', (string) $form['pan_masked']);
+// The bug this guards against: searchHash() strips everything that is not a digit, so
+// every PAN would collapse to its four-digit block and two unrelated borrowers would
+// share a hash. It would only ever surface as a lookup returning the wrong person.
+check('two PANs sharing a digit block hash differently',
+    Crypto::panHash('ABCDE1234F') !== Crypto::panHash('ZZZZZ1234Q'));
+check('a PAN hashes the same however it is typed',
+    Crypto::panHash('abcde 1234 f') === Crypto::panHash('ABCDE1234F'));
+check('the address is broken up as the form asks',
+    (string) $form['gram_panchayat'] === 'Kotri Gram Panchayat'
+    && (string) $form['tehsil'] === 'Mandal'
+    && (string) $form['addr_district'] === 'Bhilwara'
+    && (string) $form['state'] === 'Rajasthan'
+    && (string) $form['pin_code'] === '311001');
+// The second number comes off the borrower record rather than being retyped, and is
+// snapshotted so the report shows the number that was current on the day.
+check('the alternate mobile is snapshotted onto the report',
+    array_key_exists('alt_mobile_masked', $form));
+
+// Section 3.
+check('the CIF number is on the report itself', (string) $form['cif_number'] === 'CIF554433');
+check('a grouped sanction limit is parsed', abs((float) $form['sanction_limit'] - 250000.0) < 0.01);
+check('drawing power is parsed', abs((float) $form['drawing_power'] - 225000.0) < 0.01);
+check('interest overdue is parsed', abs((float) $form['interest_overdue'] - 4500.50) < 0.01);
+check('the sanction date is stored', (string) $form['sanction_date'] === '2023-04-01');
+// loan_accounts.asset_classification is free text because the bank's export writes it;
+// the form is five boxes, so "SMA-2" has to land in one of them.
+check('a free-text asset classification maps onto the form\'s box',
+    (string) $form['asset_classification'] === 'sma_2', (string) $form['asset_classification']);
+
+// Section 6.
+check('residence verification is stored', (string) $form['residence_verified'] === 'confirmed');
+check('neighbour verification is stored', (string) $form['neighbour_verification'] === 'conducted');
+check('the occupation enum accepts Service', (string) $form['occupation'] === 'service');
+
+// Section 7 - on the report, for every case type, not just a renewal.
+check('the documents-verified checklist is stored on the report',
+    (int) $form['doc_aadhaar'] === 1
+    && (int) $form['doc_electricity_bill'] === 1
+    && (int) $form['doc_ots_consent_letter'] === 1
+    && (int) $form['doc_passbook'] === 0);
+check('the other-document note is stored', (string) $form['doc_other_text'] === 'Ration card');
+
+// Sections 9, 10, 11, 12.
+check('the general recommendation is stored',
+    str_contains((string) $form['general_recommendation'], 'monthly follow-up'));
+check('the evidence checklist is stored',
+    (int) $form['ev_borrower_photo'] === 1
+    && (int) $form['ev_gps_location'] === 1
+    && (int) $form['ev_passbook_copy'] === 0);
+check('the other-evidence note is stored', (string) $form['ev_other_text'] === 'Panchayat letter');
+check('the declaration acceptance is recorded', (int) $form['declaration_accepted'] === 1);
+// Their own staff number, off their user record: it is printed so a branch can ring
+// back whoever filed the report, and asking for it again at every door would only be
+// a chance to mistype it.
+check('the agent mobile defaults to the number on their user record',
+    (string) $form['agent_mobile'] === '9822222222', var_export($form['agent_mobile'], true));
+check('the supervisor block is stored',
+    (string) $form['supervisor_designation'] === 'Branch Manager'
+    && (string) $form['supervisor_employee_id'] === 'EMP-4477');
+
+// An APK built before the form's wording changed still sends 'job'. Translated rather
+// than dropped: the two words mean the same thing here, and storing NULL would lose an
+// occupation somebody recorded at a door.
+$legacy = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_time'      => '12:00',
+    'customer_met'    => '1',
+    'occupation'      => 'job',
+], $agentCtx);
+check("an older app's 'job' occupation becomes 'service'",
+    (string) VisitReport::find((int) $legacy['visit_id'])['occupation'] === 'service');
+
+// A classification the form has no box for must stay NULL rather than be forced into
+// the nearest one: a report claiming "Standard" because nothing matched would be worse
+// than one that leaves the row blank.
+$unknownClass = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_time'      => '12:05',
+    'customer_met'    => '1',
+    'asset_classification' => 'Doubtful 2',
+], $agentCtx);
+check('an asset classification outside the form stays NULL',
+    VisitReport::find((int) $unknownClass['visit_id'])['asset_classification'] === null);
+
+// A Case Type this system does not know must not be stored as though it were real.
+$badType = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_time'      => '12:10',
+    'customer_met'    => '1',
+    'report_type'     => 'whatever',
+], $agentCtx);
+check('an unknown case type falls back to a recovery follow-up',
+    (string) VisitReport::find((int) $badType['visit_id'])['report_type'] === 'recovery');
+
+// ---- Section 4 and 13, the settlement halves -----------------------------
+$otsForm = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_time'      => '12:20',
+    'report_type'     => 'ots',
+    'customer_met'    => '1',
+    'ots_details[eligible_for_ots]'  => '1',
+    'ots_details[scheme]'            => 'other',
+    'ots_details[scheme_other_text]' => 'State relief package 2024',
+    // Why the borrower said no, which the accepted/not-accepted boolean cannot carry.
+    'ots_details[customer_response]' => 'requested_time',
+    'ots_details[expected_deposit_date]' => date('Y-m-d', strtotime('+21 days')),
+    'ots_details[rec_proposal_recommended]' => '1',
+    'ots_details[rec_followup_required]'    => '1',
+    'ots_details[st_customer_contacted]'    => '1',
+    'ots_details[st_initial_deposit_received]' => '1',
+], $agentCtx);
+$otsFormRow = VisitReport::otsDetails((int) $otsForm['visit_id']);
+check('a settlement can record a scheme outside the two named ones',
+    $otsFormRow !== null && (string) $otsFormRow['scheme'] === 'other'
+    && (string) $otsFormRow['scheme_other_text'] === 'State relief package 2024');
+check('the customer response is stored alongside the boolean',
+    $otsFormRow !== null && (string) $otsFormRow['customer_response'] === 'requested_time'
+    && (int) $otsFormRow['borrower_accepted'] === 0);
+check('a promised deposit date is kept apart from the actual one',
+    $otsFormRow !== null
+    && (string) $otsFormRow['expected_deposit_date'] === date('Y-m-d', strtotime('+21 days'))
+    && $otsFormRow['deposit_date'] === null);
+check('the settlement recommendation flags are stored',
+    $otsFormRow !== null && (int) $otsFormRow['rec_proposal_recommended'] === 1
+    && (int) $otsFormRow['rec_followup_required'] === 1
+    && (int) $otsFormRow['rec_not_eligible'] === 0);
+check('the settlement status flags are stored',
+    $otsFormRow !== null && (int) $otsFormRow['st_customer_contacted'] === 1
+    && (int) $otsFormRow['st_initial_deposit_received'] === 1
+    && (int) $otsFormRow['st_ots_closed'] === 0);
+check('an invalid customer response is stored as NULL, not guessed',
+    VisitReport::otsDetails((int) VisitService::submit([
+        'loan_account_id' => $leadId,
+        'visit_time'      => '12:25',
+        'report_type'     => 'ots',
+        'customer_met'    => '1',
+        'ots_details[customer_response]' => 'maybe',
+    ], $agentCtx)['visit_id'])['customer_response'] === null);
+
+// ---- Section 9's missing renewal box -------------------------------------
+$pendingDocs = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_time'      => '12:30',
+    'report_type'     => 'ckcc_renewal',
+    'customer_met'    => '1',
+    'ckcc_details[renewal_due_date]'       => date('Y-m-d', strtotime('+20 days')),
+    'ckcc_details[rec_pending_documents]'  => '1',
+], $agentCtx);
+// "Documents complete" unticked could not say whether anything was outstanding.
+check('a renewal can record that documents are still pending',
+    (int) VisitReport::ckccDetails((int) $pendingDocs['visit_id'])['rec_pending_documents'] === 1);
+
+// ---- The option lists the app renders ------------------------------------
+// The app builds its dropdowns and tick lists from these, so a label that drifts
+// changes what an agent is asked without anybody editing a form.
+check('every case type on the form has an option',
+    count(VisitReport::REPORT_TYPES) === 6 && isset(VisitReport::REPORT_TYPES['pre_npa']));
+check('the documents checklist has all eleven boxes',
+    count(VisitReport::DOCUMENT_FLAGS) === 11);
+check('the evidence checklist has all nine boxes',
+    count(VisitReport::EVIDENCE_FLAGS) === 9);
+check('the declaration is three clauses', count(VisitReport::DECLARATION) === 3);
+check('the declaration names the RBI and the Fair Practices Code',
+    str_contains(implode(' ', VisitReport::DECLARATION), 'Reserve Bank of India')
+    && str_contains(implode(' ', VisitReport::DECLARATION), 'Fair Practices Code'));
+// Every flag map has to name a real column, or the screen prints a permanently
+// unticked box and the PDF prints it too.
+foreach ([
+    'DOCUMENT_FLAGS' => VisitReport::DOCUMENT_FLAGS,
+    'EVIDENCE_FLAGS' => VisitReport::EVIDENCE_FLAGS,
+    'CONTACT_FLAGS'  => VisitReport::CONTACT_FLAGS,
+    'RECOVERY_FLAGS' => VisitReport::RECOVERY_FLAGS,
+    'REASON_FLAGS'   => VisitReport::REASON_FLAGS,
+    'RECOMMENDATION_FLAGS' => VisitReport::RECOMMENDATION_FLAGS,
+] as $mapName => $map) {
+    $missing = array_diff(array_keys($map), array_keys($form));
+    check("every column in {$mapName} exists on visit_reports", $missing === [], implode(', ', $missing));
+}
+foreach ([
+    'OTS_RECOMMENDATION_FLAGS' => VisitReport::OTS_RECOMMENDATION_FLAGS,
+    'OTS_STATUS_FLAGS'         => VisitReport::OTS_STATUS_FLAGS,
+] as $mapName => $map) {
+    $missing = array_diff(array_keys($map), array_keys((array) $otsFormRow));
+    check("every column in {$mapName} exists on visit_ots_details", $missing === [], implode(', ', $missing));
+}
+$ckccColumns = (array) VisitReport::ckccDetails((int) $pendingDocs['visit_id']);
+foreach ([
+    'CKCC_ELIGIBILITY_FLAGS'    => VisitReport::CKCC_ELIGIBILITY_FLAGS,
+    'CKCC_CONSENT_FLAGS'        => VisitReport::CKCC_CONSENT_FLAGS,
+    'CKCC_RECOMMENDATION_FLAGS' => VisitReport::CKCC_RECOMMENDATION_FLAGS,
+    'CKCC_STATUS_FLAGS'         => VisitReport::CKCC_STATUS_FLAGS,
+] as $mapName => $map) {
+    $missing = array_diff(array_keys($map), array_keys($ckccColumns));
+    check("every column in {$mapName} exists on visit_ckcc_details", $missing === [], implode(', ', $missing));
+}
+// And the correctable list, which a reviewer's form is built from: a name in it that
+// is not a column would silently drop the correction.
+$notColumns = array_diff(array_keys(VisitReport::CORRECTABLE), array_keys($form));
+check('every correctable field is a real column on visit_reports', $notColumns === [], implode(', ', $notColumns));
+
+LoanAccount::refreshVisitCounters($leadId);
 // ---------------------------------------------------------------------------
 section('Email login and email OTP');
 

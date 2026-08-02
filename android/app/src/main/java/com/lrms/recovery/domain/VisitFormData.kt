@@ -24,10 +24,40 @@ data class VisitFormData(
      */
     var reportType: String = REPORT_RECOVERY,
 
+    /** Free text, and only meaningful when [reportType] is [REPORT_OTHER]. */
+    var reportTypeOtherText: String = "",
+
     // ---- General -----------------------------------------------------------
     var visitDate: String = "",
     var visitTime: String = "",
     var village: String = "",
+
+    // ---- 2. Borrower information -------------------------------------------
+    // The identity fields the printed form asks for that the borrower record does not
+    // already hold. All optional: an agent who cannot get a date of birth at the door
+    // must still be able to file the visit that happened.
+    var gender: String = "",
+    var dateOfBirth: String = "",
+    var panNumber: String = "",
+    var addrVillage: String = "",
+    var gramPanchayat: String = "",
+    var tehsil: String = "",
+    var addrDistrict: String = "",
+    var state: String = "",
+    var pinCode: String = "",
+
+    // ---- 3. Loan account details -------------------------------------------
+    // Pre-filled from the account where the bank's export supplied a figure, so the
+    // agent confirms rather than copies a passbook by hand - and can correct what the
+    // export got wrong.
+    var cifNumber: String = "",
+    var loanType: String = "",
+    var loanTypeOtherText: String = "",
+    var sanctionDate: String = "",
+    var sanctionLimit: String = "",
+    var drawingPower: String = "",
+    var interestOverdue: String = "",
+    var assetClassification: String = "",
 
     // ---- Customer contact --------------------------------------------------
     var customerMet: Boolean = false,
@@ -42,8 +72,60 @@ data class VisitFormData(
     var borrowerAlive: Boolean = true,
     var sameAddress: Boolean = true,
     var shifted: Boolean = false,
+
+    /**
+     * Both blank until answered, and blank is sent as nothing at all.
+     *
+     * "Not confirmed" is an assertion about a check somebody ran; silence is not, and a
+     * form that recorded silence as a negative would accuse an agent of failing a check
+     * nobody asked them for.
+     */
+    var residenceVerified: String = "",
+    var neighbourVerification: String = "",
+
     var occupation: String = "",
     var occupationOtherText: String = "",
+
+    // ---- 7. Documents verified ---------------------------------------------
+    // What the borrower physically produced. Asked on EVERY case type: this checklist
+    // used to sit inside the renewal section, so a recovery visit had nowhere to record
+    // that an Aadhaar card was shown at all.
+    var docAadhaar: Boolean = false,
+    var docPan: Boolean = false,
+    var docPassbook: Boolean = false,
+    var docLandRecord: Boolean = false,
+    var docKhatauni: Boolean = false,
+    var docElectricityBill: Boolean = false,
+    var docPhotograph: Boolean = false,
+    var docMobileVerified: Boolean = false,
+    var docRenewalForm: Boolean = false,
+    var docOtsConsentLetter: Boolean = false,
+    var docOthers: Boolean = false,
+    var docOtherText: String = "",
+
+    // ---- 10. Evidence attached ---------------------------------------------
+    // What the agent SAYS is attached, recorded separately from the files that actually
+    // arrive. The gap between the two is the point.
+    var evBorrowerPhoto: Boolean = false,
+    var evHousePhoto: Boolean = false,
+    var evLandPhoto: Boolean = false,
+    var evAadhaarCopy: Boolean = false,
+    var evPassbookCopy: Boolean = false,
+    var evGpsLocation: Boolean = false,
+    var evRenewalForm: Boolean = false,
+    var evOtsConsent: Boolean = false,
+    var evOthers: Boolean = false,
+    var evOtherText: String = "",
+
+    // ---- 11. Declaration ---------------------------------------------------
+    /**
+     * Whether the agent accepted the RBI / Fair Practices Code declaration.
+     *
+     * Required before a submit, and stored rather than assumed: the declaration is
+     * printed in full on every copy of the report, and a printed certification nobody
+     * agreed to is worth nothing.
+     */
+    var declarationAccepted: Boolean = false,
 
     // ---- Recovery possibility ----------------------------------------------
     var readyToPay: Boolean = false,
@@ -73,6 +155,14 @@ data class VisitFormData(
     var recOthers: Boolean = false,
     var recOtherText: String = "",
 
+    /**
+     * Section 9's free-prose box.
+     *
+     * Separate from [remarks], because the form asks two different questions: what was
+     * seen, and what should be done about it. One field could not say which an answer was.
+     */
+    var generalRecommendation: String = "",
+
     // ---- Remarks -----------------------------------------------------------
     var remarks: String = "",
 
@@ -93,6 +183,7 @@ data class VisitFormData(
     // ---- KRM / OTS settlement (report_type = ots) ---------------------------
     var otsEligible: Boolean = false,
     var otsScheme: String = "",
+    var otsSchemeOtherText: String = "",
     var otsReliefPercent: String = "",
     var otsRlbAmount: String = "",
     var otsPayablePercent: String = DEFAULT_PAYABLE_PERCENT,
@@ -111,7 +202,30 @@ data class VisitFormData(
     var otsValidityTo: String = "",
     var otsExpectedClosureDate: String = "",
     var otsBorrowerAccepted: Boolean = false,
+    /**
+     * WHY the borrower answered as they did, which the boolean above cannot carry.
+     *
+     * "Asked for time" and "refused outright" both leave [otsBorrowerAccepted] false and
+     * lead to entirely different next actions - another visit, a different scheme, or a
+     * closed file.
+     */
+    var otsCustomerResponse: String = "",
     var otsRejectionReason: String = "",
+    /** When they say they will deposit, as against [otsDepositDate], when they did. */
+    var otsExpectedDepositDate: String = "",
+
+    var otsRecProposalRecommended: Boolean = false,
+    var otsRecFollowupRequired: Boolean = false,
+    var otsRecCustomerRefused: Boolean = false,
+    var otsRecNotEligible: Boolean = false,
+
+    var otsStCustomerContacted: Boolean = false,
+    var otsStCustomerVerified: Boolean = false,
+    var otsStOtsAccepted: Boolean = false,
+    var otsStOtsRejected: Boolean = false,
+    var otsStInitialDepositReceived: Boolean = false,
+    var otsStOtsClosed: Boolean = false,
+    var otsStFollowupRequired: Boolean = false,
 
     // ---- CKCC OD-2 renewal (report_type = ckcc_renewal) ---------------------
     var ckccCifNumber: String = "",
@@ -126,15 +240,9 @@ data class VisitFormData(
     var ckccAadhaarSeeded: Boolean = false,
     var ckccMobileLinked: Boolean = false,
     var ckccAadhaarAuthCompleted: Boolean = false,
-    var ckccDocAadhaar: Boolean = false,
-    var ckccDocPan: Boolean = false,
-    var ckccDocPassbook: Boolean = false,
-    var ckccDocLandRecord: Boolean = false,
-    var ckccDocKhasraKhatauni: Boolean = false,
-    var ckccDocPhotograph: Boolean = false,
-    var ckccDocMobileAvailable: Boolean = false,
-    var ckccDocOthers: Boolean = false,
-    var ckccDocOtherText: String = "",
+    // The document checklist is NOT here any more - it is section 7 on the main form,
+    // asked once for every case type. Two copies meant a renewal report answered the
+    // same eleven boxes twice and could disagree with itself.
     var ckccWillingToRenew: Boolean = false,
     var ckccDocumentsHandedOver: Boolean = false,
     var ckccRenewalFormSigned: Boolean = false,
@@ -143,6 +251,8 @@ data class VisitFormData(
     var ckccObservation: String = "",
     var ckccRecRenewImmediately: Boolean = false,
     var ckccRecDocumentsSubmitted: Boolean = false,
+    /** The other half of "documents complete": one missing paper is a branch task. */
+    var ckccRecPendingDocuments: Boolean = false,
     var ckccRecFollowupRequired: Boolean = false,
     var ckccRecNotInterested: Boolean = false,
     var ckccRecBranchContactUrgent: Boolean = false,
@@ -258,11 +368,56 @@ data class VisitFormData(
             errors["occupation_other_text"] = "Specify the occupation"
         }
 
+        if (docOthers && docOtherText.isBlank()) {
+            errors["doc_other_text"] = "Name the other document"
+        }
+        if (evOthers && evOtherText.isBlank()) {
+            errors["ev_other_text"] = "Name the other evidence"
+        }
+        if (reportType == REPORT_OTHER && reportTypeOtherText.isBlank()) {
+            errors["report_type_other_text"] = "Describe the case type"
+        }
+        if (loanType == LOAN_TYPE_OTHER && loanTypeOtherText.isBlank()) {
+            errors["loan_type_other_text"] = "Describe the loan type"
+        }
+
+        // Checked on the way in rather than left to the server, because a PAN typed
+        // wrong is not a validation nuisance - it is a tax identifier attached to the
+        // wrong person, and the agent is standing next to the card while they type it.
+        if (panNumber.isNotBlank() && !isValidPan(panNumber)) {
+            errors["pan_number"] = "A PAN is five letters, four digits and one letter"
+        }
+        if (pinCode.isNotBlank() && !Regex("^\\d{6}$").matches(pinCode.trim())) {
+            errors["pin_code"] = "A PIN code is six digits"
+        }
+
+        for ((key, raw) in listOf(
+            "sanction_limit" to sanctionLimit,
+            "drawing_power" to drawingPower,
+            "interest_overdue" to interestOverdue,
+        )) {
+            if (raw.isNotBlank() && number(raw) == null) {
+                errors[key] = "Enter a valid amount"
+            }
+        }
+
+        // The declaration is the last thing and a hard stop. Everything above it can be
+        // left blank and the report is still worth filing; a report submitted by somebody
+        // who did not certify it is a document that says something they never said.
+        if (!declarationAccepted) {
+            errors["declaration_accepted"] = "Tick the declaration before submitting"
+        }
+
         errors += validateOts()
         errors += validateCkcc()
 
         return errors
     }
+
+    /** The shape of a PAN: five letters, four digits, one letter. */
+    fun isValidPan(raw: String): Boolean =
+        Regex("^[A-Za-z]{5}[0-9]{4}[A-Za-z]$")
+            .matches(raw.replace(" ", "").replace("-", "").trim())
 
     /**
      * Settlement rules.
@@ -278,6 +433,9 @@ data class VisitFormData(
 
         if (otsEligible && otsScheme.isBlank()) {
             errors["ots_scheme"] = "Select the applicable scheme"
+        }
+        if (otsScheme == OTS_SCHEME_OTHER && otsSchemeOtherText.isBlank()) {
+            errors["ots_scheme_other_text"] = "Name the scheme"
         }
         for ((key, raw) in listOf(
             "ots_relief_percent" to otsReliefPercent,
@@ -334,9 +492,6 @@ data class VisitFormData(
         // which is the entire reason a renewal report exists.
         if (ckccRenewalDueDate.isBlank()) {
             errors["ckcc_renewal_due_date"] = "Enter the CKCC renewal due date"
-        }
-        if (ckccDocOthers && ckccDocOtherText.isBlank()) {
-            errors["ckcc_doc_other_text"] = "Describe the other document"
         }
         if (ckccRecOthers && ckccRecOtherText.isBlank()) {
             errors["ckcc_rec_other_text"] = "Describe the recommendation"
@@ -467,8 +622,64 @@ data class VisitFormData(
         fields["borrower_alive"] = bool(borrowerAlive)
         fields["same_address"] = bool(sameAddress)
         fields["shifted"] = bool(shifted)
+        // Omitted entirely when unanswered, so the server stores NULL rather than a
+        // negative nobody asserted.
+        putIfNotBlank(fields, "residence_verified", residenceVerified)
+        putIfNotBlank(fields, "neighbour_verification", neighbourVerification)
         putIfNotBlank(fields, "occupation", occupation)
         putIfNotBlank(fields, "occupation_other_text", occupationOtherText)
+
+        // ---- 2. Borrower information ---------------------------------------
+        putIfNotBlank(fields, "gender", gender)
+        putIfNotBlank(fields, "date_of_birth", dateOfBirth)
+        // Normalised here so the same card always produces the same stored value,
+        // whichever way the agent spaced it out.
+        putIfNotBlank(fields, "pan_number", panNumber.replace(" ", "").replace("-", "").uppercase())
+        putIfNotBlank(fields, "addr_village", addrVillage)
+        putIfNotBlank(fields, "gram_panchayat", gramPanchayat)
+        putIfNotBlank(fields, "tehsil", tehsil)
+        putIfNotBlank(fields, "addr_district", addrDistrict)
+        putIfNotBlank(fields, "state", state)
+        putIfNotBlank(fields, "pin_code", pinCode)
+
+        // ---- 3. Loan account details ---------------------------------------
+        putIfNotBlank(fields, "cif_number", cifNumber)
+        putIfNotBlank(fields, "loan_type", loanType)
+        putIfNotBlank(fields, "loan_type_other_text", loanTypeOtherText)
+        putIfNotBlank(fields, "sanction_date", sanctionDate)
+        putAmount(fields, "sanction_limit", sanctionLimit)
+        putAmount(fields, "drawing_power", drawingPower)
+        putAmount(fields, "interest_overdue", interestOverdue)
+        putIfNotBlank(fields, "asset_classification", assetClassification)
+
+        // ---- 7. Documents verified -----------------------------------------
+        fields["doc_aadhaar"] = bool(docAadhaar)
+        fields["doc_pan"] = bool(docPan)
+        fields["doc_passbook"] = bool(docPassbook)
+        fields["doc_land_record"] = bool(docLandRecord)
+        fields["doc_khatauni"] = bool(docKhatauni)
+        fields["doc_electricity_bill"] = bool(docElectricityBill)
+        fields["doc_photograph"] = bool(docPhotograph)
+        fields["doc_mobile_verified"] = bool(docMobileVerified)
+        fields["doc_renewal_form"] = bool(docRenewalForm)
+        fields["doc_ots_consent_letter"] = bool(docOtsConsentLetter)
+        fields["doc_others"] = bool(docOthers)
+        putIfNotBlank(fields, "doc_other_text", docOtherText)
+
+        // ---- 10. Evidence attached -----------------------------------------
+        fields["ev_borrower_photo"] = bool(evBorrowerPhoto)
+        fields["ev_house_photo"] = bool(evHousePhoto)
+        fields["ev_land_photo"] = bool(evLandPhoto)
+        fields["ev_aadhaar_copy"] = bool(evAadhaarCopy)
+        fields["ev_passbook_copy"] = bool(evPassbookCopy)
+        fields["ev_gps_location"] = bool(evGpsLocation)
+        fields["ev_renewal_form"] = bool(evRenewalForm)
+        fields["ev_ots_consent"] = bool(evOtsConsent)
+        fields["ev_others"] = bool(evOthers)
+        putIfNotBlank(fields, "ev_other_text", evOtherText)
+
+        // ---- 11. Declaration -----------------------------------------------
+        fields["declaration_accepted"] = bool(declarationAccepted)
 
         fields["ready_to_pay"] = bool(readyToPay)
         fields["not_ready"] = bool(notReady)
@@ -499,8 +710,10 @@ data class VisitFormData(
         fields["rec_ots"] = bool(recOts)
         fields["rec_others"] = bool(recOthers)
         putIfNotBlank(fields, "rec_other_text", recOtherText)
+        putIfNotBlank(fields, "general_recommendation", generalRecommendation)
 
         fields["report_type"] = reportType
+        putIfNotBlank(fields, "report_type_other_text", reportTypeOtherText)
         putIfNotBlank(fields, "sp_cbc_name", spCbcName)
 
         // The detail sections are sent as flat `ots_details[field]` keys. The visit
@@ -509,6 +722,7 @@ data class VisitFormData(
         if (reportType == REPORT_OTS) {
             fields["ots_details[eligible_for_ots]"] = bool(otsEligible)
             putIfNotBlank(fields, "ots_details[scheme]", otsScheme)
+            putIfNotBlank(fields, "ots_details[scheme_other_text]", otsSchemeOtherText)
             putAmount(fields, "ots_details[relief_waiver_percent]", otsReliefPercent)
             putAmount(fields, "ots_details[rlb_amount]", otsRlbAmount)
             putAmount(fields, "ots_details[payable_percent]", otsPayablePercent)
@@ -527,7 +741,22 @@ data class VisitFormData(
             putIfNotBlank(fields, "ots_details[validity_to]", otsValidityTo)
             putIfNotBlank(fields, "ots_details[expected_closure_date]", otsExpectedClosureDate)
             fields["ots_details[borrower_accepted]"] = bool(otsBorrowerAccepted)
+            putIfNotBlank(fields, "ots_details[customer_response]", otsCustomerResponse)
             putIfNotBlank(fields, "ots_details[rejection_reason]", otsRejectionReason)
+            putIfNotBlank(fields, "ots_details[expected_deposit_date]", otsExpectedDepositDate)
+
+            fields["ots_details[rec_proposal_recommended]"] = bool(otsRecProposalRecommended)
+            fields["ots_details[rec_followup_required]"] = bool(otsRecFollowupRequired)
+            fields["ots_details[rec_customer_refused]"] = bool(otsRecCustomerRefused)
+            fields["ots_details[rec_not_eligible]"] = bool(otsRecNotEligible)
+
+            fields["ots_details[st_customer_contacted]"] = bool(otsStCustomerContacted)
+            fields["ots_details[st_customer_verified]"] = bool(otsStCustomerVerified)
+            fields["ots_details[st_ots_accepted]"] = bool(otsStOtsAccepted)
+            fields["ots_details[st_ots_rejected]"] = bool(otsStOtsRejected)
+            fields["ots_details[st_initial_deposit_received]"] = bool(otsStInitialDepositReceived)
+            fields["ots_details[st_ots_closed]"] = bool(otsStOtsClosed)
+            fields["ots_details[st_followup_required]"] = bool(otsStFollowupRequired)
         }
 
         if (reportType == REPORT_CKCC) {
@@ -547,16 +776,8 @@ data class VisitFormData(
             fields["ckcc_details[mobile_linked]"] = bool(ckccMobileLinked)
             fields["ckcc_details[aadhaar_auth_completed]"] = bool(ckccAadhaarAuthCompleted)
 
-            fields["ckcc_details[doc_aadhaar]"] = bool(ckccDocAadhaar)
-            fields["ckcc_details[doc_pan]"] = bool(ckccDocPan)
-            fields["ckcc_details[doc_passbook]"] = bool(ckccDocPassbook)
-            fields["ckcc_details[doc_land_record]"] = bool(ckccDocLandRecord)
-            fields["ckcc_details[doc_khasra_khatauni]"] = bool(ckccDocKhasraKhatauni)
-            fields["ckcc_details[doc_photograph]"] = bool(ckccDocPhotograph)
-            fields["ckcc_details[doc_mobile_available]"] = bool(ckccDocMobileAvailable)
-            fields["ckcc_details[doc_others]"] = bool(ckccDocOthers)
-            putIfNotBlank(fields, "ckcc_details[doc_other_text]", ckccDocOtherText)
-
+            // No document checklist here: it goes up as the top-level doc_* fields
+            // above, for every case type.
             fields["ckcc_details[willing_to_renew]"] = bool(ckccWillingToRenew)
             fields["ckcc_details[documents_handed_over]"] = bool(ckccDocumentsHandedOver)
             fields["ckcc_details[renewal_form_signed]"] = bool(ckccRenewalFormSigned)
@@ -566,6 +787,7 @@ data class VisitFormData(
             putIfNotBlank(fields, "ckcc_details[agent_observation]", ckccObservation)
             fields["ckcc_details[rec_renew_immediately]"] = bool(ckccRecRenewImmediately)
             fields["ckcc_details[rec_documents_submitted]"] = bool(ckccRecDocumentsSubmitted)
+            fields["ckcc_details[rec_pending_documents]"] = bool(ckccRecPendingDocuments)
             fields["ckcc_details[rec_followup_required]"] = bool(ckccRecFollowupRequired)
             fields["ckcc_details[rec_not_interested]"] = bool(ckccRecNotInterested)
             fields["ckcc_details[rec_branch_contact_urgent]"] = bool(ckccRecBranchContactUrgent)
@@ -678,6 +900,17 @@ data class VisitFormData(
             otsRlbAmount.isNotBlank() || otsPayableAmount.isNotBlank() ||
             otsDepositAmount.isNotBlank() || otsScheme.isNotBlank() ||
             ckccRenewalDueDate.isNotBlank() || ckccObservation.isNotBlank() ||
+            gender.isNotBlank() || dateOfBirth.isNotBlank() || panNumber.isNotBlank() ||
+            addrVillage.isNotBlank() || gramPanchayat.isNotBlank() || tehsil.isNotBlank() ||
+            addrDistrict.isNotBlank() || state.isNotBlank() || pinCode.isNotBlank() ||
+            cifNumber.isNotBlank() || loanType.isNotBlank() || assetClassification.isNotBlank() ||
+            residenceVerified.isNotBlank() || neighbourVerification.isNotBlank() ||
+            docAadhaar || docPan || docPassbook || docLandRecord || docKhatauni ||
+            docElectricityBill || docPhotograph || docMobileVerified || docRenewalForm ||
+            docOtsConsentLetter || docOthers ||
+            evBorrowerPhoto || evHousePhoto || evLandPhoto || evAadhaarCopy ||
+            evPassbookCopy || evGpsLocation || evRenewalForm || evOtsConsent || evOthers ||
+            declarationAccepted || generalRecommendation.isNotBlank() ||
             attachmentCount() > 0
 
     private fun bool(value: Boolean): String = if (value) "1" else "0"
@@ -707,23 +940,39 @@ data class VisitFormData(
         const val REPORT_RECOVERY = "recovery"
         const val REPORT_OTS = "ots"
         const val REPORT_CKCC = "ckcc_renewal"
+        const val REPORT_PRE_NPA = "pre_npa"
+        const val REPORT_POST_NPA = "post_npa"
+        const val REPORT_OTHER = "other"
 
         const val OTS_STATUS_PENDING = "pending"
+        const val OTS_SCHEME_OTHER = "other"
+        const val LOAN_TYPE_OTHER = "other"
 
         /** Scheme defaults; both stay editable per case. */
         const val DEFAULT_PAYABLE_PERCENT = "22.5"
         const val DEFAULT_DEPOSIT_PERCENT = "10"
 
-        /** The report types, matching the server enum. */
+        /**
+         * The Case Type row on the printed form, in its order.
+         *
+         * Pre-NPA and Post-NPA verification are ordinary doorstep checks, neither
+         * settlement nor renewal work. Before they existed they were filed as plain
+         * recovery calls, which made the pre-NPA worklist - the one that exists to stop
+         * an account going bad - unbuildable from the reports themselves.
+         */
         val REPORT_TYPES = listOf(
-            REPORT_RECOVERY to "Recovery Visit",
-            REPORT_OTS to "KRM / OTS Settlement",
+            REPORT_OTS to "KRM OTS",
             REPORT_CKCC to "CKCC OD-2 Renewal",
+            REPORT_RECOVERY to "Recovery Follow-up",
+            REPORT_PRE_NPA to "Pre-NPA Verification",
+            REPORT_POST_NPA to "Post-NPA Verification",
+            REPORT_OTHER to "Other",
         )
 
         val OTS_SCHEMES = listOf(
             "krm_ots" to "KRM OTS",
             "general_ots" to "General OTS",
+            OTS_SCHEME_OTHER to "Other",
         )
 
         val OTS_APPROVAL_STATUSES = listOf(
@@ -732,16 +981,66 @@ data class VisitFormData(
             "rejected" to "Rejected",
         )
 
+        /** Section 4's Customer Response row. */
+        val OTS_CUSTOMER_RESPONSES = listOf(
+            "agreed" to "Agreed for OTS",
+            "requested_time" to "Requested Time",
+            "financial_difficulty" to "Financial Difficulty",
+            "refused" to "Refused OTS",
+            "not_eligible" to "Not Eligible",
+        )
+
+        val GENDERS = listOf(
+            "male" to "Male",
+            "female" to "Female",
+            "other" to "Other",
+        )
+
+        /** Section 3's Loan Type row. */
+        val LOAN_TYPES = listOf(
+            "ckcc" to "CKCC",
+            "agri_term" to "Agriculture Term Loan",
+            "od" to "OD",
+            "cc" to "CC",
+            "msme" to "MSME",
+            "housing" to "Housing",
+            LOAN_TYPE_OTHER to "Other",
+        )
+
+        val ASSET_CLASSIFICATIONS = listOf(
+            "standard" to "Standard",
+            "sma_0" to "SMA-0",
+            "sma_1" to "SMA-1",
+            "sma_2" to "SMA-2",
+            "npa" to "NPA",
+        )
+
+        val RESIDENCE_VERIFICATION = listOf(
+            "confirmed" to "Confirmed",
+            "not_confirmed" to "Not Confirmed",
+        )
+
+        val NEIGHBOUR_VERIFICATION = listOf(
+            "conducted" to "Conducted",
+            "not_conducted" to "Not Conducted",
+        )
+
         const val OCCUPATION_OTHERS = "others"
 
-        /** The occupation enum, matching the server. */
+        /**
+         * The occupation enum, matching the server.
+         *
+         * 'service' rather than 'job': the printed form says Service, and in this
+         * context the two words mean the same thing while only one of them is
+         * distinguishable from Labour at a glance.
+         */
         val OCCUPATIONS = listOf(
             "agriculture" to "Agriculture",
             "dairy" to "Dairy",
             "business" to "Business",
-            "job" to "Job",
             "labour" to "Labour",
-            OCCUPATION_OTHERS to "Others",
+            "service" to "Service",
+            OCCUPATION_OTHERS to "Other",
         )
     }
 }

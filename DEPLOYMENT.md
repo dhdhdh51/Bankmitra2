@@ -717,14 +717,14 @@ Everything in the repository is covered by runnable checks.
 
 | Command | What it proves |
 | --- | --- |
-| `php tools/selftest-core.php` | 249 checks — crypto, JWT, XLSX, PDF (including image embedding, the blank signature boxes and multi-line captions), geo wording, validator, paginator, key validation |
+| `php tools/selftest-core.php` | 280 checks — crypto (including PAN masking, which cannot use the mobile helpers), JWT, XLSX, PDF (image embedding, the blank signature boxes, multi-line captions, and the printed form's masthead, section bands, tick grids, ruled fields and page-of-page total), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 28 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login, dropdown settings that have choices |
-| `sh tools/integration-test.sh` | 780 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo, a lead typed in by hand and what the next import does to it |
+| `sh tools/integration-test.sh` | 841 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo, a lead typed in by hand and what the next import does to it, and every section of the printed Field Visit Verification Report |
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 454 panel + 228 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
-| `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 486 panel + 228 API checks over real HTTP, including every dropdown on every page, a borrower created by hand as both an admin and an agent, and the printed visit report checked band by band against the paper form |
+| `sh tools/verify-android.sh` | 249 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
@@ -1857,6 +1857,263 @@ Afterwards:
 - The points still expire on their own: `location_retention_days` (90 by default) and the
   purge cron, both unchanged. The trail page prints the retention window at the top.
 - No new APK. The recording already worked; what was missing was the reading.
+
+### Making the field visit report match the printed form
+
+The paper form is **D2 Recovery Solutions & Services — Field Visit Verification Report
+(KRM OTS / CKCC OD-2 Renewal / Recovery Verification Report)**, thirteen numbered
+sections, RBI and Code-of-Conduct compliant. What this system collected was *most* of it
+in a different order under different headings, and a branch could not file our printout
+against that form without transcribing it by hand.
+
+Now the screen, the app and the PDF are all that document, section 1 to 13, and the boxes
+it asks for that had nowhere to go are here:
+
+- **Case Type gains Pre-NPA Verification, Post-NPA Verification and Other.** These were
+  being filed as plain recovery calls, which made the pre-NPA worklist — the one that
+  exists to stop an account going bad — unbuildable from the reports themselves.
+- **Section 1** gains Branch Code, Regional Office, Zone, Linked Branch and District.
+  Regional Office and Zone are held on the **branch**, once, and stamped onto every
+  report: an agent retyping them at forty doorsteps produces forty spellings.
+- **Section 2** gains Gender, Date of Birth, Alternate Mobile, PAN and the address broken
+  up as the form asks — Village, Gram Panchayat, Tehsil, District, State, PIN Code.
+- **Section 3** gains CIF Number, the Loan Type tick list, Sanction Date, Sanction Limit,
+  Drawing Power, Interest Overdue and **Asset Classification** (Standard / SMA-0 / SMA-1 /
+  SMA-2 / NPA).
+- **Section 4** gains the Customer Response row (Agreed / Requested Time / Financial
+  Difficulty / Refused / Not Eligible), an Expected Deposit Date, and a scheme of "Other".
+- **Section 6** gains Residence Verification and Neighbour Verification. Both start
+  unanswered and stay that way until somebody answers: *not confirmed* is a claim about a
+  check that was run, and silence is not.
+- **Section 7, Documents Verified, moved out of the renewal section onto the report** and
+  gained Electricity Bill, Renewal Form and OTS Consent Letter. It used to be asked only
+  on a CKCC renewal, so a recovery visit had nowhere to record that an Aadhaar card was
+  produced — and a renewal report showed the same eleven boxes twice, free to disagree
+  with itself.
+- **Section 9** gains the KRM OTS recommendation row, a **Pending Documents** box on the
+  renewal row, and the General Recommendation prose box.
+- **Section 10, Evidence Attached**, is entirely new: nine boxes for what the agent says
+  the report carries. Printed next to the count of what actually arrived, because a report
+  ticking "Passbook Copy" and carrying none is the thing worth seeing.
+- **Section 11, the Declaration**, is printed in full on every copy and the agent has to
+  tick it before the app will submit. Stored, not assumed — a printed certification nobody
+  agreed to is worth nothing.
+- **Section 12** gains the agent's Mobile Number (filled in from their own staff record)
+  and the supervisor's Designation and Employee / DRA ID.
+- **Section 13** gains the KRM OTS half of Final Report Status, seven boxes. Distinct from
+  the approval status: an offer the branch has approved can still be waiting on the
+  borrower's deposit, and the follow-up list is built from the second fact.
+- **Occupation says Service, not Job**, which is the form's word and the only one that is
+  distinguishable from Labour at a glance. Existing rows are rewritten by the migration.
+- **The printed report now shows every tick box, ticked or not.** That reverses an earlier
+  decision to print only what was true, and the reason is the reason it was reversed: an
+  unticked box and a question the form never asked looked identical, so "the neighbours
+  were not asked" read the same as "this version had no such field".
+
+**A PAN is encrypted, hashed and masked** like the mobile and the Aadhaar, and shown in
+full only to somebody holding `customers.view_pii`. It is hashed with its letters intact —
+the mobile hash normalises to digits only, so run a PAN through it and every card collapses
+to its four-digit block, and two unrelated borrowers would share a hash.
+
+```sql
+-- Where a branch sits in the bank's hierarchy. Held here once so the printed header
+-- does not carry four spellings of the same regional office.
+ALTER TABLE `branches`
+  ADD COLUMN `regional_office` VARCHAR(150) DEFAULT NULL AFTER `pincode`,
+  ADD COLUMN `zone`            VARCHAR(150) DEFAULT NULL AFTER `regional_office`;
+
+-- ---------------------------------------------------------------------------
+-- The report itself. Everything nullable or defaulted, so it runs on a populated
+-- table and every report filed before today still reads correctly - as a report that
+-- did not ask these questions, which is what it was.
+-- ---------------------------------------------------------------------------
+ALTER TABLE `visit_reports`
+  -- Section 1
+  MODIFY COLUMN `bc_code` VARCHAR(40) DEFAULT NULL COMMENT 'BC Code / DRA ID',
+  MODIFY COLUMN `village` VARCHAR(150) DEFAULT NULL COMMENT 'where the visit happened',
+  ADD COLUMN `branch_code`     VARCHAR(40)  DEFAULT NULL AFTER `village`,
+  ADD COLUMN `regional_office` VARCHAR(150) DEFAULT NULL AFTER `branch_code`,
+  ADD COLUMN `zone`            VARCHAR(150) DEFAULT NULL AFTER `regional_office`,
+  ADD COLUMN `linked_branch`   VARCHAR(150) DEFAULT NULL COMMENT 'the branch the BC/DRA is attached to' AFTER `zone`,
+  ADD COLUMN `district`        VARCHAR(150) DEFAULT NULL COMMENT 'district the visit happened in' AFTER `linked_branch`,
+  ADD COLUMN `report_type_other_text` VARCHAR(150) DEFAULT NULL COMMENT 'when Case Type is Other' AFTER `report_type`,
+
+  -- Section 2
+  ADD COLUMN `gender`        ENUM('male','female','other') DEFAULT NULL AFTER `father_husband_name`,
+  ADD COLUMN `date_of_birth` DATE DEFAULT NULL AFTER `gender`,
+  ADD COLUMN `alt_mobile_enc`    VARBINARY(255) DEFAULT NULL AFTER `mobile_masked`,
+  ADD COLUMN `alt_mobile_hash`   CHAR(64)     DEFAULT NULL AFTER `alt_mobile_enc`,
+  ADD COLUMN `alt_mobile_masked` VARCHAR(20)  DEFAULT NULL AFTER `alt_mobile_hash`,
+  ADD COLUMN `pan_enc`    VARBINARY(255) DEFAULT NULL AFTER `aadhaar_masked`,
+  ADD COLUMN `pan_hash`   CHAR(64)     DEFAULT NULL AFTER `pan_enc`,
+  ADD COLUMN `pan_masked` VARCHAR(20)  DEFAULT NULL AFTER `pan_hash`,
+  ADD COLUMN `addr_village`   VARCHAR(150) DEFAULT NULL AFTER `pan_masked`,
+  ADD COLUMN `gram_panchayat` VARCHAR(150) DEFAULT NULL AFTER `addr_village`,
+  ADD COLUMN `tehsil`         VARCHAR(150) DEFAULT NULL AFTER `gram_panchayat`,
+  ADD COLUMN `addr_district`  VARCHAR(150) DEFAULT NULL AFTER `tehsil`,
+  ADD COLUMN `state`          VARCHAR(100) DEFAULT NULL AFTER `addr_district`,
+  ADD COLUMN `pin_code`       VARCHAR(10)  DEFAULT NULL AFTER `state`,
+  MODIFY COLUMN `address` VARCHAR(500) DEFAULT NULL COMMENT 'complete residential address',
+
+  -- Section 3
+  ADD COLUMN `cif_number`           VARCHAR(40)  DEFAULT NULL AFTER `loan_account_number`,
+  ADD COLUMN `loan_type_other_text` VARCHAR(150) DEFAULT NULL AFTER `loan_type`,
+  ADD COLUMN `sanction_date`     DATE          DEFAULT NULL AFTER `loan_type_other_text`,
+  ADD COLUMN `sanction_limit`    DECIMAL(15,2) DEFAULT NULL AFTER `sanction_date`,
+  ADD COLUMN `drawing_power`     DECIMAL(15,2) DEFAULT NULL AFTER `sanction_limit`,
+  ADD COLUMN `interest_overdue`  DECIMAL(15,2) DEFAULT NULL AFTER `outstanding_amount`,
+  ADD COLUMN `asset_classification` ENUM('standard','sma_0','sma_1','sma_2','npa') DEFAULT NULL AFTER `npa_date`,
+
+  -- Section 6
+  ADD COLUMN `residence_verified`     ENUM('confirmed','not_confirmed') DEFAULT NULL AFTER `shifted`,
+  ADD COLUMN `neighbour_verification` ENUM('conducted','not_conducted') DEFAULT NULL AFTER `residence_verified`,
+
+  -- Section 7
+  ADD COLUMN `doc_aadhaar`            TINYINT(1) NOT NULL DEFAULT 0 AFTER `occupation_other_text`,
+  ADD COLUMN `doc_pan`                TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_aadhaar`,
+  ADD COLUMN `doc_passbook`           TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_pan`,
+  ADD COLUMN `doc_land_record`        TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_passbook`,
+  ADD COLUMN `doc_khatauni`           TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_land_record`,
+  ADD COLUMN `doc_electricity_bill`   TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_khatauni`,
+  ADD COLUMN `doc_photograph`         TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_electricity_bill`,
+  ADD COLUMN `doc_mobile_verified`    TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_photograph`,
+  ADD COLUMN `doc_renewal_form`       TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_mobile_verified`,
+  ADD COLUMN `doc_ots_consent_letter` TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_renewal_form`,
+  ADD COLUMN `doc_others`             TINYINT(1) NOT NULL DEFAULT 0 AFTER `doc_ots_consent_letter`,
+  ADD COLUMN `doc_other_text`         VARCHAR(255) DEFAULT NULL AFTER `doc_others`,
+
+  -- Sections 9 and 10
+  ADD COLUMN `general_recommendation` TEXT DEFAULT NULL AFTER `rec_other_text`,
+  ADD COLUMN `ev_borrower_photo` TINYINT(1) NOT NULL DEFAULT 0 AFTER `general_recommendation`,
+  ADD COLUMN `ev_house_photo`    TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_borrower_photo`,
+  ADD COLUMN `ev_land_photo`     TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_house_photo`,
+  ADD COLUMN `ev_aadhaar_copy`   TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_land_photo`,
+  ADD COLUMN `ev_passbook_copy`  TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_aadhaar_copy`,
+  ADD COLUMN `ev_gps_location`   TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_passbook_copy`,
+  ADD COLUMN `ev_renewal_form`   TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_gps_location`,
+  ADD COLUMN `ev_ots_consent`    TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_renewal_form`,
+  ADD COLUMN `ev_others`         TINYINT(1) NOT NULL DEFAULT 0 AFTER `ev_ots_consent`,
+  ADD COLUMN `ev_other_text`     VARCHAR(255) DEFAULT NULL AFTER `ev_others`,
+
+  -- Sections 8, 11 and 12
+  MODIFY COLUMN `remarks` TEXT DEFAULT NULL COMMENT 'BC agent / DRA observations',
+  ADD COLUMN `declaration_accepted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `remarks`,
+  ADD COLUMN `agent_mobile`           VARCHAR(20)  DEFAULT NULL AFTER `declaration_accepted`,
+  ADD COLUMN `supervisor_designation` VARCHAR(100) DEFAULT NULL AFTER `supervisor_name`,
+  ADD COLUMN `supervisor_employee_id` VARCHAR(40)  DEFAULT NULL COMMENT 'Employee ID / DRA ID' AFTER `supervisor_designation`,
+
+  -- Case Type: three more, and Occupation says Service.
+  MODIFY COLUMN `report_type` ENUM('recovery','ots','ckcc_renewal','pre_npa','post_npa','other')
+    NOT NULL DEFAULT 'recovery',
+  MODIFY COLUMN `occupation` ENUM('agriculture','dairy','business','labour','service','others','job')
+    DEFAULT NULL;
+
+-- 'job' and 'service' are the same fact under two names, so the rows are rewritten and
+-- then the old name is removed. Done in this order deliberately: dropping the value
+-- first would silently blank every occupation ever recorded.
+UPDATE `visit_reports` SET `occupation` = 'service' WHERE `occupation` = 'job';
+ALTER TABLE `visit_reports`
+  MODIFY COLUMN `occupation` ENUM('agriculture','dairy','business','labour','service','others')
+    DEFAULT NULL;
+
+-- ---------------------------------------------------------------------------
+-- The settlement section.
+-- ---------------------------------------------------------------------------
+ALTER TABLE `visit_ots_details`
+  MODIFY COLUMN `scheme` ENUM('krm_ots','general_ots','other') DEFAULT NULL,
+  ADD COLUMN `scheme_other_text` VARCHAR(150) DEFAULT NULL AFTER `scheme`,
+  ADD COLUMN `customer_response` ENUM('agreed','requested_time','financial_difficulty',
+                                     'refused','not_eligible') DEFAULT NULL AFTER `borrower_accepted`,
+  ADD COLUMN `expected_deposit_date` DATE DEFAULT NULL AFTER `rejection_reason`,
+  ADD COLUMN `rec_proposal_recommended` TINYINT(1) NOT NULL DEFAULT 0 AFTER `expected_deposit_date`,
+  ADD COLUMN `rec_followup_required`    TINYINT(1) NOT NULL DEFAULT 0 AFTER `rec_proposal_recommended`,
+  ADD COLUMN `rec_customer_refused`     TINYINT(1) NOT NULL DEFAULT 0 AFTER `rec_followup_required`,
+  ADD COLUMN `rec_not_eligible`         TINYINT(1) NOT NULL DEFAULT 0 AFTER `rec_customer_refused`,
+  ADD COLUMN `st_customer_contacted`       TINYINT(1) NOT NULL DEFAULT 0 AFTER `rec_not_eligible`,
+  ADD COLUMN `st_customer_verified`        TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_customer_contacted`,
+  ADD COLUMN `st_ots_accepted`             TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_customer_verified`,
+  ADD COLUMN `st_ots_rejected`             TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_ots_accepted`,
+  ADD COLUMN `st_initial_deposit_received` TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_ots_rejected`,
+  ADD COLUMN `st_ots_closed`               TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_initial_deposit_received`,
+  ADD COLUMN `st_followup_required`        TINYINT(1) NOT NULL DEFAULT 0 AFTER `st_ots_closed`;
+
+-- ---------------------------------------------------------------------------
+-- The renewal section: one box added, and the duplicated checklist removed.
+-- ---------------------------------------------------------------------------
+ALTER TABLE `visit_ckcc_details`
+  ADD COLUMN `rec_pending_documents` TINYINT(1) NOT NULL DEFAULT 0 AFTER `rec_documents_submitted`;
+
+-- Every renewal report ever filed carried its document ticks here. They are copied onto
+-- the report BEFORE the columns go, so nothing an agent recorded is lost - a DROP on its
+-- own would quietly discard the whole checklist of every renewal in the database.
+UPDATE `visit_reports` vr
+  JOIN `visit_ckcc_details` c ON c.`visit_report_id` = vr.`id`
+   SET vr.`doc_aadhaar`     = c.`doc_aadhaar`,
+       vr.`doc_pan`         = c.`doc_pan`,
+       vr.`doc_passbook`    = c.`doc_passbook`,
+       vr.`doc_land_record` = c.`doc_land_record`,
+       vr.`doc_khatauni`    = c.`doc_khasra_khatauni`,
+       vr.`doc_photograph`  = c.`doc_photograph`,
+       vr.`doc_mobile_verified` = c.`doc_mobile_available`,
+       vr.`doc_others`      = c.`doc_others`,
+       vr.`doc_other_text`  = c.`doc_other_text`;
+
+ALTER TABLE `visit_ckcc_details`
+  DROP COLUMN `doc_aadhaar`,
+  DROP COLUMN `doc_pan`,
+  DROP COLUMN `doc_passbook`,
+  DROP COLUMN `doc_land_record`,
+  DROP COLUMN `doc_khasra_khatauni`,
+  DROP COLUMN `doc_photograph`,
+  DROP COLUMN `doc_mobile_available`,
+  DROP COLUMN `doc_others`,
+  DROP COLUMN `doc_other_text`;
+```
+
+Confirm it landed:
+
+```sql
+-- 56 new columns on the report, 14 on the settlement, 1 on the renewal.
+SELECT COUNT(*) FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'visit_reports'
+   AND COLUMN_NAME IN ('branch_code','regional_office','zone','linked_branch','district',
+       'report_type_other_text','gender','date_of_birth','alt_mobile_masked','pan_masked',
+       'gram_panchayat','tehsil','state','pin_code','cif_number','sanction_limit',
+       'asset_classification','residence_verified','neighbour_verification',
+       'doc_electricity_bill','doc_ots_consent_letter','general_recommendation',
+       'ev_borrower_photo','ev_gps_location','declaration_accepted','agent_mobile',
+       'supervisor_designation','supervisor_employee_id');   -- 28
+
+-- The Case Type row now offers six choices, and Occupation says Service.
+SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'visit_reports'
+   AND COLUMN_NAME = 'report_type';           -- includes 'pre_npa','post_npa','other'
+SELECT COUNT(*) FROM `visit_reports` WHERE `occupation` = 'job';   -- 0
+
+-- And the checklist is on the report, not duplicated on the renewal row.
+SELECT COUNT(*) FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'visit_ckcc_details'
+   AND COLUMN_NAME LIKE 'doc\\_%';             -- 0
+```
+
+Afterwards:
+
+- **Fill in Regional office and Zone on each branch** (Branches → edit). They are blank
+  after the migration, and they print at the top of every report. Nothing breaks without
+  them; the header simply has two dashes in it.
+- **Print one report.** It comes out as the paper form: a numbered band per section, every
+  tick box shown whether or not it is ticked, the declaration in full, the closing note,
+  and blank ruled boxes for the agent, the borrower, the supervisor and the approver.
+- **Old reports still print**, as reports that did not ask the new questions — every new
+  box unticked, every new line a dash. That is what they were, and it is why none of these
+  columns is `NOT NULL` without a default.
+- **A new APK is required.** The form has three new cards, two new dropdown rows, twenty
+  new tick boxes and a declaration the app will not submit without. An older APK keeps
+  working — it posts what it always posted and the new boxes stay unticked — but it cannot
+  collect any of this.
+- The document checklist an agent fills in on a renewal now appears **once**, in section 7,
+  for every case type. If your staff were trained to look for it inside the renewal block,
+  tell them where it went.
 
 ### Renaming to D2 Recovery on an existing install
 

@@ -50,7 +50,7 @@ foreach ($photos as $photo) {
             <span class="text-muted mx-1">/</span>
             <span class="text-muted">#<?= e((string) $report['id']) ?></span>
         </nav>
-        <h1>Digital BC Field Visit Report</h1>
+        <h1>Field Visit Verification Report</h1>
         <p>
             <a href="<?= e(url('/customers/' . (int) $report['loan_account_id'])) ?>" class="font-mono">
                 <?= e($report['loan_account_number']) ?>
@@ -58,6 +58,7 @@ foreach ($photos as $photo) {
             · <?= e($report['customer_name']) ?>
             · <?= e(fmt_date((string) $report['visit_date'])) ?>
             at <?= e(fmt_time((string) $report['visit_time'])) ?>
+            · <span class="lrms-badge badge-pending"><?= e(enum_label(VisitReport::REPORT_TYPES, $report['report_type'] ?? null)) ?></span>
         </p>
     </div>
 
@@ -214,37 +215,65 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 <div class="row g-3">
     <div class="col-xl-8">
 
-        <!-- General -->
+        <!-- 1. General information -->
         <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>General</h2></div>
+            <div class="lrms-card-head"><h2>1. General information</h2></div>
             <div class="lrms-card-body">
                 <dl class="lrms-dl">
                     <div><dt>Visit date</dt><dd><?= e(fmt_date((string) $report['visit_date'])) ?></dd></div>
                     <div><dt>Visit time</dt><dd><?= e(fmt_time((string) $report['visit_time'])) ?></dd></div>
-                    <div><dt>BC code</dt><dd><?= nullable($report['bc_code']) ?></dd></div>
-                    <div><dt>Branch</dt><dd><?= e($report['branch_name'] ?: $report['branch_display_name']) ?></dd></div>
-                    <div><dt>Agent name</dt><dd><?= e($report['agent_name']) ?></dd></div>
-                    <div><dt>Village</dt><dd><?= nullable($report['village']) ?></dd></div>
+                    <div>
+                        <dt>Case type</dt>
+                        <dd>
+                            <?= e(enum_label(VisitReport::REPORT_TYPES, $report['report_type'] ?? null)) ?>
+                            <?php if (!empty($report['report_type_other_text'])): ?>
+                                <span class="text-muted">(<?= e($report['report_type_other_text']) ?>)</span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <div><dt>Branch name</dt><dd><?= e($report['branch_name'] ?: $report['branch_display_name']) ?></dd></div>
+                    <div><dt>Branch code</dt><dd><?= nullable($report['branch_code']) ?></dd></div>
+                    <div><dt>Regional office</dt><dd><?= nullable($report['regional_office']) ?></dd></div>
+                    <div><dt>Zone</dt><dd><?= nullable($report['zone']) ?></dd></div>
+                    <div><dt>SP / CBC name</dt><dd><?= nullable($report['sp_cbc_name']) ?></dd></div>
+                    <div><dt>BC agent / DRA name</dt><dd><?= e($report['agent_name']) ?></dd></div>
+                    <div><dt>BC code / DRA ID</dt><dd><?= nullable($report['bc_code']) ?></dd></div>
+                    <div><dt>Linked branch</dt><dd><?= nullable($report['linked_branch']) ?></dd></div>
+                    <div><dt>District</dt><dd><?= nullable($report['district']) ?></dd></div>
+                    <div><dt>Village / location</dt><dd><?= nullable($report['village']) ?></dd></div>
                 </dl>
             </div>
         </div>
 
-        <!-- Borrower -->
+        <!-- 2. Borrower information -->
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
-                <h2>Borrower details</h2>
+                <h2>2. Borrower information</h2>
                 <p>As recorded at the time of the visit</p>
             </div>
             <div class="lrms-card-body">
                 <dl class="lrms-dl">
-                    <div><dt>Customer name</dt><dd><?= e($report['customer_name']) ?></dd></div>
+                    <div><dt>Borrower name</dt><dd><?= e($report['customer_name']) ?></dd></div>
                     <div><dt>Father / husband name</dt><dd><?= nullable($report['father_husband_name']) ?></dd></div>
+                    <div><dt>Gender</dt><dd><?= e(enum_label(VisitReport::GENDERS, $report['gender'] ?? null)) ?></dd></div>
+                    <div>
+                        <dt>Date of birth</dt>
+                        <dd><?= empty($report['date_of_birth']) ? '<span class="text-muted">&mdash;</span>' : e(fmt_date((string) $report['date_of_birth'])) ?></dd>
+                    </div>
                     <div>
                         <dt>Mobile</dt>
                         <dd class="font-mono">
                             <?= isset($report['mobile']) && $report['mobile'] !== null
                                 ? e($report['mobile'])
                                 : nullable($report['mobile_masked']) ?>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Alternate mobile</dt>
+                        <dd class="font-mono">
+                            <?= isset($report['alt_mobile']) && $report['alt_mobile'] !== null
+                                ? e($report['alt_mobile'])
+                                : nullable($report['alt_mobile_masked']) ?>
                         </dd>
                     </div>
                     <div>
@@ -255,21 +284,62 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                                 : nullable($report['aadhaar_masked']) ?>
                         </dd>
                     </div>
-                    <div style="grid-column:1/-1"><dt>Address</dt><dd><?= nullable($report['address']) ?></dd></div>
+                    <div>
+                        <dt>PAN number</dt>
+                        <dd class="font-mono">
+                            <?= isset($report['pan']) && $report['pan'] !== null
+                                ? e($report['pan'])
+                                : nullable($report['pan_masked']) ?>
+                        </dd>
+                    </div>
+                </dl>
+
+                <h3 class="lrms-subhead mt-4">Address</h3>
+                <dl class="lrms-dl">
+                    <div><dt>Village</dt><dd><?= nullable($report['addr_village']) ?></dd></div>
+                    <div><dt>Gram panchayat</dt><dd><?= nullable($report['gram_panchayat']) ?></dd></div>
+                    <div><dt>Tehsil</dt><dd><?= nullable($report['tehsil']) ?></dd></div>
+                    <div><dt>District</dt><dd><?= nullable($report['addr_district']) ?></dd></div>
+                    <div><dt>State</dt><dd><?= nullable($report['state']) ?></dd></div>
+                    <div><dt>PIN code</dt><dd class="font-mono"><?= nullable($report['pin_code']) ?></dd></div>
+                    <div style="grid-column:1/-1">
+                        <dt>Complete residential address</dt>
+                        <dd><?= nullable($report['address']) ?></dd>
+                    </div>
                 </dl>
             </div>
         </div>
 
-        <!-- Loan -->
+        <!-- 3. Loan account details -->
         <div class="lrms-card mb-3">
             <div class="lrms-card-head">
-                <h2>Loan details</h2>
+                <h2>3. Loan account details</h2>
                 <p>Snapshot taken when the report was filed</p>
             </div>
             <div class="lrms-card-body">
                 <dl class="lrms-dl">
                     <div><dt>Loan account number</dt><dd class="font-mono"><?= e($report['loan_account_number']) ?></dd></div>
-                    <div><dt>Loan type</dt><dd><?= nullable($report['loan_type']) ?></dd></div>
+                    <div><dt>CIF number</dt><dd class="font-mono"><?= nullable($report['cif_number']) ?></dd></div>
+                    <div>
+                        <dt>Loan type</dt>
+                        <dd>
+                            <?= e(enum_label(VisitReport::LOAN_TYPES, $report['loan_type'] ?? null)) ?>
+                            <?php if (!empty($report['loan_type_other_text'])): ?>
+                                <span class="text-muted">(<?= e($report['loan_type_other_text']) ?>)</span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Asset classification</dt>
+                        <dd><?= e(enum_label(VisitReport::ASSET_CLASSIFICATIONS, $report['asset_classification'] ?? null)) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Sanction date</dt>
+                        <dd><?= empty($report['sanction_date']) ? '<span class="text-muted">&mdash;</span>' : e(fmt_date((string) $report['sanction_date'])) ?></dd>
+                    </div>
+                    <div><dt>Sanction limit</dt><dd><?= $report['sanction_limit'] === null ? '<span class="text-muted">&mdash;</span>' : e(rupees($report['sanction_limit'])) ?></dd></div>
+                    <div><dt>Drawing power</dt><dd><?= $report['drawing_power'] === null ? '<span class="text-muted">&mdash;</span>' : e(rupees($report['drawing_power'])) ?></dd></div>
+                    <div><dt>Interest overdue</dt><dd><?= $report['interest_overdue'] === null ? '<span class="text-muted">&mdash;</span>' : e(rupees($report['interest_overdue'])) ?></dd></div>
                     <div><dt>Outstanding amount</dt><dd class="lg"><?= e(rupees($report['outstanding_amount'])) ?></dd></div>
                     <div>
                         <dt>Overdue amount</dt>
@@ -284,9 +354,9 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
             </div>
         </div>
 
-        <!-- Customer contact -->
+        <!-- 6. Physical verification -->
         <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>Customer contact</h2></div>
+            <div class="lrms-card-head"><h2>6. Physical verification</h2></div>
             <div class="lrms-card-body">
                 <?= $flagBlock(VisitReport::CONTACT_FLAGS, $report) ?>
 
@@ -296,19 +366,23 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                         <div><dt>Relationship</dt><dd><?= nullable($report['family_member_relationship']) ?></dd></div>
                     </dl>
                 <?php endif; ?>
-            </div>
-        </div>
 
-        <!-- Physical verification -->
-        <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>Physical verification</h2></div>
-            <div class="lrms-card-body">
-                <dl class="lrms-dl">
+                <dl class="lrms-dl mt-3">
                     <div><dt>Borrower alive</dt><dd><?= yes_no($report['borrower_alive']) ?></dd></div>
-                    <div><dt>Same address</dt><dd><?= yes_no($report['same_address']) ?></dd></div>
-                    <div><dt>Shifted</dt><dd><?= yes_no($report['shifted']) ?></dd></div>
                     <div>
-                        <dt>Occupation</dt>
+                        <dt>Current address</dt>
+                        <dd><?= (int) $report['shifted'] === 1 ? 'Shifted' : ((int) $report['same_address'] === 1 ? 'Same' : '<span class="text-muted">&mdash;</span>') ?></dd>
+                    </div>
+                    <div>
+                        <dt>Residence verification</dt>
+                        <dd><?= e(enum_label(VisitReport::RESIDENCE_VERIFICATION, $report['residence_verified'] ?? null, 'Not asked')) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Neighbour verification</dt>
+                        <dd><?= e(enum_label(VisitReport::NEIGHBOUR_VERIFICATION, $report['neighbour_verification'] ?? null, 'Not asked')) ?></dd>
+                    </div>
+                    <div>
+                        <dt>Current occupation</dt>
                         <dd>
                             <?= e(occupation_label($report['occupation'])) ?>
                             <?php if (!empty($report['occupation_other_text'])): ?>
@@ -320,12 +394,26 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
             </div>
         </div>
 
+        <!-- 7. Documents verified -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2>7. Documents verified</h2>
+                <p>What the borrower produced, whether or not it was photographed</p>
+            </div>
+            <div class="lrms-card-body">
+                <?= $flagBlock(VisitReport::DOCUMENT_FLAGS, $report) ?>
+                <?php if (!empty($report['doc_other_text'])): ?>
+                    <p class="text-muted mt-2 mb-0" style="font-size:.8125rem">Other: <?= e($report['doc_other_text']) ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
+
         <!-- ================= KRM / OTS settlement =================
              Only rendered when the agent filed this section. -->
         <?php if ($ots !== null): ?>
             <div class="lrms-card lrms-card-accent mb-3">
                 <div class="lrms-card-head">
-                    <h2>KRM / OTS settlement</h2>
+                    <h2>4. KRM OTS details</h2>
                     <?php if (!empty($ots['scheme'])): ?>
                         <span class="lrms-badge badge-promise">
                             <?= e(VisitReport::OTS_SCHEMES[$ots['scheme']] ?? $ots['scheme']) ?>
@@ -410,11 +498,31 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                         <div><dt>Borrower accepted terms</dt><dd><?= yes_no($ots['borrower_accepted']) ?></dd></div>
                     </dl>
 
+                    <h3 class="lrms-subhead mt-4">Customer response</h3>
+                    <!-- Why, next to whether. "Asked for time" and "refused outright" both
+                         leave "accepted" unticked and lead to entirely different next steps. -->
+                    <dl class="lrms-dl">
+                        <div>
+                            <dt>Response</dt>
+                            <dd><?= e(enum_label(VisitReport::OTS_CUSTOMER_RESPONSES, $ots['customer_response'] ?? null, 'Not recorded')) ?></dd>
+                        </div>
+                        <div>
+                            <dt>Expected deposit date</dt>
+                            <dd><?= empty($ots['expected_deposit_date']) ? '&mdash;' : fmt_date($ots['expected_deposit_date']) ?></dd>
+                        </div>
+                    </dl>
+
                     <?php if (!empty($ots['rejection_reason'])): ?>
                         <div class="lrms-callout lrms-callout-danger mt-3">
                             <strong>Not accepted:</strong> <?= e($ots['rejection_reason']) ?>
                         </div>
                     <?php endif; ?>
+
+                    <h3 class="lrms-subhead mt-4">Recommendation on the settlement</h3>
+                    <?= $flagBlock(VisitReport::OTS_RECOMMENDATION_FLAGS, $ots) ?>
+
+                    <h3 class="lrms-subhead mt-4">Final report status</h3>
+                    <?= $flagBlock(VisitReport::OTS_STATUS_FLAGS, $ots) ?>
                 </div>
             </div>
         <?php endif; ?>
@@ -432,7 +540,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
             ?>
             <div class="lrms-card lrms-card-accent mb-3">
                 <div class="lrms-card-head">
-                    <h2>CKCC OD-2 renewal</h2>
+                    <h2>5. CKCC OD-2 renewal details</h2>
                     <?php if (!empty($ckcc['renewal_due_bucket'])): ?>
                         <span class="lrms-badge <?= $ckcc['renewal_due_bucket'] === 'overdue' ? 'badge-legal' : 'badge-pending' ?>">
                             <?= e(VisitReport::CKCC_DUE_BUCKETS[$ckcc['renewal_due_bucket']] ?? $ckcc['renewal_due_bucket']) ?>
@@ -474,12 +582,9 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                     <h3 class="lrms-subhead mt-4">Renewal eligibility</h3>
                     <?= $flagBlock(VisitReport::CKCC_ELIGIBILITY_FLAGS, $ckcc) ?>
 
-                    <h3 class="lrms-subhead mt-4">Documents the borrower had</h3>
-                    <p class="lrms-note">What exists, whether or not it was photographed.</p>
-                    <?= $flagBlock(VisitReport::CKCC_DOCUMENT_FLAGS, $ckcc) ?>
-                    <?php if (!empty($ckcc['doc_other_text'])): ?>
-                        <p class="text-muted mt-2">Other: <?= e($ckcc['doc_other_text']) ?></p>
-                    <?php endif; ?>
+                    <!-- The document checklist is section 7 above, asked once for every case
+                         type. It used to be repeated here, which meant a renewal report
+                         answered the same eleven boxes twice and could disagree with itself. -->
 
                     <h3 class="lrms-subhead mt-4">Renewal consent</h3>
                     <?= $flagBlock(VisitReport::CKCC_CONSENT_FLAGS, $ckcc) ?>
@@ -503,7 +608,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 
         <!-- Recovery possibility -->
         <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>Recovery possibility</h2></div>
+            <div class="lrms-card-head"><h2>8. BC agent / DRA observations</h2><p>What the agent found out about payment</p></div>
             <div class="lrms-card-body">
                 <?= $flagBlock(VisitReport::RECOVERY_FLAGS, $report) ?>
 
@@ -530,7 +635,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 
         <!-- Non-payment reason -->
         <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>Non-payment reason</h2></div>
+            <div class="lrms-card-head"><h2>8b. Reason for non-payment</h2></div>
             <div class="lrms-card-body">
                 <?= $flagBlock(VisitReport::REASON_FLAGS, $report) ?>
                 <?php if (!empty($report['reason_other_text'])): ?>
@@ -544,7 +649,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
 
         <!-- Agent recommendation -->
         <div class="lrms-card mb-3">
-            <div class="lrms-card-head"><h2>Agent recommendation</h2></div>
+            <div class="lrms-card-head"><h2>9. Recommendation</h2></div>
             <div class="lrms-card-body">
                 <?= $flagBlock(VisitReport::RECOMMENDATION_FLAGS, $report) ?>
                 <?php if (!empty($report['rec_other_text'])): ?>
@@ -553,12 +658,92 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                         <?= e($report['rec_other_text']) ?>
                     </p>
                 <?php endif; ?>
+
+                <h3 class="lrms-subhead mt-4">General recommendation</h3>
+                <?php if (!empty($report['general_recommendation'])): ?>
+                    <p class="mb-0" style="font-size:.9375rem;white-space:pre-wrap"><?= e($report['general_recommendation']) ?></p>
+                <?php else: ?>
+                    <p class="text-muted mb-0" style="font-size:.875rem">None recorded.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 10. Evidence attached -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2>10. Evidence attached</h2>
+                <span class="text-muted" style="font-size:.75rem">
+                    <?= e((string) count($photos)) ?> photo(s), <?= e((string) count($documents)) ?> document(s) actually on file
+                </span>
+            </div>
+            <div class="lrms-card-body">
+                <!-- What the agent SAID is attached. Kept next to the real counts in the
+                     header on purpose: a report that ticks "Passbook Copy" and carries no
+                     file is the thing a reviewer needs to notice. -->
+                <?= $flagBlock(VisitReport::EVIDENCE_FLAGS, $report) ?>
+                <?php if (!empty($report['ev_other_text'])): ?>
+                    <p class="text-muted mt-2 mb-0" style="font-size:.8125rem">Other: <?= e($report['ev_other_text']) ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- 11. Declaration -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2>11. Declaration</h2>
+                <?php if ((int) ($report['declaration_accepted'] ?? 0) === 1): ?>
+                    <span class="lrms-badge badge-visited">Accepted by the agent</span>
+                <?php else: ?>
+                    <span class="lrms-badge badge-pending">Not accepted in the app</span>
+                <?php endif; ?>
+            </div>
+            <div class="lrms-card-body">
+                <?php if ((int) ($report['declaration_accepted'] ?? 0) !== 1): ?>
+                    <!-- Said plainly rather than left to the badge. A report filed by an older
+                         build never showed the tick box, and printing it as though the agent
+                         had certified it would be this system asserting something on their
+                         behalf. -->
+                    <p class="lrms-note">
+                        This report was submitted without the declaration being accepted &mdash;
+                        either from an app build that predates it, or from the panel.
+                    </p>
+                <?php endif; ?>
+                <?php foreach (VisitReport::DECLARATION as $clause): ?>
+                    <p style="font-size:.8125rem;color:var(--lrms-muted)"><?= e($clause) ?></p>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- 12. Certification -->
+        <div class="lrms-card mb-3">
+            <div class="lrms-card-head">
+                <h2>12. Certification</h2>
+                <p>Signed by hand on the printed copy</p>
+            </div>
+            <div class="lrms-card-body">
+                <h3 class="lrms-subhead">BC agent / DRA</h3>
+                <dl class="lrms-dl">
+                    <div><dt>Name</dt><dd><?= e($report['agent_name']) ?></dd></div>
+                    <div><dt>BC code / DRA ID</dt><dd><?= nullable($report['bc_code']) ?></dd></div>
+                    <div><dt>Mobile number</dt><dd class="font-mono"><?= nullable($report['agent_mobile']) ?></dd></div>
+                </dl>
+
+                <h3 class="lrms-subhead mt-4">Supervisor verification</h3>
+                <dl class="lrms-dl">
+                    <div><dt>Name</dt><dd><?= nullable($report['supervisor_name']) ?></dd></div>
+                    <div><dt>Designation</dt><dd><?= nullable($report['supervisor_designation']) ?></dd></div>
+                    <div><dt>Employee ID / DRA ID</dt><dd><?= nullable($report['supervisor_employee_id']) ?></dd></div>
+                    <div>
+                        <dt>Verified on</dt>
+                        <dd><?= empty($report['supervisor_verified_at']) ? '<span class="text-muted">&mdash;</span>' : e(fmt_date((string) $report['supervisor_verified_at'])) ?></dd>
+                    </div>
+                </dl>
             </div>
         </div>
 
         <!-- Remarks -->
         <div class="lrms-card">
-            <div class="lrms-card-head"><h2>Remarks</h2></div>
+            <div class="lrms-card-head"><h2>Observations</h2></div>
             <div class="lrms-card-body">
                 <?php if (!empty($report['remarks'])): ?>
                     <p class="mb-0" style="font-size:.9375rem;white-space:pre-wrap"><?= e($report['remarks']) ?></p>

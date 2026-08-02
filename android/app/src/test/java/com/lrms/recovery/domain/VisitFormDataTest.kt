@@ -19,6 +19,10 @@ class VisitFormDataTest {
         visitDate = "2026-07-30",
         visitTime = "14:30",
         customerMet = true,
+        // Section 11. A form without it is deliberately invalid: the declaration is
+        // printed in full on every copy, so submitting without ticking it would put
+        // words in the agent's mouth.
+        declarationAccepted = true,
     )
 
     // -----------------------------------------------------------------------
@@ -229,6 +233,16 @@ class VisitFormDataTest {
             "reason_other_loan", "reason_others",
             "rec_recovery_possible", "rec_regular_followup", "rec_legal_action",
             "rec_rc", "rec_ots", "rec_others",
+            // Sections 7, 10 and 11 of the printed form, added when the app was made to
+            // match it. Listed here for the same reason as everything above: a box added
+            // to the screen and never transmitted looks exactly like one left unticked.
+            "doc_aadhaar", "doc_pan", "doc_passbook", "doc_land_record", "doc_khatauni",
+            "doc_electricity_bill", "doc_photograph", "doc_mobile_verified",
+            "doc_renewal_form", "doc_ots_consent_letter", "doc_others",
+            "ev_borrower_photo", "ev_house_photo", "ev_land_photo", "ev_aadhaar_copy",
+            "ev_passbook_copy", "ev_gps_location", "ev_renewal_form", "ev_ots_consent",
+            "ev_others",
+            "declaration_accepted",
         ).forEach { key ->
             assertTrue("Missing field: $key", fields.containsKey(key))
         }
@@ -271,7 +285,7 @@ class VisitFormDataTest {
     fun `occupation list matches the server enum`() {
         assertEquals(6, VisitFormData.OCCUPATIONS.size)
         assertEquals(
-            listOf("agriculture", "dairy", "business", "job", "labour", "others"),
+            listOf("agriculture", "dairy", "business", "labour", "service", "others"),
             VisitFormData.OCCUPATIONS.map { it.first },
         )
     }
@@ -292,6 +306,7 @@ class VisitFormDataTest {
         visitDate = "2026-07-31",
         visitTime = "10:30:00",
         customerMet = true,
+        declarationAccepted = true,
     )
 
     private fun ckccForm(): VisitFormData = VisitFormData(
@@ -300,6 +315,7 @@ class VisitFormDataTest {
         visitDate = "2026-07-31",
         visitTime = "10:30:00",
         customerMet = true,
+        declarationAccepted = true,
     )
 
     @Test
@@ -572,5 +588,284 @@ class VisitFormDataTest {
         form.otsTotalSettlement = "56250"
         form.otsDepositAmount = "5625"
         assertEquals(50625.0, form.suggestedBalancePayable()!!, 0.01)
+    }
+
+    // =======================================================================
+    // The printed form: the sections the app had nowhere to put
+    // =======================================================================
+
+    @Test
+    fun `the declaration is required before a report can be submitted`() {
+        // Everything else on this form is optional and the report is still worth
+        // filing. This one is not: the declaration is printed in full on every copy,
+        // so submitting without it would certify something nobody agreed to.
+        val form = validForm().apply { declarationAccepted = false }
+        assertEquals("Tick the declaration before submitting", form.validate()["declaration_accepted"])
+    }
+
+    @Test
+    fun `the case type list is the printed form's, in its order`() {
+        assertEquals(6, VisitFormData.REPORT_TYPES.size)
+        assertEquals(
+            listOf("ots", "ckcc_renewal", "recovery", "pre_npa", "post_npa", "other"),
+            VisitFormData.REPORT_TYPES.map { it.first },
+        )
+    }
+
+    @Test
+    fun `a Pre-NPA verification is sent as its own case type`() {
+        // Before it existed, this visit was filed as a plain recovery call - which made
+        // the pre-NPA worklist, the one that exists to stop an account going bad,
+        // unbuildable from the reports themselves.
+        val fields = validForm().apply { reportType = VisitFormData.REPORT_PRE_NPA }.toFieldMap()
+        assertEquals("pre_npa", fields["report_type"])
+    }
+
+    @Test
+    fun `an Other case type must say what it is`() {
+        val form = validForm().apply { reportType = VisitFormData.REPORT_OTHER }
+        assertEquals("Describe the case type", form.validate()["report_type_other_text"])
+
+        form.reportTypeOtherText = "Court receiver visit"
+        assertTrue(form.validate().isEmpty())
+        assertEquals("Court receiver visit", form.toFieldMap()["report_type_other_text"])
+    }
+
+    @Test
+    fun `the occupation list uses Service, as the form does`() {
+        // 'job' and 'service' mean the same thing here, and only one of them is
+        // distinguishable from 'labour' at a glance.
+        assertTrue(VisitFormData.OCCUPATIONS.any { it.first == "service" })
+        assertFalse(VisitFormData.OCCUPATIONS.any { it.first == "job" })
+    }
+
+    @Test
+    fun `a PAN is checked before it leaves the phone`() {
+        // Not a validation nicety: a mistyped PAN is a tax identifier attached to the
+        // wrong person, and the agent is standing next to the card while they type it.
+        val form = validForm().apply { panNumber = "ABCD1234F" }
+        assertEquals(
+            "A PAN is five letters, four digits and one letter",
+            form.validate()["pan_number"],
+        )
+
+        form.panNumber = "abcde 1234 f"
+        assertTrue(form.validate().isEmpty())
+        // Normalised on the way out, so the same card always produces the same value.
+        assertEquals("ABCDE1234F", form.toFieldMap()["pan_number"])
+    }
+
+    @Test
+    fun `a blank PAN is fine, because the form marks it optional`() {
+        assertTrue(validForm().apply { panNumber = "" }.validate().isEmpty())
+        assertFalse(validForm().toFieldMap().containsKey("pan_number"))
+    }
+
+    @Test
+    fun `a PIN code must be six digits`() {
+        assertEquals(
+            "A PIN code is six digits",
+            validForm().apply { pinCode = "3110" }.validate()["pin_code"],
+        )
+        assertTrue(validForm().apply { pinCode = "311001" }.validate().isEmpty())
+    }
+
+    @Test
+    fun `the address block is sent field by field`() {
+        val fields = validForm().apply {
+            addrVillage = "Kotri"
+            gramPanchayat = "Kotri GP"
+            tehsil = "Mandal"
+            addrDistrict = "Bhilwara"
+            state = "Rajasthan"
+            pinCode = "311001"
+        }.toFieldMap()
+
+        assertEquals("Kotri", fields["addr_village"])
+        assertEquals("Kotri GP", fields["gram_panchayat"])
+        assertEquals("Mandal", fields["tehsil"])
+        assertEquals("Bhilwara", fields["addr_district"])
+        assertEquals("Rajasthan", fields["state"])
+        assertEquals("311001", fields["pin_code"])
+    }
+
+    @Test
+    fun `loan account figures are sent as parsed numbers`() {
+        val fields = validForm().apply {
+            cifNumber = "CIF554433"
+            sanctionLimit = "2,50,000"
+            drawingPower = "2,25,000"
+            interestOverdue = "4500.50"
+            sanctionDate = "2023-04-01"
+            assetClassification = "sma_2"
+        }.toFieldMap()
+
+        assertEquals("CIF554433", fields["cif_number"])
+        assertEquals("250000.0", fields["sanction_limit"])
+        assertEquals("225000.0", fields["drawing_power"])
+        assertEquals("4500.5", fields["interest_overdue"])
+        assertEquals("2023-04-01", fields["sanction_date"])
+        assertEquals("sma_2", fields["asset_classification"])
+    }
+
+    @Test
+    fun `an unparseable loan figure is rejected rather than silently dropped`() {
+        assertEquals(
+            "Enter a valid amount",
+            validForm().apply { sanctionLimit = "two lakh" }.validate()["sanction_limit"],
+        )
+    }
+
+    @Test
+    fun `an Other loan type must say which`() {
+        val form = validForm().apply { loanType = VisitFormData.LOAN_TYPE_OTHER }
+        assertEquals("Describe the loan type", form.validate()["loan_type_other_text"])
+    }
+
+    @Test
+    fun `the two verification questions are omitted until answered`() {
+        // "Not confirmed" is a claim about a check somebody ran. Silence is not, and
+        // sending a default would accuse an agent of failing a check nobody asked for.
+        val untouched = validForm().toFieldMap()
+        assertFalse(untouched.containsKey("residence_verified"))
+        assertFalse(untouched.containsKey("neighbour_verification"))
+
+        val answered = validForm().apply {
+            residenceVerified = "not_confirmed"
+            neighbourVerification = "conducted"
+        }.toFieldMap()
+        assertEquals("not_confirmed", answered["residence_verified"])
+        assertEquals("conducted", answered["neighbour_verification"])
+    }
+
+    @Test
+    fun `the documents checklist is sent for every case type, not just a renewal`() {
+        // It used to live inside the renewal section, so a recovery visit had nowhere
+        // to record that an Aadhaar card was produced at all.
+        val recovery = validForm().apply {
+            docAadhaar = true
+            docKhatauni = true
+        }.toFieldMap()
+        assertEquals("1", recovery["doc_aadhaar"])
+        assertEquals("1", recovery["doc_khatauni"])
+        assertEquals("0", recovery["doc_pan"])
+
+        // And it is NOT sent under the renewal prefix any more.
+        val renewal = ckccForm().apply {
+            ckccRenewalDueDate = "2026-09-30"
+            docAadhaar = true
+        }.toFieldMap()
+        assertEquals("1", renewal["doc_aadhaar"])
+        assertFalse(renewal.containsKey("ckcc_details[doc_aadhaar]"))
+    }
+
+    @Test
+    fun `an other document and other evidence must be named`() {
+        assertEquals(
+            "Name the other document",
+            validForm().apply { docOthers = true }.validate()["doc_other_text"],
+        )
+        assertEquals(
+            "Name the other evidence",
+            validForm().apply { evOthers = true }.validate()["ev_other_text"],
+        )
+    }
+
+    @Test
+    fun `the evidence checklist is what the agent claims, not what is attached`() {
+        // Deliberately independent of photoFiles(): the panel prints the two side by
+        // side, so a report claiming a passbook copy and carrying none is visible.
+        val form = validForm().apply { evPassbookCopy = true }
+        assertEquals("1", form.toFieldMap()["ev_passbook_copy"])
+        assertEquals(0, form.attachmentCount())
+    }
+
+    @Test
+    fun `the general recommendation is sent apart from the observations`() {
+        val fields = validForm().apply {
+            remarks = "Crop standing, house occupied."
+            generalRecommendation = "Renew before the deadline."
+        }.toFieldMap()
+
+        assertEquals("Crop standing, house occupied.", fields["remarks"])
+        assertEquals("Renew before the deadline.", fields["general_recommendation"])
+    }
+
+    @Test
+    fun `a settlement records why the borrower answered as they did`() {
+        val fields = otsForm().apply {
+            otsBorrowerAccepted = false
+            otsRejectionReason = "Crop failed, asked for three weeks."
+            otsCustomerResponse = "requested_time"
+            otsExpectedDepositDate = "2026-08-21"
+        }.toFieldMap()
+
+        // The boolean and the reason are different facts: asking for time and refusing
+        // outright both leave accepted false and lead to different next actions.
+        assertEquals("0", fields["ots_details[borrower_accepted]"])
+        assertEquals("requested_time", fields["ots_details[customer_response]"])
+        // A promise and a receipt are also different facts.
+        assertEquals("2026-08-21", fields["ots_details[expected_deposit_date]"])
+        assertFalse(fields.containsKey("ots_details[deposit_date]"))
+    }
+
+    @Test
+    fun `an Other settlement scheme must be named`() {
+        val form = otsForm().apply {
+            otsBorrowerAccepted = true
+            otsScheme = VisitFormData.OTS_SCHEME_OTHER
+        }
+        assertEquals("Name the scheme", form.validate()["ots_scheme_other_text"])
+
+        form.otsSchemeOtherText = "State relief package 2024"
+        assertTrue(form.validate().isEmpty())
+        assertEquals(
+            "State relief package 2024",
+            form.toFieldMap()["ots_details[scheme_other_text]"],
+        )
+    }
+
+    @Test
+    fun `the settlement recommendation and status boxes are transmitted`() {
+        val fields = otsForm().apply {
+            otsBorrowerAccepted = true
+            otsRecProposalRecommended = true
+            otsStInitialDepositReceived = true
+        }.toFieldMap()
+
+        listOf(
+            "rec_proposal_recommended", "rec_followup_required", "rec_customer_refused",
+            "rec_not_eligible",
+            "st_customer_contacted", "st_customer_verified", "st_ots_accepted",
+            "st_ots_rejected", "st_initial_deposit_received", "st_ots_closed",
+            "st_followup_required",
+        ).forEach { key ->
+            assertTrue("Missing field: $key", fields.containsKey("ots_details[$key]"))
+        }
+        assertEquals("1", fields["ots_details[rec_proposal_recommended]"])
+        assertEquals("1", fields["ots_details[st_initial_deposit_received]"])
+        assertEquals("0", fields["ots_details[st_ots_closed]"])
+    }
+
+    @Test
+    fun `a renewal can record that documents are still pending`() {
+        // "Documents complete" left unticked could not say whether anything was
+        // outstanding, and a renewal waiting on one missing paper is a branch task.
+        val fields = ckccForm().apply {
+            ckccRenewalDueDate = "2026-09-30"
+            ckccRecPendingDocuments = true
+        }.toFieldMap()
+        assertEquals("1", fields["ckcc_details[rec_pending_documents]"])
+    }
+
+    @Test
+    fun `filling in a form section counts as unsaved input`() {
+        // The exit warning has to know about the new sections, or an agent who filled
+        // in the whole borrower block and pressed back would lose it without a prompt.
+        assertTrue(validForm().apply { panNumber = "ABCDE1234F" }.hasUnsavedInput())
+        assertTrue(validForm().apply { docAadhaar = true }.hasUnsavedInput())
+        assertTrue(validForm().apply { evGpsLocation = true }.hasUnsavedInput())
+        assertTrue(validForm().apply { residenceVerified = "confirmed" }.hasUnsavedInput())
+        assertTrue(validForm().apply { generalRecommendation = "Follow up" }.hasUnsavedInput())
     }
 }

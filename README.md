@@ -549,31 +549,74 @@ read as black in RGB, so an unflattened logo prints as a solid black rectangle.
 Progressive JPEGs are detected by scanning the markers rather than trusted, because
 `/DCTDecode` renders one as a grey box — a report that looks fine until someone opens it.
 
-The printed report carries:
+**It is the paper form, not a printout of our screen.** The document is *D2 Recovery
+Solutions & Services — Field Visit Verification Report (KRM OTS / CKCC OD-2 Renewal /
+Recovery Verification Report)*, thirteen numbered sections, RBI and Code-of-Conduct
+compliant, and the PDF reproduces it: the navy masthead with its two strap lines, a
+numbered band per section, tick boxes drawn as the bordered tinted grid the form uses,
+label-and-ruled-line fields, the declaration in its own boxed panel, the closing note, and
+"Page 3 of 8" in the foot. It had carried the same facts in its own order under its own
+headings, which meant nobody could file our output against the form without transcribing
+it by hand.
 
-- the borrower and loan details as filed, with the **closure amount** (the figure needed
-  to close the account, distinct from an OTS amount, which is a settlement the branch
-  agrees to accept for less),
-- **Location recorded** — the visit's coordinates, accuracy and how they were obtained,
-  distinguishing "the device had no fix" from "the agent declined location",
-- **Field photographs**, each captioned with its own coordinates and whether it came from
-  the camera or the gallery,
-- **KRM / OTS Settlement** or **CKCC OD-2 Renewal** when the report is one of those types —
-  the settlement arithmetic with the percentages each figure came from, the deposit with the
-  bank's own receipt reference, and the validity window; or the renewal deadline with the
-  expected NPA date if it is missed, the account snapshot, and every tick list printed as
-  the items that were actually ticked. These were missing from the printout for a long time:
-  the screen had them, so a settlement or a renewal printed as though it were a plain
-  recovery visit and dropped the very thing the visit existed to collect,
-- **Signatures** — the **agent's own photograph** from the visit, captioned with where it
-  was taken, and directly beneath it **empty ruled boxes** for the borrower's and the
-  agent's signature, each with a name and date line: they are signed by hand on the
-  printed copy,
-- **Approval** — status, approver, their position, remarks and photograph, above **their
-  own blank signature box**, which prints whether or not the report has been reviewed yet:
-  the copy somebody prints in order to sign it is precisely the one still pending,
-- any custom fields marked to print,
-- and, in the footer, the number of times the report was corrected after filing.
+**Every tick box prints, ticked or not.** That reverses an earlier decision to print only
+what was true, on the grounds that a grid of empty boxes takes half a page to say nothing.
+It does not: an unticked box and a question the form never asked looked *identical*, so
+"the neighbours were not asked" read the same as "this version of the report had no such
+field". On a document an auditor reads afterwards, the questions matter as much as the
+answers.
+
+The printed report carries, in the form's own order:
+
+1. **General information** — dates, case type (KRM OTS, CKCC OD-2 Renewal, Recovery
+   Follow-up, Pre-NPA, Post-NPA, Other), and the branch's place in the hierarchy: branch
+   code, regional office, zone, linked branch, district. The last two of those are held on
+   the **branch**, once, and stamped onto every report — an agent retyping a regional
+   office at forty doorsteps produces forty spellings of it.
+2. **Borrower information** — name, parentage, gender, date of birth, both mobile numbers,
+   Aadhaar and **PAN**, all three identifiers encrypted and masked, plus the address broken
+   up as the form asks for it.
+3. **Loan account details** — account and CIF number, the loan-type row, sanction date,
+   limit, drawing power, interest overdue, and **asset classification** mapped out of
+   whatever free text the bank's own export wrote into the account.
+4. **KRM OTS details** — the settlement arithmetic *with the percentages each figure came
+   from*, the deposit with the bank's own receipt reference, the validity window, and the
+   customer's response: agreed, asked for time, cannot pay, refused, or not eligible. Those
+   four ways of saying no lead to four different next actions, and a boolean threw that away.
+5. **CKCC OD-2 renewal details** — the deadline and the expected NPA date if it is missed,
+   the account snapshot, KYC and renewal readiness, consent.
+6. **Physical verification** — who was met, whether the borrower is alive and still at the
+   address, **residence and neighbour verification** (both blank until answered: "not
+   confirmed" is a claim about a check somebody ran, and silence is not), and occupation.
+7. **Documents verified** — what the borrower actually produced. Asked on *every* case
+   type; it used to live inside the renewal section, so a recovery visit had nowhere to
+   record that an Aadhaar card was shown at all.
+8. **BC agent / DRA observations** — recovery possibility, any promise, the reason for
+   non-payment, and the agent's own account of the visit.
+9. **Recommendation** — separately for the settlement, the renewal and the recovery, plus a
+   general recommendation in prose.
+10. **Evidence attached** — what the agent *says* is attached, printed next to the count of
+    what actually arrived, and then the evidence itself: the visit's coordinates and
+    accuracy, distinguishing "the device had no fix" from "the agent declined location",
+    and the **field photographs**, each captioned with its own coordinates and whether it
+    came from the camera or the gallery.
+11. **Declaration** — the RBI / Fair Practices Code certification in full, in its own boxed
+    panel, and whether the agent accepted it in the app. Stored rather than assumed: a
+    printed certification nobody agreed to is worth nothing.
+12. **Certification** — the **agent's own photograph** from the visit, captioned with where
+    it was taken, and beneath it **empty ruled boxes** for the agent, the borrower, the
+    supervisor and the approver, each with a name and date line. They are signed by hand on
+    the printed copy. The approver's box prints whether or not the report has been reviewed
+    yet: the copy somebody prints in order to sign it is precisely the one still pending.
+13. **Final report status** — where the settlement and the renewal have actually got to,
+    which is not the same as their approval status. An offer the branch has approved can
+    still be waiting on the borrower's deposit, and the follow-up list is built from that.
+
+Then the closing note the form carries, any custom fields marked to print, and the number
+of times the report was corrected after filing.
+
+Sections 4 and 5 print **even when they do not apply**, saying so in words. A numbered form
+with section 4 missing leaves a reader unable to tell "not applicable" from "lost".
 
 ---
 
@@ -689,14 +732,14 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 143 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **249** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, and how a recorded position is worded |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 145 files (a file count, not assertions) |
+| Core unit tests | `php tools/selftest-core.php` | **280** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, PAN masking and hashing (which cannot go through the mobile helpers), and the printed form's own furniture: the masthead, the numbered section bands, the tick grids that show every option, the ruled label-and-line fields and the page-of-page total |
 | Schema | `sh tools/verify-schema.sh` | **28** — 34 tables, 54 FKs, seeds, bcrypt login hash, and every dropdown setting checked for choices it can actually offer (including a deliberately broken row, to prove the check fails) |
-| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **780** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, and a second phone number that no import can flatten |
+| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all ten release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
+| Integration | `sh tools/integration-test.sh` | **841** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, a second phone number that no import can flatten, and every box on the printed Field Visit Verification Report — the six case types, the encrypted PAN, the address break-up, the asset classification mapped out of the bank's free text, the document and evidence checklists, the declaration, and the settlement's customer response |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **454** panel + **228** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
-| Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **486** panel + **228** API — includes an audit of **every `<select>` on every page** (none empty, none with two options selected, every filter dropdown holding the value it was given), and the printed visit report checked band by band against the paper form it has to match |
+| Android | `sh tools/verify-android.sh` | **249** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
@@ -714,7 +757,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,154 assertions total** — the sum of the bold counts above, counting the seven
+**2,300 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

@@ -11,6 +11,9 @@
             "address": "House 57, Gulabpura",
             "mobile": "9876510057",
             "mobile_masked": "XXXXXX0057",
+            "alt_mobile": null,
+            "alt_mobile_masked": null,
+            "alt_mobile_label": null,
             "aadhaar": "123410000057",
             "aadhaar_masked": "XXXX XXXX 0057",
             "bc_code": "BC-002",
@@ -29,7 +32,7 @@
             "last_visit_at": null,
             "next_followup_date": null,
             "remarks": null,
-            "created_at": "2026-07-31 15:45:35"
+            "created_at": "2026-08-02 15:53:03"
         },
         "promises": [],
         "visits": [],
@@ -39,14 +42,13 @@
                 "event_type": "assigned",
                 "event_label": "Assigned",
                 "tone": "blue",
-                "event_at": "2026-07-31 15:45:36",
+                "event_at": "2026-08-02 15:53:04",
                 "actor_name": "System Administrator",
                 "title": "Assigned to agent",
                 "description": "Initial allocation.",
                 "visit_report_id": null,
                 "promise_id": null,
                 "photo_count": 0,
-                "signature_count": 0,
                 "promise_amount": null,
                 "promise_date": null
             },
@@ -55,21 +57,19 @@
                 "event_type": "lead_imported",
                 "event_label": "Lead imported",
                 "tone": "slate",
-                "event_at": "2026-07-31 15:45:35",
+                "event_at": "2026-08-02 15:53:03",
                 "actor_name": "System Administrator",
                 "title": "Lead imported",
                 "description": "Imported from file row 58. Outstanding 205,975.00.",
                 "visit_report_id": null,
                 "promise_id": null,
                 "photo_count": 0,
-                "signature_count": 0,
                 "promise_amount": null,
                 "promise_date": null
             }
         ],
         "photos": [],
         "documents": [],
-        "signatures": [],
         "other_accounts": [
             {
                 "id": 57,

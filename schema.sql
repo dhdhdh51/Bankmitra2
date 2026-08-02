@@ -97,6 +97,12 @@ CREATE TABLE `branches` (
   `district`    VARCHAR(100) DEFAULT NULL,
   `state`       VARCHAR(100) DEFAULT NULL,
   `pincode`     VARCHAR(10)  DEFAULT NULL,
+  -- Where the branch sits in the bank's own hierarchy. Held here, once, rather than
+  -- asked of the agent: the printed visit report has a Regional Office and a Zone at
+  -- the top of every page, and an agent retyping them at forty doorsteps produces
+  -- forty spellings of the same office.
+  `regional_office` VARCHAR(150) DEFAULT NULL,
+  `zone`            VARCHAR(150) DEFAULT NULL,
   `status`      ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -441,44 +447,92 @@ CREATE TABLE `visit_reports` (
   `agent_id`             INT UNSIGNED NOT NULL,
   `branch_id`            INT UNSIGNED NOT NULL,
 
-  -- ---- General -----------------------------------------------------------
+  -- ---- 1. General information ---------------------------------------------
   `visit_date`           DATE         NOT NULL,
   `visit_time`           TIME         NOT NULL,
-  `bc_code`              VARCHAR(40)  DEFAULT NULL,
+  `bc_code`              VARCHAR(40)  DEFAULT NULL COMMENT 'BC Code / DRA ID',
   `agent_name`           VARCHAR(150) NOT NULL COMMENT 'snapshot',
   `branch_name`          VARCHAR(150) DEFAULT NULL COMMENT 'snapshot',
-  `village`              VARCHAR(150) DEFAULT NULL,
+  `village`              VARCHAR(150) DEFAULT NULL COMMENT 'where the visit happened',
 
-  -- Which kind of field report this is. The sections common to all three live in
-  -- this table; the extra ones live in visit_ots_details / visit_ckcc_details so
-  -- that this row does not grow another fifty mostly-null columns.
-  `report_type`          ENUM('recovery','ots','ckcc_renewal') NOT NULL DEFAULT 'recovery',
+  -- Where in the bank's own hierarchy this visit sits. Snapshotted as text rather
+  -- than joined from `branches`, for the same reason every other figure on this row
+  -- is: a report printed two years from now has to read the way it read on the day,
+  -- even after the branch has been moved to a different region.
+  `branch_code`          VARCHAR(40)  DEFAULT NULL,
+  `regional_office`      VARCHAR(150) DEFAULT NULL,
+  `zone`                 VARCHAR(150) DEFAULT NULL,
+  `linked_branch`        VARCHAR(150) DEFAULT NULL COMMENT 'the branch the BC/DRA is attached to',
+  `district`             VARCHAR(150) DEFAULT NULL COMMENT 'district the visit happened in',
 
-  -- ---- Declaration ---------------------------------------------------------
+  -- Which kind of case this is - the printed form calls it "Case Type". The
+  -- sections common to every type live in this table; the extra ones live in
+  -- visit_ots_details / visit_ckcc_details so that this row does not grow another
+  -- fifty mostly-null columns.
+  --
+  -- 'pre_npa' and 'post_npa' are not settlement or renewal work: they are the same
+  -- doorstep verification done before an account slips and after it has, and they
+  -- were being filed as plain recovery calls because there was nothing else to pick.
+  `report_type`          ENUM('recovery','ots','ckcc_renewal','pre_npa','post_npa','other')
+                           NOT NULL DEFAULT 'recovery',
+  `report_type_other_text` VARCHAR(150) DEFAULT NULL COMMENT 'when Case Type is Other',
+
   `sp_cbc_name`          VARCHAR(150) DEFAULT NULL COMMENT 'SP / CBC the BC agent reports to',
-  `supervisor_name`      VARCHAR(150) DEFAULT NULL,
-  `supervisor_verified_at` DATE       DEFAULT NULL,
 
-  -- ---- Borrower details (snapshot) ---------------------------------------
+  -- ---- 2. Borrower information (snapshot) --------------------------------
   `customer_name`        VARCHAR(150) NOT NULL,
   `father_husband_name`  VARCHAR(150) DEFAULT NULL,
-  `address`              VARCHAR(500) DEFAULT NULL,
+  `gender`               ENUM('male','female','other') DEFAULT NULL,
+  `date_of_birth`        DATE         DEFAULT NULL,
+  `address`              VARCHAR(500) DEFAULT NULL COMMENT 'complete residential address',
   `mobile_enc`           VARBINARY(255) DEFAULT NULL,
   `mobile_hash`          CHAR(64)     DEFAULT NULL,
   `mobile_masked`        VARCHAR(20)  DEFAULT NULL,
+  -- The second number the agent got at the door. Snapshotted like the first one, so
+  -- a report still shows the number that was current when somebody rang it.
+  `alt_mobile_enc`       VARBINARY(255) DEFAULT NULL,
+  `alt_mobile_hash`      CHAR(64)     DEFAULT NULL,
+  `alt_mobile_masked`    VARCHAR(20)  DEFAULT NULL,
   `aadhaar_enc`          VARBINARY(255) DEFAULT NULL,
   `aadhaar_hash`         CHAR(64)     DEFAULT NULL,
   `aadhaar_masked`       VARCHAR(20)  DEFAULT NULL,
+  -- Encrypted and masked like the other two, not stored in the clear. A PAN is a
+  -- national tax identifier: it is exactly as good a key for joining a person's
+  -- records together as an Aadhaar number, and the form marks it optional.
+  `pan_enc`              VARBINARY(255) DEFAULT NULL,
+  `pan_hash`             CHAR(64)     DEFAULT NULL,
+  `pan_masked`           VARCHAR(20)  DEFAULT NULL,
 
-  -- ---- Loan details (snapshot) -------------------------------------------
+  -- The borrower's registered address, broken up the way the form asks for it.
+  -- Deliberately separate from `village` and `district` above: those say where the
+  -- agent stood, and for a borrower who has shifted the two are different facts -
+  -- which is the whole point of asking both.
+  `addr_village`         VARCHAR(150) DEFAULT NULL,
+  `gram_panchayat`       VARCHAR(150) DEFAULT NULL,
+  `tehsil`               VARCHAR(150) DEFAULT NULL,
+  `addr_district`        VARCHAR(150) DEFAULT NULL,
+  `state`                VARCHAR(100) DEFAULT NULL,
+  `pin_code`             VARCHAR(10)  DEFAULT NULL,
+
+  -- ---- 3. Loan account details (snapshot) --------------------------------
   `loan_account_number`  VARCHAR(60)  NOT NULL,
+  `cif_number`           VARCHAR(40)  DEFAULT NULL,
   `loan_type`            VARCHAR(80)  DEFAULT NULL,
+  `loan_type_other_text` VARCHAR(150) DEFAULT NULL,
+  `sanction_date`        DATE          DEFAULT NULL,
+  `sanction_limit`       DECIMAL(15,2) DEFAULT NULL,
+  `drawing_power`        DECIMAL(15,2) DEFAULT NULL,
   `outstanding_amount`   DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  `interest_overdue`     DECIMAL(15,2) DEFAULT NULL,
   `overdue_amount`       DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   `npa_date`             DATE         DEFAULT NULL,
+  -- An ENUM here, unlike loan_accounts.asset_classification which is free text on
+  -- purpose. That column holds whatever the bank's export writes; this one is a row
+  -- of five tick boxes on a printed form, and a form offers a closed list.
+  `asset_classification` ENUM('standard','sma_0','sma_1','sma_2','npa') DEFAULT NULL,
   `current_status`       VARCHAR(40)  DEFAULT NULL,
 
-  -- ---- Customer contact --------------------------------------------------
+  -- ---- 6. Physical verification: who was met ------------------------------
   `customer_met`               TINYINT(1) NOT NULL DEFAULT 0,
   `family_member_met`          TINYINT(1) NOT NULL DEFAULT 0,
   `house_locked`               TINYINT(1) NOT NULL DEFAULT 0,
@@ -502,12 +556,43 @@ CREATE TABLE `visit_reports` (
   `gps_address`       VARCHAR(400)  DEFAULT NULL COMMENT 'reverse-geocoded, best effort',
   `gps_source`        ENUM('device','unavailable','denied') DEFAULT NULL,
 
-  -- ---- Physical verification ---------------------------------------------
+  -- ---- 6. Physical verification: what was seen ----------------------------
   `borrower_alive` TINYINT(1) NOT NULL DEFAULT 1,
   `same_address`   TINYINT(1) NOT NULL DEFAULT 1,
   `shifted`        TINYINT(1) NOT NULL DEFAULT 0,
-  `occupation`     ENUM('agriculture','dairy','business','job','labour','others') DEFAULT NULL,
+
+  -- Two separate questions, and both nullable, because "not confirmed" and "nobody
+  -- asked" are different answers. A report that recorded silence as a negative would
+  -- accuse an agent of failing a check they were never asked to run.
+  `residence_verified`     ENUM('confirmed','not_confirmed')   DEFAULT NULL,
+  `neighbour_verification` ENUM('conducted','not_conducted')   DEFAULT NULL,
+
+  -- 'service' rather than 'job', which is what the printed form says and what the
+  -- word means in this context - salaried employment, as against labour.
+  `occupation`     ENUM('agriculture','dairy','business','labour','service','others') DEFAULT NULL,
   `occupation_other_text` VARCHAR(150) DEFAULT NULL,
+
+  -- ---- 7. Documents verified ----------------------------------------------
+  -- What the borrower physically had with them at the door. Distinct from the
+  -- `documents` and `photos` tables, which hold files somebody uploaded: an agent can
+  -- confirm a passbook exists without photographing it, and the branch still needs to
+  -- know that it does.
+  --
+  -- Asked on EVERY report type, not just a renewal. This list used to live on
+  -- visit_ckcc_details, where a recovery visit had nowhere to record that the
+  -- borrower produced an Aadhaar card.
+  `doc_aadhaar`            TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_pan`                TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_passbook`           TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_land_record`        TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_khatauni`           TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_electricity_bill`   TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_photograph`         TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_mobile_verified`    TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_renewal_form`       TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_ots_consent_letter` TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_others`             TINYINT(1) NOT NULL DEFAULT 0,
+  `doc_other_text`         VARCHAR(255) DEFAULT NULL,
 
   -- ---- Recovery possibility ----------------------------------------------
   `ready_to_pay`     TINYINT(1) NOT NULL DEFAULT 0,
@@ -528,7 +613,9 @@ CREATE TABLE `visit_reports` (
   `reason_others`            TINYINT(1) NOT NULL DEFAULT 0,
   `reason_other_text`        VARCHAR(255) DEFAULT NULL,
 
-  -- ---- Agent recommendation ----------------------------------------------
+  -- ---- 9. Recommendation --------------------------------------------------
+  -- The recovery recommendations. The OTS-specific and renewal-specific ones live on
+  -- their own detail rows, because they are only answerable on that kind of case.
   `rec_recovery_possible`  TINYINT(1) NOT NULL DEFAULT 0,
   `rec_regular_followup`   TINYINT(1) NOT NULL DEFAULT 0,
   `rec_legal_action`       TINYINT(1) NOT NULL DEFAULT 0,
@@ -536,9 +623,47 @@ CREATE TABLE `visit_reports` (
   `rec_ots`                TINYINT(1) NOT NULL DEFAULT 0,
   `rec_others`             TINYINT(1) NOT NULL DEFAULT 0,
   `rec_other_text`         VARCHAR(255) DEFAULT NULL,
+  -- Free prose, separate from the tick boxes above and from `remarks` below: the form
+  -- asks for observations (what was seen) and a recommendation (what should be done)
+  -- as two different questions, and collapsing them loses which one an answer was.
+  `general_recommendation` TEXT         DEFAULT NULL,
 
-  -- ---- Remarks & meta -----------------------------------------------------
-  `remarks`      TEXT         DEFAULT NULL,
+  -- ---- 10. Evidence attached ----------------------------------------------
+  -- What the agent says is attached, recorded separately from what actually arrived
+  -- in `photos` / `documents`. The gap between the two is the point: a report that
+  -- claims a passbook copy and carries none is a thing a reviewer needs to see.
+  `ev_borrower_photo`  TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_house_photo`     TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_land_photo`      TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_aadhaar_copy`    TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_passbook_copy`   TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_gps_location`    TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_renewal_form`    TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_ots_consent`     TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_others`          TINYINT(1) NOT NULL DEFAULT 0,
+  `ev_other_text`      VARCHAR(255) DEFAULT NULL,
+
+  -- ---- 8. BC agent / DRA observations -------------------------------------
+  `remarks`      TEXT         DEFAULT NULL COMMENT 'BC agent / DRA observations',
+
+  -- ---- 11. Declaration ----------------------------------------------------
+  -- The agent ticking the RBI / Fair Practices Code declaration before submitting.
+  -- Stored rather than assumed: the declaration is printed on every copy, and a
+  -- printed certification nobody agreed to is worth nothing.
+  `declaration_accepted` TINYINT(1) NOT NULL DEFAULT 0,
+
+  -- ---- 12. Certification --------------------------------------------------
+  -- The agent's own contact number, not the borrower's. Stored in the clear on
+  -- purpose: it is a staff contact printed on the form so the branch can ring back
+  -- the person who filed the report, and encrypting it would only make the printed
+  -- copy useless while protecting nothing the employee record does not already hold.
+  `agent_mobile`           VARCHAR(20)  DEFAULT NULL,
+  `supervisor_name`        VARCHAR(150) DEFAULT NULL,
+  `supervisor_designation` VARCHAR(100) DEFAULT NULL,
+  `supervisor_employee_id` VARCHAR(40)  DEFAULT NULL COMMENT 'Employee ID / DRA ID',
+  `supervisor_verified_at` DATE         DEFAULT NULL,
+
+  -- ---- Meta ---------------------------------------------------------------
   `source`       ENUM('android','web') NOT NULL DEFAULT 'android',
   `app_version`  VARCHAR(30)  DEFAULT NULL,
   `device_info`  VARCHAR(255) DEFAULT NULL,
@@ -613,7 +738,8 @@ CREATE TABLE `visit_ots_details` (
 
   -- ---- Eligibility ---------------------------------------------------------
   `eligible_for_ots` TINYINT(1) NOT NULL DEFAULT 0,
-  `scheme`           ENUM('krm_ots','general_ots') DEFAULT NULL,
+  `scheme`           ENUM('krm_ots','general_ots','other') DEFAULT NULL,
+  `scheme_other_text` VARCHAR(150) DEFAULT NULL,
 
   -- ---- Settlement arithmetic ----------------------------------------------
   -- Every figure the agent wrote down is stored as entered. The app suggests
@@ -650,8 +776,36 @@ CREATE TABLE `visit_ots_details` (
   `expected_closure_date`  DATE DEFAULT NULL,
 
   -- ---- Borrower's response -------------------------------------------------
+  -- `borrower_accepted` is the yes/no the settlement turns on. `customer_response` is
+  -- WHY, and the four ways of saying no are not interchangeable: a borrower who asked
+  -- for time gets another visit, one who cannot pay gets a different scheme, and one
+  -- who refused outright gets neither. Recording only the boolean threw that away.
   `borrower_accepted`      TINYINT(1) NOT NULL DEFAULT 0,
+  `customer_response`      ENUM('agreed','requested_time','financial_difficulty',
+                                'refused','not_eligible') DEFAULT NULL,
   `rejection_reason`       VARCHAR(500) DEFAULT NULL COMMENT 'why the borrower declined',
+  -- When the borrower says they will pay the initial deposit. Distinct from
+  -- `deposit_date`, which is when they actually did: the first is a promise and the
+  -- second is evidence, and one column could not hold both.
+  `expected_deposit_date`  DATE DEFAULT NULL,
+
+  -- ---- Recommendation on the settlement ------------------------------------
+  `rec_proposal_recommended` TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_followup_required`    TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_customer_refused`     TINYINT(1) NOT NULL DEFAULT 0,
+  `rec_not_eligible`         TINYINT(1) NOT NULL DEFAULT 0,
+
+  -- ---- Final report status -------------------------------------------------
+  -- Where the settlement has actually got to, which `approval_status` does not say:
+  -- an offer can be approved by the branch and still be waiting on the borrower's
+  -- deposit, and those are the two different things a follow-up list is built from.
+  `st_customer_contacted`       TINYINT(1) NOT NULL DEFAULT 0,
+  `st_customer_verified`        TINYINT(1) NOT NULL DEFAULT 0,
+  `st_ots_accepted`             TINYINT(1) NOT NULL DEFAULT 0,
+  `st_ots_rejected`             TINYINT(1) NOT NULL DEFAULT 0,
+  `st_initial_deposit_received` TINYINT(1) NOT NULL DEFAULT 0,
+  `st_ots_closed`               TINYINT(1) NOT NULL DEFAULT 0,
+  `st_followup_required`        TINYINT(1) NOT NULL DEFAULT 0,
 
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -707,17 +861,11 @@ CREATE TABLE `visit_ckcc_details` (
   `aadhaar_auth_completed`   TINYINT(1) NOT NULL DEFAULT 0,
 
   -- ---- Documents the borrower actually had in hand -------------------------
-  -- Distinct from the `documents` table, which holds files the agent uploaded.
-  -- This records what exists, even when nothing was photographed.
-  `doc_aadhaar`         TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_pan`             TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_passbook`        TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_land_record`     TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_khasra_khatauni` TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_photograph`      TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_mobile_available` TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_others`          TINYINT(1) NOT NULL DEFAULT 0,
-  `doc_other_text`      VARCHAR(255) DEFAULT NULL,
+  -- DELIBERATELY NOT HERE ANY MORE. The checklist moved to visit_reports, where the
+  -- printed form has it: section 7, asked on every case type. Keeping a second copy
+  -- on this row meant a renewal report carried the same eleven boxes twice and could
+  -- disagree with itself, and a recovery visit had nowhere to record that the
+  -- borrower produced an Aadhaar card at all.
 
   -- ---- Renewal consent -----------------------------------------------------
   `willing_to_renew`      TINYINT(1) NOT NULL DEFAULT 0,
@@ -730,6 +878,10 @@ CREATE TABLE `visit_ckcc_details` (
   `agent_observation`          TEXT DEFAULT NULL,
   `rec_renew_immediately`      TINYINT(1) NOT NULL DEFAULT 0,
   `rec_documents_submitted`    TINYINT(1) NOT NULL DEFAULT 0,
+  -- The other half of "documents complete". A renewal waiting on one missing paper is
+  -- a branch task; one with nothing outstanding is not, and an unticked "complete"
+  -- box could not tell the two apart.
+  `rec_pending_documents`      TINYINT(1) NOT NULL DEFAULT 0,
   `rec_followup_required`      TINYINT(1) NOT NULL DEFAULT 0,
   `rec_not_interested`         TINYINT(1) NOT NULL DEFAULT 0,
   `rec_branch_contact_urgent`  TINYINT(1) NOT NULL DEFAULT 0,

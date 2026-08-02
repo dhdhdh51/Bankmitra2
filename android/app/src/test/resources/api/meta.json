@@ -30,7 +30,11 @@
         ],
         "app_version": "1.0.0",
         "min_version": "1.0.0",
-        "maps_key": null
+        "maps_key": null,
+        "report_due_time": "17:00",
+        "report_reminder": true,
+        "report_reminder_repeat_minutes": 15,
+        "report_reminder_until_hour": 22
     },
     "message": ""
 }

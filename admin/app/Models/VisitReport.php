@@ -14,15 +14,101 @@ use App\Core\Paginator;
  */
 final class VisitReport
 {
-    public const OCCUPATIONS = ['agriculture', 'dairy', 'business', 'job', 'labour', 'others'];
+    /**
+     * The printed form's Current Occupation row, in its order.
+     *
+     * 'service' replaced 'job': the form says Service, and in this context the two
+     * words mean the same thing while only one of them is distinguishable from
+     * 'labour' at a glance.
+     */
+    public const OCCUPATIONS = ['agriculture', 'dairy', 'business', 'labour', 'service', 'others'];
 
     /** Checkbox groups, kept in one place so form, API and PDF stay in sync. */
     public const CONTACT_FLAGS = [
-        'customer_met'       => 'Customer Met',
+        'customer_met'       => 'Borrower Met',
         'family_member_met'  => 'Family Member Met',
         'house_locked'       => 'House Locked',
-        'phone_contact'      => 'Phone Contact',
+        'phone_contact'      => 'Mobile Contacted',
         'phone_switched_off' => 'Phone Switched Off',
+    ];
+
+    public const GENDERS = [
+        'male'   => 'Male',
+        'female' => 'Female',
+        'other'  => 'Other',
+    ];
+
+    /**
+     * The Loan Type row on the printed form.
+     *
+     * The column stays a VARCHAR rather than an ENUM because it is also a snapshot of
+     * whatever the bank's own export wrote there, and a report filed before this list
+     * existed still has to print. Anything not in the list prints as it was stored.
+     */
+    public const LOAN_TYPES = [
+        'ckcc'         => 'CKCC',
+        'agri_term'    => 'Agriculture Term Loan',
+        'od'           => 'OD',
+        'cc'           => 'CC',
+        'msme'         => 'MSME',
+        'housing'      => 'Housing',
+        'other'        => 'Other',
+    ];
+
+    public const ASSET_CLASSIFICATIONS = [
+        'standard' => 'Standard',
+        'sma_0'    => 'SMA-0',
+        'sma_1'    => 'SMA-1',
+        'sma_2'    => 'SMA-2',
+        'npa'      => 'NPA',
+    ];
+
+    public const RESIDENCE_VERIFICATION = [
+        'confirmed'     => 'Confirmed',
+        'not_confirmed' => 'Not Confirmed',
+    ];
+
+    public const NEIGHBOUR_VERIFICATION = [
+        'conducted'     => 'Conducted',
+        'not_conducted' => 'Not Conducted',
+    ];
+
+    /**
+     * Section 7 of the printed form: what the borrower physically produced.
+     *
+     * Asked on every case type. This list used to live only on the CKCC renewal row,
+     * so a recovery visit had nowhere to record that an Aadhaar card was shown.
+     */
+    public const DOCUMENT_FLAGS = [
+        'doc_aadhaar'            => 'Aadhaar Card',
+        'doc_pan'                => 'PAN Card',
+        'doc_passbook'           => 'Passbook',
+        'doc_land_record'        => 'Land Record',
+        'doc_khatauni'           => 'Khatauni',
+        'doc_electricity_bill'   => 'Electricity Bill',
+        'doc_photograph'         => 'Photograph',
+        'doc_mobile_verified'    => 'Mobile Verified',
+        'doc_renewal_form'       => 'Renewal Form',
+        'doc_ots_consent_letter' => 'OTS Consent Letter',
+        'doc_others'             => 'Other',
+    ];
+
+    /**
+     * Section 10: what the agent says is attached.
+     *
+     * Recorded separately from the photos and files that actually arrived, because the
+     * gap between the two is exactly what a reviewer needs to see.
+     */
+    public const EVIDENCE_FLAGS = [
+        'ev_borrower_photo' => 'Borrower Photograph',
+        'ev_house_photo'    => 'House Photograph',
+        'ev_land_photo'     => 'Land Photograph',
+        'ev_aadhaar_copy'   => 'Aadhaar Copy',
+        'ev_passbook_copy'  => 'Passbook Copy',
+        'ev_gps_location'   => 'GPS Location',
+        'ev_renewal_form'   => 'Renewal Form',
+        'ev_ots_consent'    => 'OTS Consent',
+        'ev_others'         => 'Other',
     ];
 
     public const RECOVERY_FLAGS = [
@@ -56,21 +142,74 @@ final class VisitReport
     // Report types
     // -----------------------------------------------------------------------
 
+    /**
+     * The printed form's Case Type row, in its order.
+     *
+     * 'pre_npa' and 'post_npa' are the same doorstep verification done before an
+     * account slips and after it has. They are neither settlement nor renewal work, so
+     * before they existed here they were filed as plain recovery calls - which made the
+     * pre-NPA worklist, the one that exists to stop an account going bad, unbuildable.
+     */
     public const REPORT_TYPES = [
-        'recovery'      => 'Recovery Visit',
-        'ots'           => 'KRM / OTS Settlement',
+        'ots'           => 'KRM OTS',
         'ckcc_renewal'  => 'CKCC OD-2 Renewal',
+        'recovery'      => 'Recovery Follow-up',
+        'pre_npa'       => 'Pre-NPA Verification',
+        'post_npa'      => 'Post-NPA Verification',
+        'other'         => 'Other',
     ];
 
     public const OTS_SCHEMES = [
         'krm_ots'     => 'KRM OTS',
         'general_ots' => 'General OTS',
+        'other'       => 'Other',
     ];
 
     public const OTS_APPROVAL_STATUSES = [
         'pending'  => 'Pending',
         'approved' => 'Approved',
         'rejected' => 'Rejected',
+    ];
+
+    /**
+     * Section 4's Customer Response row.
+     *
+     * Not a duplicate of `borrower_accepted`: that is the yes/no the settlement turns
+     * on, and this is why. The four ways of saying no lead to four different next
+     * actions - another visit, a different scheme, a closed file - and a boolean threw
+     * all of that away.
+     */
+    public const OTS_CUSTOMER_RESPONSES = [
+        'agreed'               => 'Agreed for OTS',
+        'requested_time'       => 'Requested Time',
+        'financial_difficulty' => 'Financial Difficulty',
+        'refused'              => 'Refused OTS',
+        'not_eligible'         => 'Not Eligible',
+    ];
+
+    /** Section 9, the KRM OTS half. */
+    public const OTS_RECOMMENDATION_FLAGS = [
+        'rec_proposal_recommended' => 'OTS Proposal Recommended',
+        'rec_followup_required'    => 'Follow-up Required',
+        'rec_customer_refused'     => 'Customer Refused',
+        'rec_not_eligible'         => 'Not Eligible',
+    ];
+
+    /**
+     * Section 13, the KRM OTS half.
+     *
+     * Distinct from `approval_status`: an offer the branch has approved can still be
+     * waiting on the borrower's deposit, and a follow-up list is built from the second
+     * fact, not the first.
+     */
+    public const OTS_STATUS_FLAGS = [
+        'st_customer_contacted'       => 'Customer Contacted',
+        'st_customer_verified'        => 'Customer Verified',
+        'st_ots_accepted'             => 'OTS Accepted',
+        'st_ots_rejected'             => 'OTS Rejected',
+        'st_initial_deposit_received' => 'Initial Deposit Received',
+        'st_ots_closed'               => 'OTS Closed',
+        'st_followup_required'        => 'Follow-up Required',
     ];
 
     // -----------------------------------------------------------------------
@@ -97,50 +236,71 @@ final class VisitReport
         'aadhaar_auth_completed' => 'Aadhaar Authentication Completed',
     ];
 
-    /**
-     * What the borrower physically had with them.
-     *
-     * Separate from uploaded documents: an agent can confirm a passbook exists
-     * without photographing it, and the branch still needs to know.
-     */
-    public const CKCC_DOCUMENT_FLAGS = [
-        'doc_aadhaar'          => 'Aadhaar Card',
-        'doc_pan'              => 'PAN Card',
-        'doc_passbook'         => 'Passbook',
-        'doc_land_record'      => 'Land Record',
-        'doc_khasra_khatauni'  => 'Khasra / Khatauni',
-        'doc_photograph'       => 'Photograph',
-        'doc_mobile_available' => 'Mobile Available',
-        'doc_others'           => 'Other',
-    ];
-
     public const CKCC_CONSENT_FLAGS = [
-        'willing_to_renew'      => 'Borrower willing to renew CKCC',
-        'documents_handed_over' => 'Documents handed over',
+        'willing_to_renew'      => 'Borrower Willing to Renew',
+        'documents_handed_over' => 'Documents Handed Over',
         'renewal_form_signed'   => 'Renewal Form Signed',
         'ekyc_completed'        => 'Aadhaar e-KYC Completed',
         'biometrics_completed'  => 'Biometrics Completed',
     ];
 
+    /** Section 9, the CKCC Renewal half. */
     public const CKCC_RECOMMENDATION_FLAGS = [
-        'rec_renew_immediately'     => 'CKCC Renewal should be processed immediately',
-        'rec_documents_submitted'   => 'Borrower has submitted all required documents',
+        'rec_renew_immediately'     => 'Renewal Immediately Recommended',
+        'rec_documents_submitted'   => 'Documents Complete',
+        'rec_pending_documents'     => 'Pending Documents',
+        'rec_not_interested'        => 'Customer Not Interested',
+        'rec_branch_contact_urgent' => 'Branch Follow-up Required',
         'rec_followup_required'     => 'Follow-up Required',
-        'rec_not_interested'        => 'Customer not interested in renewal',
-        'rec_branch_contact_urgent' => 'Branch should contact customer urgently',
         'rec_others'                => 'Other',
     ];
 
+    /** Section 13, the CKCC OD-2 Renewal half. */
     public const CKCC_STATUS_FLAGS = [
         'st_customer_contacted'    => 'Customer Contacted',
         'st_customer_verified'     => 'Customer Verified',
-        'st_documents_collected'   => 'Renewal Documents Collected',
-        'st_application_submitted' => 'Renewal Application Submitted',
-        'st_ckcc_renewed'          => 'CKCC Renewed',
+        'st_documents_collected'   => 'Documents Collected',
+        'st_application_submitted' => 'Renewal Submitted',
+        'st_ckcc_renewed'          => 'Renewal Approved',
         'st_pending_at_branch'     => 'Pending at Branch',
-        'st_followup_required'     => 'Follow-up Required',
         'st_became_npa'            => 'Account Became NPA',
+        'st_followup_required'     => 'Follow-up Required',
     ];
+
+    /**
+     * Section 11 of the printed form, verbatim.
+     *
+     * Lives here rather than in the PDF builder because the app shows the same words
+     * above the tick box the agent has to accept before submitting, and a declaration
+     * that reads one way on the screen and another way on the page is not a
+     * declaration - it is two, and only one of them was agreed to.
+     *
+     * @var list<string>
+     */
+    public const DECLARATION = [
+        'I hereby certify that the information contained in this report has been collected and '
+            . 'verified during my personal physical field visit through direct interaction with the '
+            . 'borrower and/or other reliable local sources, wherever applicable. The details recorded '
+            . 'herein represent the factual position observed and verified during the visit and have '
+            . 'been documented fairly, accurately, objectively, and in good faith to the best of my '
+            . 'knowledge and belief.',
+        'I further certify that no information has been intentionally concealed, altered, or '
+            . 'misrepresented. The field verification has been conducted strictly in accordance with '
+            . "the applicable Reserve Bank of India (RBI) guidelines, the Bank's extant policies, "
+            . 'operational instructions, the Fair Practices Code, and the prescribed Code of Conduct '
+            . 'governing field verification, customer interaction, and recovery-related activities.',
+        'This report is submitted solely for the purpose of assessment, verification, recovery '
+            . 'follow-up, and/or renewal processing, as applicable, and shall be subject to '
+            . 'verification and acceptance by the Bank.',
+    ];
+
+    /** The closing note the printed form carries under section 13. */
+    public const IMPORTANT_NOTE =
+        'This report is designed for use in KRM OTS, CKCC OD-2 Renewal, Recovery Follow-up, '
+        . 'Pre-NPA Verification, and Post-NPA Verification cases. It is intended to support field '
+        . 'verification, customer due diligence, recovery monitoring, renewal processing, and timely '
+        . "preventive action in accordance with the applicable RBI guidelines, the Bank's internal "
+        . 'policies, and the Fair Practices Code.';
 
     /**
      * The KRM / OTS settlement section for a visit, or null when the agent did
@@ -190,8 +350,10 @@ final class VisitReport
             return null;
         }
         $row['mobile'] = Crypto::decrypt($row['mobile_enc'] ?? null);
+        $row['alt_mobile'] = Crypto::decrypt($row['alt_mobile_enc'] ?? null);
         $row['aadhaar'] = Crypto::decrypt($row['aadhaar_enc'] ?? null);
-        unset($row['mobile_enc'], $row['aadhaar_enc']);
+        $row['pan'] = Crypto::decrypt($row['pan_enc'] ?? null);
+        unset($row['mobile_enc'], $row['alt_mobile_enc'], $row['aadhaar_enc'], $row['pan_enc']);
         return $row;
     }
 
@@ -331,12 +493,36 @@ final class VisitReport
     public const CORRECTABLE = [
         'customer_name'              => 'Borrower name',
         'father_husband_name'        => 'Father / husband name',
-        'address'                    => 'Address',
-        'village'                    => 'Village',
+        'address'                    => 'Complete residential address',
+        'village'                    => 'Village / location',
         'family_member_name'         => 'Family member met',
         'family_member_relationship' => 'Relationship',
         'sp_cbc_name'                => 'SP / CBC name',
         'supervisor_name'            => 'Supervisor name',
+
+        // The same rule as the eight above, applied to the rest of what the printed form
+        // asks for in writing: every one of these is something a reviewer can be
+        // confident about from the report itself or from the account, and every one of
+        // them is somewhere a digit or a spelling gets transposed at a doorstep.
+        //
+        // Still nothing here is a tick box, a recommendation or an observation. Those
+        // are the agent's assertions about what they saw, and a reviewer overwriting
+        // them turns the agent's report into the reviewer's.
+        'branch_code'                => 'Branch code',
+        'regional_office'            => 'Regional office',
+        'zone'                       => 'Zone',
+        'linked_branch'              => 'Linked branch',
+        'district'                   => 'District (visit)',
+        'gram_panchayat'             => 'Gram panchayat',
+        'tehsil'                     => 'Tehsil',
+        'addr_village'               => 'Village (address)',
+        'addr_district'              => 'District (address)',
+        'state'                      => 'State',
+        'pin_code'                   => 'PIN code',
+        'cif_number'                 => 'CIF number',
+        'agent_mobile'               => 'BC agent / DRA mobile',
+        'supervisor_designation'     => 'Supervisor designation',
+        'supervisor_employee_id'     => 'Supervisor employee / DRA ID',
     ];
 
     /**
@@ -515,6 +701,8 @@ final class VisitReport
             'recovery'       => self::RECOVERY_FLAGS,
             'reason'         => self::REASON_FLAGS,
             'recommendation' => self::RECOMMENDATION_FLAGS,
+            'documents'      => self::DOCUMENT_FLAGS,
+            'evidence'       => self::EVIDENCE_FLAGS,
             default          => [],
         };
 

@@ -92,6 +92,23 @@ check('different numbers hash differently', Crypto::searchHash('9999999999') !==
 check('mask mobile', Crypto::maskMobile('9876543210') === 'XXXXXX3210', (string) Crypto::maskMobile('9876543210'));
 check('mask aadhaar', Crypto::maskAadhaar('123456789012') === 'XXXX XXXX 9012', (string) Crypto::maskAadhaar('123456789012'));
 
+// A PAN has letters in it, which is exactly why it cannot go through the mobile
+// helpers. normalise() strips everything that is not a digit, so "ABCDE1234F" would
+// become "1234" - two unrelated people would then share a search hash and a masked
+// value, and the bug would only ever surface as a lookup returning the wrong borrower.
+check('mask PAN keeps the last four characters',
+    Crypto::maskPan('ABCDE1234F') === 'XXXXXX234F', (string) Crypto::maskPan('ABCDE1234F'));
+check('a PAN normalises to upper case, punctuation removed',
+    Crypto::normalisePan(' abcde-1234 f ') === 'ABCDE1234F', (string) Crypto::normalisePan(' abcde-1234 f '));
+check('a PAN hashes the same however it is typed',
+    Crypto::panHash('abcde 1234 f') === Crypto::panHash('ABCDE1234F'));
+check('two PANs sharing a digit block hash differently',
+    Crypto::panHash('ABCDE1234F') !== Crypto::panHash('ZZZZZ1234Q'));
+check('and neither collapses to the digits alone',
+    Crypto::panHash('ABCDE1234F') !== Crypto::searchHash('ABCDE1234F'));
+check('a blank PAN yields nothing rather than an empty mask',
+    Crypto::maskPan('') === null && Crypto::panHash(null) === null);
+
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // A blank key must fail loudly, and name itself.
@@ -782,6 +799,176 @@ check('a lone box fills the page by default', $wideWidth > 400.0, (string) round
 check('and can be sized to a column instead, to match the boxes above it',
     $halvedWidth > 0 && abs($halvedWidth - (($wideWidth - 16.0) / 2)) < 0.5,
     (string) round($halvedWidth, 1));
+
+// ---------------------------------------------------------------------------
+section('The printed form: numbered bands and tick boxes');
+
+// The visit report is now laid out as the paper form is, which means two new
+// primitives carry it: a numbered section band, and a grid that prints EVERY option
+// rather than only the ticked ones.
+//
+// That last part is a reversal of an earlier decision and the reason it is tested is
+// the reason it was reversed: printing only what was true made an unticked box and a
+// question the form never asked look identical, so "neighbours were not asked" and
+// "this version had no such field" read the same on paper.
+$formPdf = new Pdf('Field Visit Verification Report', 'form layout', false, 'test');
+$formPdf->sectionBand(7, 'Documents Verified');
+$formPdf->groupLabel('Case Type');
+$formPdf->checkboxGrid([
+    ['label' => 'Aadhaar Card', 'checked' => true],
+    ['label' => 'PAN Card', 'checked' => false],
+    ['label' => 'Electricity Bill', 'checked' => false],
+], 3);
+$formBytes = $formPdf->output();
+
+check('a section band prints its number', str_contains($formBytes, '(7.)'));
+check('and its title, in upper case', str_contains($formBytes, 'DOCUMENTS VERIFIED'));
+check('a group label names the row of boxes', str_contains($formBytes, '(Case Type)'));
+check('every option prints, ticked or not',
+    str_contains($formBytes, '(Aadhaar Card)')
+    && str_contains($formBytes, '(PAN Card)')
+    && str_contains($formBytes, '(Electricity Bill)'));
+
+// One square per option; the two extra strokes belong to the single ticked one.
+$emptyGrid = new Pdf('Field Visit Verification Report', 'form layout', false, 'test');
+$gridBaseline = substr_count($emptyGrid->output(), ' l S');
+
+$oneTick = new Pdf('Field Visit Verification Report', 'form layout', false, 'test');
+$oneTick->checkboxGrid([
+    ['label' => 'Aadhaar Card', 'checked' => true],
+    ['label' => 'PAN Card', 'checked' => false],
+], 3);
+$oneTickBytes = $oneTick->output();
+check('a box is drawn for each option', substr_count($oneTickBytes, ' re') >= 2,
+    (string) substr_count($oneTickBytes, ' re'));
+// A tick, not a filled square: a solid block reads as a redaction on a photocopy.
+check('a tick is two strokes, and only the ticked box gets them',
+    substr_count($oneTickBytes, ' l S') - $gridBaseline === 2,
+    (string) (substr_count($oneTickBytes, ' l S') - $gridBaseline));
+
+$noneTicked = new Pdf('Field Visit Verification Report', 'form layout', false, 'test');
+$noneTicked->checkboxGrid([
+    ['label' => 'Aadhaar Card', 'checked' => false],
+    ['label' => 'PAN Card', 'checked' => false],
+], 3);
+check('and an all-unticked row still prints its boxes',
+    substr_count($noneTicked->output(), ' l S') - $gridBaseline === 0
+    && str_contains($noneTicked->output(), '(Aadhaar Card)'));
+
+$emptyList = new Pdf('Field Visit Verification Report', '', false, '');
+$emptyListBefore = $emptyList->cursorY();
+$emptyList->checkboxGrid([]);
+check('an empty option list draws nothing', $emptyList->cursorY() === $emptyListBefore);
+
+// A blank ruled line means "write here after printing", which a key/value pair
+// showing "-" does not: that says the field is empty, not that it is meant to be
+// filled in by hand.
+$ruled = new Pdf('Field Visit Verification Report', '', false, '');
+$ruledBaseline = substr_count((new Pdf('Field Visit Verification Report', '', false, ''))->output(), ' l S');
+$ruled->ruledFields(['Verified On' => '12 Aug 2026', 'Date' => ''], 2);
+$ruledBytes = $ruled->output();
+check('a filled ruled field prints its value', str_contains($ruledBytes, '(12 Aug 2026)'));
+check('and a blank one draws a line to write on',
+    substr_count($ruledBytes, ' l S') - $ruledBaseline === 1,
+    (string) (substr_count($ruledBytes, ' l S') - $ruledBaseline));
+
+// ---------------------------------------------------------------------------
+section('The printed form: masthead, ruled fields and page totals');
+
+// The form is recognised by its head before it is read. A page that opens with a thin
+// blue rule and a left-aligned heading is a printout; the masthead makes it the form.
+$mast = new Pdf('Field Visit Verification Report', 'LN1 . Ram Lal', false, 'confidential');
+$mast->useRunningHeader('D2 Recovery Solutions & Services  |  Field Visit Verification Report');
+$mast->titleBlock('D2 Recovery Solutions & Services', 'Field Visit Verification Report', [
+    '(KRM OTS / CKCC OD-2 Renewal / Recovery Verification Report)',
+    "RBI Guidelines & Bank's Code of Conduct Compliant Format",
+]);
+$mastBytes = $mast->output();
+
+check('the masthead carries the organisation in upper case',
+    str_contains($mastBytes, 'D2 RECOVERY SOLUTIONS & SERVICES'));
+check('and the document name under it',
+    str_contains($mastBytes, 'FIELD VISIT VERIFICATION REPORT'));
+check('and both strap lines',
+    str_contains($mastBytes, 'Recovery Verification Report')
+    && str_contains($mastBytes, 'Code of Conduct Compliant Format'));
+// The running header replaces the tall branded band rather than being drawn under it -
+// otherwise page one is laid out differently from every other page.
+check('the running header replaces the report band',
+    substr_count($mastBytes, 'Field Visit Verification Report') >= 1
+    && !str_contains($mastBytes, 'Generated '));
+
+// "Page 1 of 8" cannot be written while page 1 is being drawn, so it is stamped on at
+// the end. A page count that says "Page 1" on an eight-page form is the thing somebody
+// notices when two pages have gone missing in a fax.
+check('every page says which of how many it is', str_contains($mastBytes, 'Page 1 of 1'));
+
+$long = new Pdf('Field Visit Verification Report', '', false, '');
+$long->useRunningHeader('running');
+for ($i = 0; $i < 12; $i++) {
+    $long->sectionBand($i + 1, 'Section ' . ($i + 1));
+    $long->formFields(['Visit Date' => '02 Aug 2026', 'Visit Time' => '11:15 AM'], 2);
+}
+$longBytes = $long->output();
+preg_match('/Page 1 of (\d+)/', $longBytes, $totalMatch);
+$total = (int) ($totalMatch[1] ?? 0);
+check('a multi-page form counts its own pages', $total >= 2, 'total=' . $total);
+check('and every page carries the same total',
+    substr_count($longBytes, 'of ' . $total) === $total,
+    substr_count($longBytes, 'of ' . $total) . ' of ' . $total);
+
+// A label beside a rule reads as a form; a label above a value reads as a report of
+// what was recorded. The rule is what tells somebody holding a blank one where to write.
+$ruledForm = new Pdf('f', '', false, '');
+$ruledBase = substr_count((new Pdf('f', '', false, ''))->output(), ' l S');
+$ruledForm->formFields(['Visit Date' => '02 Aug 2026', 'Visit Time' => ''], 2);
+$ruledFormBytes = $ruledForm->output();
+
+check('a form field prints its label with a colon', str_contains($ruledFormBytes, '(Visit Date :)'));
+check('and its value on the rule', str_contains($ruledFormBytes, '(02 Aug 2026)'));
+// Two rules: one under each field, filled or not. The rule is the form.
+check('every field gets a rule, filled or blank',
+    substr_count($ruledFormBytes, ' l S') - $ruledBase === 2,
+    (string) (substr_count($ruledFormBytes, ' l S') - $ruledBase));
+
+// A dash means "nothing recorded". On a form the way to say that is a blank rule -
+// printing "-" on the line reads as a value somebody wrote there.
+$dashed = new Pdf('f', '', false, '');
+$dashed->formFields(['Sanction Limit' => '-'], 1);
+check('a dash is printed as a blank rule, not as a value',
+    !str_contains($dashed->output(), '(-)'));
+
+// The label column is sized off the longest label actually passed in. A flat fraction
+// truncated "Aadhaar (Last 4 Digits)" to "Aadhaar (Last 4 Di..." at three columns, and a
+// form that abbreviates its own questions is not the form.
+$wideLabels = new Pdf('f', '', false, '');
+$wideLabels->formFields([
+    'Aadhaar (Last 4 Digits)' => 'XXXX XXXX 0002',
+    'PAN Number (Optional)'   => '',
+    'Mobile Number'           => 'XXXXXX0002',
+], 2);
+check('a long label is not abbreviated', str_contains($wideLabels->output(), '(Aadhaar (Last 4 Digits) :)')
+    || str_contains($wideLabels->output(), 'Aadhaar \\(Last 4 Digits\\) :'));
+
+// The declaration is the one paragraph on the page somebody is agreeing to. Running it
+// in the same grey as a helper line makes a certification look like guidance.
+$callout = new Pdf('f', '', false, '');
+$calloutBase = substr_count((new Pdf('f', '', false, ''))->output(), ' re');
+$callout->calloutBox(['I hereby certify that this is true.'], '#fdf6e3', '#e3a008', '#3f3f46', 'Important Note');
+$calloutBytes = $callout->output();
+check('a callout prints its heading and its text',
+    str_contains($calloutBytes, '(Important Note)')
+    && str_contains($calloutBytes, 'I hereby certify'));
+// Fill, border and the heavier leading bar: three rectangles, which is what makes it
+// read as a callout rather than as another table cell.
+check('and is drawn as a filled, bordered box with a leading bar',
+    substr_count($calloutBytes, ' re') - $calloutBase === 3,
+    (string) (substr_count($calloutBytes, ' re') - $calloutBase));
+$emptyCallout = new Pdf('f', '', false, '');
+$emptyCalloutBefore = $emptyCallout->cursorY();
+$emptyCallout->calloutBox(['', '   ']);
+check('but a box with nothing to say is not drawn at all',
+    $emptyCallout->cursorY() === $emptyCalloutBefore);
 
 // ---------------------------------------------------------------------------
 section('Multi-line captions');

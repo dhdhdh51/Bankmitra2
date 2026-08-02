@@ -30,12 +30,29 @@ final class VisitController extends Controller
             'visit_time'      => 'required|time',
             'promise_amount'  => 'nullable|numeric|min_value:0',
             'promise_date'    => 'nullable|date',
-            'occupation'      => 'nullable|in:agriculture,dairy,business,job,labour,others',
+            // 'job' is still accepted because a released APK sends it. The service
+            // translates it to 'service'; rejecting it here would fail the submit of an
+            // agent who has not updated the app yet, over a word.
+            'occupation'      => 'nullable|in:agriculture,dairy,business,labour,service,others,job',
+            'gender'          => 'nullable|in:male,female,other',
+            'date_of_birth'   => 'nullable|date',
+            // Length only. A PAN typed at a doorstep arrives with spaces and mixed case
+            // and is normalised on the way in; a regex here would reject a real card.
+            'pan_number'      => 'nullable|max:20',
+            'pin_code'        => 'nullable|regex:/^\d{6}$/',
+            'residence_verified'     => 'nullable|in:confirmed,not_confirmed',
+            'neighbour_verification' => 'nullable|in:conducted,not_conducted',
             'remarks'         => 'nullable|max:20000',
+            'general_recommendation' => 'nullable|max:20000',
         ], [
             'loan_account_id' => 'Loan account',
             'visit_date'      => 'Visit date',
             'visit_time'      => 'Visit time',
+            'pan_number'      => 'PAN number',
+            'pin_code'        => 'PIN code',
+            'residence_verified'     => 'Residence verification',
+            'neighbour_verification' => 'Neighbour verification',
+            'general_recommendation' => 'General recommendation',
         ]);
 
         $leadId = $request->int('loan_account_id');
@@ -200,19 +217,40 @@ final class VisitController extends Controller
                 static fn (string $value): array => ['value' => $value, 'label' => occupation_label($value)],
                 VisitReport::OCCUPATIONS
             ),
+            'genders'              => $this->optionList(VisitReport::GENDERS),
             'contact_flags'        => $this->flagList(VisitReport::CONTACT_FLAGS),
             'recovery_flags'       => $this->flagList(VisitReport::RECOVERY_FLAGS),
             'reason_flags'         => $this->flagList(VisitReport::REASON_FLAGS),
             'recommendation_flags' => $this->flagList(VisitReport::RECOMMENDATION_FLAGS),
 
-            // Which kind of report the agent is filing. The app shows the extra
-            // sections only for the type selected, so a plain recovery visit is
-            // not buried under forty settlement fields.
+            // Section 3's Loan Type row and Asset Classification row.
+            'loan_types'            => $this->optionList(VisitReport::LOAN_TYPES),
+            'asset_classifications' => $this->optionList(VisitReport::ASSET_CLASSIFICATIONS),
+
+            // Section 6's two verification rows.
+            'residence_verification' => $this->optionList(VisitReport::RESIDENCE_VERIFICATION),
+            'neighbour_verification' => $this->optionList(VisitReport::NEIGHBOUR_VERIFICATION),
+
+            // Sections 7 and 10, asked on every case type.
+            'document_flags' => $this->flagList(VisitReport::DOCUMENT_FLAGS),
+            'evidence_flags' => $this->flagList(VisitReport::EVIDENCE_FLAGS),
+
+            // Section 11. Sent rather than compiled into the APK so the wording the
+            // agent accepts and the wording printed on the page cannot drift apart.
+            'declaration'    => VisitReport::DECLARATION,
+            'important_note' => VisitReport::IMPORTANT_NOTE,
+
+            // Which kind of case the agent is filing - the form's Case Type row. The
+            // app shows the extra sections only for the type selected, so a plain
+            // recovery call is not buried under forty settlement fields.
             'report_types' => $this->optionList(VisitReport::REPORT_TYPES),
 
             'ots' => [
                 'schemes'          => $this->optionList(VisitReport::OTS_SCHEMES),
                 'approval_statuses' => $this->optionList(VisitReport::OTS_APPROVAL_STATUSES),
+                'customer_responses' => $this->optionList(VisitReport::OTS_CUSTOMER_RESPONSES),
+                'recommendation_flags' => $this->flagList(VisitReport::OTS_RECOMMENDATION_FLAGS),
+                'status_flags'         => $this->flagList(VisitReport::OTS_STATUS_FLAGS),
                 // Scheme defaults the app pre-fills; both stay editable per case.
                 'default_payable_percent'         => 22.50,
                 'default_initial_deposit_percent' => 10.00,
@@ -222,7 +260,9 @@ final class VisitController extends Controller
                 'due_buckets'          => $this->optionList(VisitReport::CKCC_DUE_BUCKETS),
                 'kyc_statuses'         => $this->optionList(VisitReport::CKCC_KYC_STATUSES),
                 'eligibility_flags'    => $this->flagList(VisitReport::CKCC_ELIGIBILITY_FLAGS),
-                'document_flags'       => $this->flagList(VisitReport::CKCC_DOCUMENT_FLAGS),
+                // No document_flags here on purpose: the checklist is `document_flags`
+                // above, asked once for every case type. It used to be duplicated in
+                // this block, which let one report answer the same eleven boxes twice.
                 'consent_flags'        => $this->flagList(VisitReport::CKCC_CONSENT_FLAGS),
                 'recommendation_flags' => $this->flagList(VisitReport::CKCC_RECOMMENDATION_FLAGS),
                 'status_flags'         => $this->flagList(VisitReport::CKCC_STATUS_FLAGS),
@@ -263,6 +303,7 @@ final class VisitController extends Controller
             'scheme_label'     => $row['scheme'] === null
                 ? null
                 : (VisitReport::OTS_SCHEMES[(string) $row['scheme']] ?? (string) $row['scheme']),
+            'scheme_other_text' => $row['scheme_other_text'] === null ? null : (string) $row['scheme_other_text'],
 
             'outstanding_amount'      => $amount('outstanding_amount'),
             'relief_waiver_percent'   => $percent('relief_waiver_percent'),
@@ -287,8 +328,33 @@ final class VisitController extends Controller
             'expected_closure_date' => $row['expected_closure_date'] === null ? null : (string) $row['expected_closure_date'],
 
             'borrower_accepted' => (int) $row['borrower_accepted'] === 1,
+            'customer_response' => $row['customer_response'] === null ? null : (string) $row['customer_response'],
+            'customer_response_label' => $row['customer_response'] === null
+                ? null
+                : (VisitReport::OTS_CUSTOMER_RESPONSES[(string) $row['customer_response']] ?? null),
             'rejection_reason'  => $row['rejection_reason'] === null ? null : (string) $row['rejection_reason'],
+            'expected_deposit_date' => $row['expected_deposit_date'] === null
+                ? null : (string) $row['expected_deposit_date'],
+
+            'recommendations' => $this->flagStatesFor($row, VisitReport::OTS_RECOMMENDATION_FLAGS),
+            'report_status'   => $this->flagStatesFor($row, VisitReport::OTS_STATUS_FLAGS),
         ];
+    }
+
+    /**
+     * A flag group as a list of `key` / `label` / `checked`.
+     *
+     * @param  array<string,mixed>  $row
+     * @param  array<string,string> $map
+     * @return list<array{key:string,label:string,checked:bool}>
+     */
+    private function flagStatesFor(array $row, array $map): array
+    {
+        $out = [];
+        foreach ($map as $key => $label) {
+            $out[] = ['key' => $key, 'label' => $label, 'checked' => (int) ($row[$key] ?? 0) === 1];
+        }
+        return $out;
     }
 
     /**
@@ -333,8 +399,8 @@ final class VisitController extends Controller
             'mobile_linked'          => (int) $row['mobile_linked'] === 1,
             'aadhaar_auth_completed' => (int) $row['aadhaar_auth_completed'] === 1,
 
-            'documents'      => $flags(VisitReport::CKCC_DOCUMENT_FLAGS),
-            'doc_other_text' => $row['doc_other_text'] === null ? null : (string) $row['doc_other_text'],
+            // The document checklist is on the report itself now, not here - see
+            // `documents_verified` in presentVisitFull().
             'consent'        => $flags(VisitReport::CKCC_CONSENT_FLAGS),
             'recommendations' => $flags(VisitReport::CKCC_RECOMMENDATION_FLAGS),
             'rec_other_text' => $row['rec_other_text'] === null ? null : (string) $row['rec_other_text'],

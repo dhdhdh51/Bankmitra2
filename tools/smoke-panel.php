@@ -366,13 +366,25 @@ $visits = page('GET /visits', '/visits', 200, 'Visit Reports');
 preg_match('#/visits/(\d+)"#', $visits, $visitMatch);
 $visitId = (int) ($visitMatch[1] ?? 1);
 
-$visitShow = page('GET /visits/{id}', '/visits/' . $visitId, 200, 'Digital BC Field Visit Report');
+$visitShow = page('GET /visits/{id}', '/visits/' . $visitId, 200, 'Field Visit Verification Report');
+// The section list is the printed form's, numbered as the form numbers them. Asserted
+// by name because the screen and the paper have to be the same document - a section
+// that quietly stops rendering is a field nobody notices is missing until an auditor
+// asks for it.
 foreach ([
-    'General', 'Borrower details', 'Loan details', 'Customer contact',
-    'Physical verification', 'Recovery possibility', 'Non-payment reason',
-    'Agent recommendation', 'Remarks',
+    '1. General information', '2. Borrower information', '3. Loan account details',
+    '6. Physical verification', '7. Documents verified',
+    '8. BC agent / DRA observations', '8b. Reason for non-payment',
+    '9. Recommendation', '10. Evidence attached', '11. Declaration', '12. Certification',
 ] as $sectionName) {
     check("visit report has section: {$sectionName}", str_contains($visitShow, $sectionName));
+}
+foreach ([
+    'Regional office', 'Linked branch', 'Alternate mobile', 'PAN number', 'Gram panchayat',
+    'Asset classification', 'Residence verification', 'Neighbour verification',
+    'General recommendation', 'Employee ID / DRA ID',
+] as $newField) {
+    check("visit report shows the field: {$newField}", str_contains($visitShow, $newField));
 }
 
 $visitPdf = request($base . '/visits/' . $visitId . '/pdf');
@@ -407,9 +419,49 @@ if ($pdfWithMedia !== null) {
     check('and are actually drawn', str_contains($pdfWithMedia, ' Do'));
 
     // The sections that only exist because images do.
-    foreach (['Location Recorded', 'Field Photographs', 'Signatures', 'Approval'] as $section) {
+    foreach ([
+        'GPS Location', 'Field Photographs', 'CERTIFICATION', 'Approval',
+        // Every numbered band on the paper form, in the printed copy.
+        'GENERAL INFORMATION', 'BORROWER INFORMATION', 'LOAN ACCOUNT DETAILS',
+        'PHYSICAL VERIFICATION', 'DOCUMENTS VERIFIED', 'RECOMMENDATION',
+        'EVIDENCE ATTACHED', 'DECLARATION', 'FINAL REPORT STATUS',
+    ] as $section) {
         check("printed report has section: {$section}", str_contains($pdfWithMedia, $section));
     }
+    // The masthead. A form is recognised by its head before it is read, and a page that
+    // opens with a thin rule and a left-aligned heading is a printout rather than the
+    // document a branch will accept.
+    check('the printed report opens with the form\'s masthead',
+        str_contains($pdfWithMedia, 'FIELD VISIT VERIFICATION REPORT')
+        && str_contains($pdfWithMedia, 'Recovery Verification Report')
+        && str_contains($pdfWithMedia, 'Code of Conduct Compliant Format'));
+    // "Page 4" on an eight-page form is what somebody misses when two pages vanish in a
+    // fax. The total cannot be known while a page is being drawn, so it is stamped on at
+    // the end - and that is exactly the kind of thing that silently stops happening.
+    check('every page says which of how many it is',
+        preg_match('/Page 1 of (\d+)/', $pdfWithMedia, $pageTotal) === 1
+        && (int) $pageTotal[1] >= 1,
+        $pageTotal[0] ?? 'no page total');
+    // Label, colon, rule. A label above a value reads as a report of what was recorded;
+    // a label beside a rule reads as a form, which is what this is.
+    check('fields print as a label and a ruled line',
+        str_contains($pdfWithMedia, 'Visit Date :') && str_contains($pdfWithMedia, 'Visit Time :'));
+
+    // Every tick box prints, ticked or not. Printing only the true ones made an unticked
+    // box and a question the form never asked look identical on paper.
+    check('an unticked option still prints its label',
+        str_contains($pdfWithMedia, 'Electricity Bill') && str_contains($pdfWithMedia, 'Khatauni'));
+    // The declaration, in full, and the closing note the form carries.
+    check('the declaration prints in full',
+        str_contains($pdfWithMedia, 'Reserve Bank of India')
+        && str_contains($pdfWithMedia, 'Fair Practices Code'));
+    check('and the closing note prints', str_contains($pdfWithMedia, 'Important Note'));
+    // Four blank boxes: agent, borrower, supervisor, approver. Nothing fills them but a pen.
+    check('with a box for the borrower, the agent, the supervisor and the approver',
+        str_contains($pdfWithMedia, 'BC Agent / DRA Signature')
+        && str_contains($pdfWithMedia, 'Borrower Signature')
+        && str_contains($pdfWithMedia, 'Supervisor Signature')
+        && str_contains($pdfWithMedia, 'Approver Signature'));
 
     // A geo caption is the whole point of a geo-tagged photograph: latitude to six
     // decimal places, so pasting it into a map lands where the agent stood.
@@ -440,9 +492,10 @@ if ($pdfWithMedia !== null) {
     // look wrong.
     check('the printed report asks for a signature by hand',
         str_contains($pdfWithMedia, 'signed by hand on this printed copy'));
+    // The form's own wording: "BC Agent / DRA", not "BC / DC Agent".
     check('with a box for the borrower and one for the agent',
         str_contains($pdfWithMedia, 'Thumb Impression')
-        && str_contains($pdfWithMedia, 'Agent Signature'));
+        && str_contains($pdfWithMedia, 'BC Agent / DRA Signature'));
     check('and a date line under each', substr_count($pdfWithMedia, 'Date:') >= 2,
         (string) substr_count($pdfWithMedia, 'Date:'));
     check('no captured signature is printed any more',
@@ -528,7 +581,7 @@ foreach ($candidateIds as $candidateId) {
         $otsPage = $body;
         $otsVisitId = $candidateId;
     }
-    if ($ckccPage === null && str_contains($body, 'Documents the borrower had')) {
+    if ($ckccPage === null && str_contains($body, '5. CKCC OD-2 renewal details')) {
         $ckccPage = $body;
         $ckccVisitId = $candidateId;
     }
@@ -559,15 +612,30 @@ if ($ckccPage !== null) {
     check('CKCC card spells out the expected NPA date',
         str_contains($ckccPage, 'expected to turn'));
     check('CKCC card shows the due bucket badge', str_contains($ckccPage, 'Within 7 Days'));
-    check('CKCC card lists the documents the borrower had',
-        str_contains($ckccPage, 'Documents the borrower had'));
+    // The document checklist is section 7 of the form now, asked of every case type -
+    // it is not repeated inside the renewal block, where a recovery visit could never
+    // reach it and where a renewal report could answer it twice.
+    check('the document checklist is its own numbered section, once',
+        substr_count($ckccPage, '<h2>7. Documents verified</h2>') === 1,
+        'headings: ' . substr_count($ckccPage, '<h2>7. Documents verified</h2>'));
+    // And the renewal block's own copy is gone, not merely hidden. Its old label was
+    // "Khasra / Khatauni"; the form says Khatauni, and there is one list now.
+    check('the renewal block no longer repeats it',
+        !str_contains($ckccPage, 'Khasra') && str_contains($ckccPage, 'Khatauni'));
     check('CKCC card shows renewal consent', str_contains($ckccPage, 'Renewal consent'));
     check('CKCC card shows the agent observation',
         str_contains($ckccPage, 'Land records in order'));
     check('CKCC card shows the report status', str_contains($ckccPage, 'Report status'));
-    // No location data exists anywhere in this system.
-    check('CKCC card shows no GPS or location field',
-        !str_contains($ckccPage, 'GPS') && !stripos($ckccPage, 'Latitude'));
+    // The renewal section itself never asks the agent to assert a position. The report's
+    // own fix is captured by the device under consent and shown in section 10; a tick box
+    // inviting somebody to type coordinates would be a different and worse thing.
+    $renewalCard = $ckccPage;
+    if (str_contains($renewalCard, '5. CKCC OD-2 renewal details')) {
+        $renewalCard = substr($renewalCard, strpos($renewalCard, '5. CKCC OD-2 renewal details'));
+        $renewalCard = substr($renewalCard, 0, strpos($renewalCard . '<!-- 6.', '<!-- 6.'));
+    }
+    check('the renewal section asks for no coordinates of its own',
+        !str_contains($renewalCard, 'Latitude') && !str_contains($renewalCard, 'Longitude'));
 }
 
 // ---------------------------------------------------------------------------
@@ -580,14 +648,22 @@ if ($ckccPage !== null) {
 if ($otsVisitId !== null) {
     $otsPdf = request($base . '/visits/' . $otsVisitId . '/pdf');
     check('the printed settlement report has its own section',
-        $otsPdf['status'] === 200 && str_contains($otsPdf['body'], 'KRM / OTS Settlement'),
+        $otsPdf['status'] === 200 && str_contains($otsPdf['body'], 'KRM OTS DETAILS'),
         'HTTP ' . $otsPdf['status']);
     check('and prints the settlement arithmetic',
-        str_contains($otsPdf['body'], 'Residual loan balance')
-        && str_contains($otsPdf['body'], 'Total settlement')
-        && str_contains($otsPdf['body'], 'Balance payable'));
+        str_contains($otsPdf['body'], 'Residual Loan Balance')
+        && str_contains($otsPdf['body'], 'Proposed Settlement')
+        && str_contains($otsPdf['body'], 'Balance Payable'));
     check('with the percentages the figures came from',
-        str_contains($otsPdf['body'], 'Payable percent'));
+        str_contains($otsPdf['body'], 'Payable Percent'));
+    // Section 4's Customer Response row and section 13's settlement status boxes, both of
+    // which the printed copy had no way to show before.
+    check('the customer response row prints',
+        str_contains($otsPdf['body'], 'Customer Response')
+        && str_contains($otsPdf['body'], 'Requested Time'));
+    check('and the settlement status boxes print',
+        str_contains($otsPdf['body'], 'Initial Deposit Received')
+        && str_contains($otsPdf['body'], 'OTS Closed'));
     check('the deposit prints with the bank\'s own receipt reference',
         str_contains($otsPdf['body'], 'RCPT/2026/004417'));
     check('and says the agent did not take the money',
@@ -601,27 +677,34 @@ if ($ckccVisitId !== null) {
         $ckccPdf['status'] === 200 && str_contains($ckccPdf['body'], 'CKCC OD-2 Renewal'),
         'HTTP ' . $ckccPdf['status']);
     check('it prints the deadline and what happens if it is missed',
-        str_contains($ckccPdf['body'], 'Renewal due')
-        && str_contains($ckccPdf['body'], 'Expected NPA date if not renewed'));
+        str_contains($ckccPdf['body'], 'Renewal Due Date')
+        && str_contains($ckccPdf['body'], 'Expected NPA Date'));
     check('the account snapshot prints',
-        str_contains($ckccPdf['body'], 'Sanction limit') && str_contains($ckccPdf['body'], 'Drawing power'));
-    // The tick lists print as the ones that are true, named - a grid of empty boxes takes
-    // half a page to say nothing.
-    check('the tick lists print as the ones that were ticked',
-        str_contains($ckccPdf['body'], 'Documents the borrower had in hand')
+        str_contains($ckccPdf['body'], 'Sanction Limit') && str_contains($ckccPdf['body'], 'Drawing Power'));
+    // The document checklist is section 7 now, on every report - not repeated inside the
+    // renewal block where a recovery visit could never reach it.
+    check('the document checklist prints in its own numbered section',
+        str_contains($ckccPdf['body'], 'DOCUMENTS VERIFIED')
         && str_contains($ckccPdf['body'], 'Aadhaar Card'));
     check('the agent observation prints',
         str_contains($ckccPdf['body'], 'Land records in order'));
-    check('and the report status prints', str_contains($ckccPdf['body'], 'Report status'));
+    check('and the renewal status boxes print',
+        str_contains($ckccPdf['body'], 'FINAL REPORT STATUS')
+        && str_contains($ckccPdf['body'], 'Renewal Approved'));
 }
 
-// A plain recovery visit must NOT grow either section: a heading with nothing under it
-// reads as a form somebody failed to fill in.
+// A plain recovery visit prints all thirteen bands - that is what matching the paper form
+// means, and a numbered form with section 4 missing leaves a reader unsure whether it was
+// not applicable or lost. What it must NOT do is present an empty section as a filled-in
+// one, so both say so in words instead.
 $plainPdf = request($base . '/visits/' . $visitId . '/pdf');
-check('a plain recovery report prints neither section',
-    !str_contains($plainPdf['body'], 'KRM / OTS Settlement')
-    && !str_contains($plainPdf['body'], 'CKCC OD-2 Renewal'),
+check('a plain recovery report still prints every numbered section',
+    str_contains($plainPdf['body'], 'KRM OTS DETAILS')
+    && str_contains($plainPdf['body'], 'CKCC OD-2 RENEWAL DETAILS'),
     'HTTP ' . $plainPdf['status']);
+check('and says in words that neither applies to this visit',
+    substr_count($plainPdf['body'], 'Not applicable to this visit') === 2,
+    (string) substr_count($plainPdf['body'], 'Not applicable to this visit'));
 
 page('GET /promises', '/promises', 200, 'Promises');
 page('GET /promises pending', '/promises?status=pending', 200);

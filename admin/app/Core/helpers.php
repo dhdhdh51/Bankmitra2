@@ -296,11 +296,41 @@ if (!function_exists('occupation_label')) {
             'agriculture' => 'Agriculture',
             'dairy'       => 'Dairy',
             'business'    => 'Business',
-            'job'         => 'Job',
             'labour'      => 'Labour',
-            'others'      => 'Others',
+            'service'     => 'Service',
+            'others'      => 'Other',
+            // The value this column held before the printed form's wording was adopted.
+            // No row should still carry it - the migration rewrites them - but a report
+            // must not print a dash for an occupation somebody recorded, and this is
+            // cheaper than an operator wondering whether the migration finished.
+            'job'         => 'Service',
         ];
         return $map[$value ?? ''] ?? '—';
+    }
+}
+
+if (!function_exists('enum_label')) {
+    /**
+     * The printable label for a value out of one of the VisitReport option maps.
+     *
+     * One helper rather than a match in every view, because the printed form, the panel
+     * screen and the PDF all have to name a choice the same way. When they disagree,
+     * the report on the screen and the report in the file say different things about
+     * the same tick box.
+     *
+     * Falls back to the stored value made readable rather than to a dash: an option
+     * removed from the list later is still a fact somebody recorded, and printing "—"
+     * over it would quietly erase it.
+     *
+     * @param array<string,string> $map
+     */
+    function enum_label(array $map, mixed $value, string $empty = '—'): string
+    {
+        $key = $value === null ? '' : trim((string) $value);
+        if ($key === '') {
+            return $empty;
+        }
+        return $map[$key] ?? ucwords(str_replace('_', ' ', $key));
     }
 }
 

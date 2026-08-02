@@ -88,6 +88,23 @@
                     tools:ignore="LabelFor" />
             </com.google.android.material.textfield.TextInputLayout>
 
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldOtsSchemeOther"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:hint="@string/ots_scheme_other_text"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputOtsSchemeOther"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textCapSentences"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -557,6 +574,154 @@
                     android:inputType="textMultiLine|textCapSentences"
                     android:minLines="2" />
             </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldOtsCustomerResponse"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="@string/ots_customer_response"
+                app:helperText="@string/ots_customer_response_helper"
+                app:helperTextEnabled="true">
+
+                <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                    android:id="@+id/inputOtsCustomerResponse"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="none"
+                    android:maxLines="1"
+                    tools:ignore="LabelFor" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- When they say they will pay, as against deposit date, which is when
+                 they did. A promise and a receipt are not the same fact. -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/fieldOtsExpectedDepositDate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="@string/ots_expected_deposit_date">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputOtsExpectedDepositDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:cursorVisible="false"
+                    android:focusable="false"
+                    android:inputType="none"
+                    android:maxLines="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="10dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Recommendation on the settlement ===== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ots_group_recommendation"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsRecProposal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_rec_proposal_recommended" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsRecFollowup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_rec_followup_required" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsRecRefused"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_rec_customer_refused" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsRecNotEligible"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_rec_not_eligible" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="6dp"
+                android:background="@color/lrms_border" />
+
+            <!-- ===== Final report status =====
+                 Where the settlement has actually got to, which the approval status
+                 does not say: an offer the branch has approved can still be waiting on
+                 the borrower's deposit, and a follow-up list is built from that. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/ots_group_status"
+                android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStContacted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_customer_contacted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStVerified"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_customer_verified" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStAccepted"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_ots_accepted" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStRejected"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_ots_rejected" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStDeposit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_initial_deposit_received" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStClosed"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_ots_closed" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/checkOtsStFollowup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="@string/ots_st_followup_required" />
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

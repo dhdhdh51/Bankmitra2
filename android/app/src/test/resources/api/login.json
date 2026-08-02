@@ -1,8 +1,8 @@
 {
     "success": true,
     "data": {
-        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODU0OTI5MzgsIm5iZiI6MTc4NTQ5MjkzOCwiZXhwIjoxNzg1NTAwMTM4LCJqdGkiOiJiODMzZDdhMGE1ZGEwYjIyIiwiaXNzIjoibHJtcyIsInN1YiI6Mywicm9sZSI6ImFnZW50IiwiYnJhbmNoIjoyfQ.T5ryfk2nElphpC101mD6gbcxGtp_wNvdgbem4MjLwXA",
-        "refresh_token": "aa1063a702921649ab670d0899c920d125ecf7ced247e671659d66f9ad462a2f",
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3ODU2NjYxODYsIm5iZiI6MTc4NTY2NjE4NiwiZXhwIjoxNzg1NjczMzg2LCJqdGkiOiJiYTk2MTcwNzg3ZDBjODQ5IiwiaXNzIjoibHJtcyIsInN1YiI6Mywicm9sZSI6ImFnZW50IiwiYnJhbmNoIjoyfQ.WLmUFtUxsviVyScWCr_thGN_B0X71MndYwAyPjd5Lwg",
+        "refresh_token": "006913572ac7480b52e51e383bfa17dced02d050825f160848a2a2d16b7435c4",
         "token_type": "Bearer",
         "expires_in": 7200,
         "user": {
@@ -21,12 +21,16 @@
             "must_change_password": false,
             "permissions": [
                 "dashboard.view",
+                "tracking.view",
                 "customers.view",
+                "customers.create",
+                "customers.update",
                 "customers.view_pii",
                 "visits.view",
                 "visits.create",
                 "promises.view",
-                "notifications.view"
+                "notifications.view",
+                "custom_fields.manage"
             ]
         },
         "app_version": "1.0.0",

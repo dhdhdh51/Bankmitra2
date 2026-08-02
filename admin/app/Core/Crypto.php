@@ -173,6 +173,49 @@ final class Crypto
         return 'XXXX XXXX ' . substr($digits, -4);
     }
 
+    /**
+     * A PAN reduced to its canonical form: letters and digits only, upper case.
+     *
+     * NOT normalise(), which strips everything that is not a digit - run a PAN through
+     * that and "ABCDE1234F" becomes "1234", so two unrelated people would share a
+     * search hash and a masked value. The bug would only ever surface as a lookup
+     * returning the wrong borrower, which is the worst way to find it.
+     */
+    public static function normalisePan(?string $value): ?string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '', (string) $value) ?? '');
+        return $clean === '' ? null : $clean;
+    }
+
+    /** Deterministic exact-match hash for a PAN. */
+    public static function panHash(?string $value): ?string
+    {
+        $normalised = self::normalisePan($value);
+        if ($normalised === null) {
+            return null;
+        }
+        return hash_hmac('sha256', $normalised, self::pepper());
+    }
+
+    /**
+     * A PAN with everything but the last four characters hidden.
+     *
+     * The last four are the numeric block's tail and the holder's check letter, which
+     * is enough for somebody holding the card to confirm it is theirs and not enough to
+     * reconstruct it. The first five are the part that encodes a surname.
+     */
+    public static function maskPan(?string $value): ?string
+    {
+        $clean = self::normalisePan($value);
+        if ($clean === null) {
+            return null;
+        }
+        if (strlen($clean) <= 4) {
+            return str_repeat('X', strlen($clean));
+        }
+        return str_repeat('X', strlen($clean) - 4) . substr($clean, -4);
+    }
+
     // -----------------------------------------------------------------------
     // Generic helpers
     // -----------------------------------------------------------------------

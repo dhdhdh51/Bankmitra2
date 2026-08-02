@@ -373,17 +373,6 @@
     <string name="ckcc_aadhaar_seeded">Aadhaar seeded</string>
     <string name="ckcc_mobile_linked">Mobile linked</string>
     <string name="ckcc_aadhaar_auth">Aadhaar authentication completed</string>
-    <string name="ckcc_group_documents">Documents the borrower had</string>
-    <string name="ckcc_group_documents_helper">What exists, whether or not you photographed it</string>
-    <string name="ckcc_doc_aadhaar">Aadhaar card</string>
-    <string name="ckcc_doc_pan">PAN card</string>
-    <string name="ckcc_doc_passbook">Passbook</string>
-    <string name="ckcc_doc_land_record">Land record</string>
-    <string name="ckcc_doc_khasra">Khasra / Khatauni</string>
-    <string name="ckcc_doc_photograph">Photograph</string>
-    <string name="ckcc_doc_mobile">Mobile available</string>
-    <string name="ckcc_doc_other">Other document</string>
-    <string name="ckcc_doc_other_text">Which other document</string>
     <string name="ckcc_group_consent">Renewal consent</string>
     <string name="ckcc_willing">Borrower willing to renew CKCC</string>
     <string name="ckcc_documents_handed">Documents handed over</string>
@@ -394,7 +383,8 @@
     <string name="ckcc_observation">What you saw and were told</string>
     <string name="ckcc_group_recommendation">BC agent recommendation</string>
     <string name="ckcc_rec_renew_now">Renewal should be processed immediately</string>
-    <string name="ckcc_rec_docs_submitted">Borrower has submitted all required documents</string>
+    <string name="ckcc_rec_docs_submitted">Documents complete</string>
+    <string name="ckcc_rec_pending_documents">Documents still pending</string>
     <string name="ckcc_rec_followup">Follow-up required</string>
     <string name="ckcc_rec_not_interested">Customer not interested in renewal</string>
     <string name="ckcc_rec_branch_urgent">Branch should contact customer urgently</string>
@@ -417,5 +407,85 @@
 
     <!-- Declaration -->
     <string name="visit_sp_cbc_name">SP / CBC name</string>
-</resources>
 
+    <!-- ===== The printed form's own sections =====
+         Wording follows the D2 Recovery "Field Visit Verification Report" so an agent
+         holding the paper form finds the same words on the screen. -->
+    <string name="visit_section_documents_verified">7. Documents verified</string>
+    <string name="visit_section_documents_verified_helper">What the borrower actually produced, whether or not you photographed it</string>
+    <string name="visit_doc_aadhaar">Aadhaar card</string>
+    <string name="visit_doc_pan">PAN card</string>
+    <string name="visit_doc_passbook">Passbook</string>
+    <string name="visit_doc_land_record">Land record</string>
+    <string name="visit_doc_khatauni">Khatauni</string>
+    <string name="visit_doc_electricity_bill">Electricity bill</string>
+    <string name="visit_doc_photograph">Photograph</string>
+    <string name="visit_doc_mobile_verified">Mobile verified</string>
+    <string name="visit_doc_renewal_form">Renewal form</string>
+    <string name="visit_doc_ots_consent">OTS consent letter</string>
+    <string name="visit_doc_others">Other document</string>
+    <string name="visit_doc_other_text">Which other document</string>
+
+    <string name="visit_section_evidence">10. Evidence attached</string>
+    <string name="visit_section_evidence_helper">Tick what this report carries. The panel shows this next to what actually arrived.</string>
+    <string name="visit_ev_borrower_photo">Borrower photograph</string>
+    <string name="visit_ev_house_photo">House photograph</string>
+    <string name="visit_ev_land_photo">Land photograph</string>
+    <string name="visit_ev_aadhaar_copy">Aadhaar copy</string>
+    <string name="visit_ev_passbook_copy">Passbook copy</string>
+    <string name="visit_ev_gps_location">GPS location</string>
+    <string name="visit_ev_renewal_form">Renewal form</string>
+    <string name="visit_ev_ots_consent">OTS consent</string>
+    <string name="visit_ev_others">Other evidence</string>
+    <string name="visit_ev_other_text">Which other evidence</string>
+
+    <string name="visit_section_declaration">11. Declaration</string>
+    <string name="visit_declaration_accept">I certify this report is accurate and was collected during my own field visit</string>
+    <string name="visit_declaration_required">Tick the declaration before submitting</string>
+    <string name="visit_declaration_full">The full declaration — RBI guidelines, the Bank\'s policies, the Fair Practices Code and the Code of Conduct for field verification — is printed in full on every copy of this report.</string>
+
+    <string name="visit_gender">Gender</string>
+    <string name="visit_date_of_birth">Date of birth</string>
+    <string name="visit_pan">PAN number</string>
+    <string name="visit_pan_helper">Optional. 10 characters, e.g. ABCDE1234F</string>
+    <string name="visit_pan_invalid">A PAN is five letters, four digits and one letter</string>
+    <string name="visit_group_address">Address</string>
+    <string name="visit_addr_village">Village</string>
+    <string name="visit_gram_panchayat">Gram panchayat</string>
+    <string name="visit_tehsil">Tehsil</string>
+    <string name="visit_addr_district">District</string>
+    <string name="visit_state">State</string>
+    <string name="visit_pin_code">PIN code</string>
+    <string name="visit_pin_invalid">A PIN code is six digits</string>
+
+    <string name="visit_cif_number">CIF number</string>
+    <string name="visit_loan_type">Loan type</string>
+    <string name="visit_loan_type_other">Which other loan type</string>
+    <string name="visit_sanction_date">Sanction date</string>
+    <string name="visit_sanction_limit">Sanction limit</string>
+    <string name="visit_drawing_power">Drawing power</string>
+    <string name="visit_interest_overdue">Interest overdue</string>
+    <string name="visit_asset_classification">Asset classification</string>
+
+    <string name="visit_residence_verified">Residence verification</string>
+    <string name="visit_neighbour_verification">Neighbour verification</string>
+    <string name="visit_general_recommendation">General recommendation</string>
+
+    <string name="ots_scheme_other_text">Which other scheme</string>
+    <string name="ots_customer_response">Customer response</string>
+    <string name="ots_customer_response_helper">Why, not just whether. Asking for time and refusing outright lead to different next steps.</string>
+    <string name="ots_expected_deposit_date">Expected deposit date</string>
+    <string name="ots_group_recommendation">Recommendation on the settlement</string>
+    <string name="ots_rec_proposal_recommended">OTS proposal recommended</string>
+    <string name="ots_rec_followup_required">Follow-up required</string>
+    <string name="ots_rec_customer_refused">Customer refused</string>
+    <string name="ots_rec_not_eligible">Not eligible</string>
+    <string name="ots_group_status">Final report status</string>
+    <string name="ots_st_customer_contacted">Customer contacted</string>
+    <string name="ots_st_customer_verified">Customer verified</string>
+    <string name="ots_st_ots_accepted">OTS accepted</string>
+    <string name="ots_st_ots_rejected">OTS rejected</string>
+    <string name="ots_st_initial_deposit_received">Initial deposit received</string>
+    <string name="ots_st_ots_closed">OTS closed</string>
+    <string name="ots_st_followup_required">Follow-up required</string>
+</resources>
