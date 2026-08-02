@@ -26,6 +26,7 @@ final class SettingsController extends Controller
         'smtp'          => 'Email (SMTP)',
         'integrations'  => 'Integrations',
         'notifications' => 'Notifications',
+        'location'      => 'Location & Maps',
         'backup'        => 'Backup',
     ];
 

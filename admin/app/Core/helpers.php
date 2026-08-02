@@ -265,6 +265,30 @@ if (!function_exists('sort_link')) {
     }
 }
 
+if (!function_exists('sort_hidden')) {
+    /**
+     * Carries the current sort through a filter form.
+     *
+     * Sorting and filtering used to disagree about which of them owned the URL.
+     * `sort_link()` builds on the existing query string, so sorting kept the filters -
+     * but a filter form submits only its own fields, so touching any dropdown threw the
+     * sort away. Sort the borrower list by outstanding, pick a village, and the list came
+     * back sorted by whatever the default was, with nothing to say why.
+     *
+     * Emitted only when a sort is actually active, so a default-ordered list does not
+     * start putting sort_by into its URLs and pinning the order it happens to have today.
+     */
+    function sort_hidden(string $sortBy, string $sortDir): string
+    {
+        if (trim($sortBy) === '') {
+            return '';
+        }
+
+        return '<input type="hidden" name="sort_by" value="' . e($sortBy) . '">'
+            . '<input type="hidden" name="sort_dir" value="' . e(strtolower($sortDir) === 'asc' ? 'asc' : 'desc') . '">';
+    }
+}
+
 if (!function_exists('occupation_label')) {
     function occupation_label(?string $value): string
     {

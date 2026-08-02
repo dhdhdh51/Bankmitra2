@@ -623,11 +623,11 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **249** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, and how a recorded position is worded |
-| Schema | `sh tools/verify-schema.sh` | **24** — 34 tables, 54 FKs, seeds, bcrypt login hash |
-| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **17** — all five release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting, and grant by grant |
+| Schema | `sh tools/verify-schema.sh` | **28** — 34 tables, 54 FKs, seeds, bcrypt login hash, and every dropdown setting checked for choices it can actually offer (including a deliberately broken row, to prove the check fails) |
+| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
 | Integration | `sh tools/integration-test.sh` | **744** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, and leads spread evenly across a branch |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **326** panel + **226** API |
+| Panel smoke | `sh tools/smoke-panel.sh` | **344** panel + **226** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -646,7 +646,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,981 assertions total** — the sum of the bold counts above, counting the seven
+**2,004 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -1158,6 +1158,35 @@ Kept here because they are the reason the tests exist:
     one text operator draws one line wherever the cursor already is. The block's cursor
     advance is now asserted exactly rather than with `>=`: the loose bound was large
     enough to hide a caption measured as one line when it was three.
+77. **Three things wrong with the dropdowns, found by auditing all of them at once.**
+    Asked to "check the dropdown menus", so every `<select>` on every page was parsed out
+    of the rendered HTML rather than read in the views — the options come from the
+    database, from a permission check, or from a filter applied a moment ago, so a select
+    that looks fine in the source can still render as an unusable control. What came out:
+    - **Two settings were dropdowns whose choices were `1` and `0`.** "Remind agents to
+      submit" and "Resolve addresses from coordinates" are yes/no questions, and the
+      operator had to guess which number meant on. `input_type = 'toggle'` already existed
+      in the schema and in the controller, and *nothing used it*. They are switches now.
+    - **A filter dropdown silently threw away the sort.** `sort_link()` builds on the
+      current query string, so sorting kept the filters — but a filter form submits only
+      its own fields, so choosing a village after sorting by outstanding came back in the
+      default order with nothing to say why. One-directional losses are the worst kind:
+      the feature appears to work in the direction you tested. Fixed with `sort_hidden()`
+      in all five sortable lists.
+    - **The settings screen had no defence against a dropdown it could not render.** A
+      `select` setting with no `options` produced an empty menu — a control that shows
+      nothing and submits nothing, indistinguishable from a broken page. And a stored
+      value outside its own list was worse: the browser displayed the *first* choice as
+      though it were current, so the next Save silently rewrote the setting. Now an
+      optionless select degrades to a text box that says why, and an unlisted value is
+      kept, marked "current, not in the list", and warned about.
+
+    The audit is now part of the smoke run (18 assertions), `verify-schema` refuses a
+    dropdown setting with no choices or a value outside its own list — and proves those
+    checks fail by inserting a broken row on purpose — and `verify-upgrade-sql` compares
+    each setting's *control type and choices*, not just that its key exists. The app's own
+    dropdowns were already covered: `VisitFormDataTest` pins the occupation list to the
+    server enum and `SssEntryTest` pins the four schemes.
 
 ---
 

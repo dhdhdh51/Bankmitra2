@@ -1255,6 +1255,193 @@ check('POST without CSRF token is refused',
     'response suggested the action ran');
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+section('Every dropdown on every page');
+
+/**
+ * Pulls the <select> elements out of a page.
+ *
+ * Written because "check the dropdowns" is not something you can do by reading views:
+ * the options come from the database, from a permission check, or from a filter that was
+ * applied a moment ago, so a select that is fine in the source can still render as an
+ * unusable control. Three things are asserted about every one of them on every page.
+ *
+ * @return list<array{name:string, options:int, selected:list<string>, multiple:bool, auto:bool}>
+ */
+function selectsIn(string $html): array
+{
+    $found = [];
+    preg_match_all('#<select\b([^>]*)>(.*?)</select>#s', $html, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $one) {
+        [$whole, $attrs, $inner] = $one;
+        preg_match('/name="([^"]*)"/', $attrs, $named);
+        preg_match_all('#<option\b([^>]*)>#s', $inner, $options, PREG_SET_ORDER);
+
+        $selected = [];
+        foreach ($options as $option) {
+            if (preg_match('/(^|\s)selected(\s|=|$)/', $option[1]) === 1) {
+                preg_match('/value="([^"]*)"/', $option[1], $value);
+                $selected[] = $value[1] ?? '';
+            }
+        }
+
+        $found[] = [
+            'name'     => $named[1] ?? '',
+            'options'  => count($options),
+            'selected' => $selected,
+            'multiple' => str_contains($attrs, 'multiple'),
+            'auto'     => str_contains($attrs, 'data-auto-submit'),
+        ];
+    }
+
+    return $found;
+}
+
+/** The first option value that is not the "all / choose" blank. */
+function firstRealOption(string $html, string $name): string
+{
+    if (preg_match('#<select\b[^>]*name="' . preg_quote($name, '#') . '"[^>]*>(.*?)</select>#s', $html, $m) !== 1) {
+        return '';
+    }
+    preg_match_all('/value="([^"]*)"/', $m[1], $values);
+    foreach ($values[1] ?? [] as $value) {
+        if (trim($value) !== '') {
+            return $value;
+        }
+    }
+    return '';
+}
+
+$dropdownPages = [
+    '/dashboard', '/customers', '/customers/1', '/customers/1/edit', '/visits',
+    '/visits/' . $visitId, '/visits/' . $visitId . '/approve', '/promises', '/reports',
+    '/reports/collection', '/reports/kcc-renewal', '/import', '/import/history',
+    '/users', '/users/create', '/users/2/edit', '/branches', '/branches/create',
+    '/branches/1/edit', '/custom-fields', '/custom-fields/create', '/bc/targets',
+    '/bc/targets/create', '/bc/sss', '/bc/sss/create', '/bc/scorecard',
+    '/logs/audit', '/logs/activity', '/notifications/send', '/settings',
+];
+
+$totalSelects = 0;
+$empty = [];
+$unnamed = [];
+$doubleSelected = [];
+
+foreach ($dropdownPages as $path) {
+    $body = request($base . $path)['body'];
+    foreach (selectsIn($body) as $select) {
+        $totalSelects++;
+        $where = $path . ' [' . ($select['name'] !== '' ? $select['name'] : 'unnamed') . ']';
+
+        if ($select['name'] === '') {
+            $unnamed[] = $where;
+        }
+        // A dropdown with nothing in it is a control that cannot be used and submits
+        // nothing - and it looks like a rendering fault to whoever opens the page.
+        if ($select['options'] === 0) {
+            $empty[] = $where;
+        }
+        // Two selected options is worse than none: the browser keeps the last one, so
+        // the form shows one value and submits another.
+        if (!$select['multiple'] && count($select['selected']) > 1) {
+            $doubleSelected[] = $where . ' -> ' . implode(', ', $select['selected']);
+        }
+    }
+}
+
+check('every page rendered its dropdowns', $totalSelects > 40, (string) $totalSelects . ' found');
+check('no dropdown is empty', $empty === [], implode('; ', $empty));
+check('every dropdown has a name to submit under', $unnamed === [], implode('; ', $unnamed));
+check('no dropdown has two options marked selected', $doubleSelected === [],
+    implode('; ', $doubleSelected));
+
+// A filter dropdown has to come back holding the value it was given, or the page shows
+// "All branches" over a filtered list and the operator cannot tell what they are seeing.
+$roundTripped = 0;
+$lost = [];
+foreach (['/customers', '/visits', '/promises', '/users', '/branches', '/logs/audit'] as $path) {
+    $body = request($base . $path)['body'];
+    foreach (selectsIn($body) as $select) {
+        if (!$select['auto'] || $select['name'] === '') {
+            continue;
+        }
+        $value = firstRealOption($body, $select['name']);
+        if ($value === '') {
+            continue;
+        }
+        $filtered = request($base . $path . '?' . $select['name'] . '=' . rawurlencode($value));
+        if (selectedOption($filtered['body'], $select['name']) !== $value) {
+            $lost[] = $path . ' [' . $select['name'] . '] sent ' . $value
+                . ', got "' . selectedOption($filtered['body'], $select['name']) . '"';
+            continue;
+        }
+        $roundTripped++;
+    }
+}
+check('every filter dropdown holds the value it was given', $lost === [], implode('; ', $lost));
+check('and enough of them were exercised to mean something', $roundTripped >= 8,
+    (string) $roundTripped . ' round-tripped');
+
+// Sorting and filtering share one URL, so they have to agree about it. sort_link()
+// builds on the current query string and keeps the filters; the filter form submits only
+// its own fields, so without hidden sort inputs a dropdown silently threw the sort away.
+$sorted = request($base . '/customers?sort_by=outstanding_amount&sort_dir=asc');
+check('a sorted list carries its sort into the filter form',
+    str_contains($sorted['body'], 'name="sort_by" value="outstanding_amount"')
+    && str_contains($sorted['body'], 'name="sort_dir" value="asc"'));
+// The pair together is the case that was broken: a filter applied on top of a sort used
+// to come back sorted by the default, because the form carried no sort at all.
+$sortedAndFiltered = request(
+    $base . '/customers?sort_by=outstanding_amount&sort_dir=asc&status=pending'
+);
+check('a filter applied on top of a sort keeps both',
+    str_contains($sortedAndFiltered['body'], 'name="sort_by" value="outstanding_amount"')
+    && selectedOption($sortedAndFiltered['body'], 'status') === 'pending'
+    || str_contains($sortedAndFiltered['body'], 'value="pending" selected'),
+    'sort or filter was dropped when the two were combined');
+
+// Bootstrap needs the toggle inside a .dropdown (or .btn-group) and a .dropdown-menu
+// after it. Get either wrong and the menu either never opens or opens in the corner of
+// the page - and the pages carrying one must actually load the JS bundle.
+foreach (['/customers', '/customers/1', '/users'] as $path) {
+    $body = request($base . $path)['body'];
+    $toggles = preg_match_all('/data-bs-toggle="dropdown"/', $body);
+    if ($toggles === 0) {
+        continue;
+    }
+    check("dropdown menus on {$path} are wired for Bootstrap",
+        preg_match_all('/class="dropdown"|class="[^"]*btn-group/', $body) >= 1
+        && preg_match_all('/class="dropdown-menu/', $body) >= $toggles,
+        $toggles . ' toggle(s), ' . preg_match_all('/class="dropdown-menu/', $body) . ' menu(s)');
+    check("and {$path} loads the Bootstrap bundle that opens them",
+        str_contains($body, 'bootstrap.bundle.min.js'));
+}
+
+// The settings screen builds its dropdowns from the database, which is the one place a
+// select can be defined with no choices at all. Both halves are asserted: the data is
+// right, and the screen survives it being wrong.
+$settingsPage = request($base . '/settings')['body'];
+// Matched inside the select itself: the option label sits on its own indented line, so a
+// bare str_contains('>17:00') proves nothing about which control it belongs to.
+preg_match(
+    '#<select[^>]*name="daily_report_due_time"[^>]*>(.*?)</select>#s',
+    $settingsPage,
+    $deadlineSelect
+);
+check('the daily report deadline is a dropdown with real times in it',
+    isset($deadlineSelect[1])
+    && substr_count($deadlineSelect[1], '<option') >= 5
+    && str_contains($deadlineSelect[1], 'value="17:00"'),
+    isset($deadlineSelect[1]) ? substr_count($deadlineSelect[1], '<option') . ' options' : 'no select found');
+check('and the booleans are switches, not a dropdown offering "1" and "0"',
+    str_contains($settingsPage, 'name="daily_report_reminder_enabled"')
+    && !preg_match('#name="daily_report_reminder_enabled"[^>]*>\s*<option#s', $settingsPage));
+check('no setting falls back to the "defined as a dropdown but has no choices" box',
+    !str_contains($settingsPage, 'has no choices listed'));
+check('and none is showing a stored value that is not one of its choices',
+    !str_contains($settingsPage, 'not in the list'));
+
 section('Sign out');
 
 $dashboardAgain = request($base . '/dashboard');

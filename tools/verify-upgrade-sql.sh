@@ -73,6 +73,7 @@ HEADINGS = [
     '### Adding the full banking columns, panel signatures and agent access to an existing install',
     '### Splitting KCC from OD-2, and making the alarm persist, on an existing install',
     '### Removing captured signatures on an existing install',
+    '### Fixing the two on/off settings that were dropdowns',
 ]
 
 chunks = []
@@ -130,6 +131,12 @@ db lrms_upg < "$ROOT/schema.sql"
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
+--
+-- Two boolean settings were dropdowns offering the choices "1" and "0" before it, which
+-- is a control that makes the operator guess which one means on.
+UPDATE `settings` SET `input_type` = 'select', `options` = '1,0'
+ WHERE `setting_key` IN ('daily_report_reminder_enabled', 'geocode_enabled');
+
 --
 -- Signatures were dropped by it, so the whole table has to come back before anything
 -- older can be undone: two earlier releases added columns TO it, and their undo steps
@@ -399,6 +406,22 @@ results.append(('and none the shipped schema does not have',
                 upg_keys - fresh_keys == set(),
                 'extra: ' + ', '.join(sorted(upg_keys - fresh_keys))))
 
+# The key existing is not the same as the setting working. input_type and options are
+# what the settings screen builds a control out of: get them wrong and the operator
+# gets an empty dropdown, or a switch for something with five choices. A migration that
+# adds the row and forgets the shape used to pass this harness.
+SETTING_SHAPE = ("SELECT setting_key, input_type, COALESCE(options,''), is_required "
+                 "FROM settings ORDER BY setting_key")
+fresh_shape = {r[0]: r[1:] for r in q('lrms_fresh', SETTING_SHAPE)}
+upg_shape = {r[0]: r[1:] for r in q('lrms_upg', SETTING_SHAPE)}
+shape_diff = [
+    f"{key}: shipped {fresh_shape[key]} vs upgraded {upg_shape.get(key)}"
+    for key in sorted(fresh_shape)
+    if key in upg_shape and fresh_shape[key] != upg_shape[key]
+]
+results.append(('and each one is the same kind of control with the same choices',
+                shape_diff == [], '; '.join(shape_diff)))
+
 # Grants per role: a permission row nobody holds is a screen nobody can reach.
 GRANTS = ("SELECT r.role_name, GROUP_CONCAT(p.code ORDER BY p.code) FROM role_permissions rp "
           "JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id "
@@ -421,7 +444,7 @@ case "$RESULTS" in
   *) echo "!! comparison failed to run:"; cat "$WORK/compare.out"; exit 1 ;;
 esac
 
-EXPECTED_COMPARISONS=14
+EXPECTED_COMPARISONS=15
 BEFORE=$((PASS + FAIL))
 
 eval "$(printf '%s' "$RESULTS" | python3 -c '

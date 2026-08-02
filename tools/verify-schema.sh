@@ -192,6 +192,52 @@ ORPHAN=$(q "SELECT COUNT(*) FROM role_permissions rp
 REQUIRED=$(q "SELECT COUNT(*) FROM settings WHERE is_required=1;")
 [ "${REQUIRED:-0}" -ge 1 ] && pass "$REQUIRED settings are marked required" || fail 'required settings' "got $REQUIRED"
 
+# The settings screen builds real dropdowns out of these three columns, so the seed is
+# the one place a control can be defined into uselessness. Three ways, all checked here
+# because none of them is a SQL error and none of them shows up until somebody opens the
+# page looking for the setting they were told to change.
+NO_OPTIONS=$(q "SELECT GROUP_CONCAT(setting_key) FROM settings
+                 WHERE input_type='select' AND (options IS NULL OR options='');")
+[ -z "$NO_OPTIONS" ] || [ "$NO_OPTIONS" = 'NULL' ] \
+    && pass 'every dropdown setting has choices to offer' \
+    || fail 'dropdown settings with no options' "$NO_OPTIONS"
+
+# A value outside its own list is worse than a blank: the browser shows the first choice
+# as though it were current, and the next Save writes it.
+UNLISTED=$(q "SELECT GROUP_CONCAT(CONCAT(setting_key, '=', setting_value)) FROM settings
+               WHERE input_type='select' AND setting_value IS NOT NULL AND setting_value <> ''
+                 AND FIND_IN_SET(setting_value, options) = 0;")
+[ -z "$UNLISTED" ] || [ "$UNLISTED" = 'NULL' ] \
+    && pass 'and every one of them stores a value from its own list' \
+    || fail 'settings whose value is not one of their choices' "$UNLISTED"
+
+# A toggle renders as a switch and ignores options entirely, so options on one is a list
+# somebody wrote expecting it to be honoured.
+TOGGLE_OPTS=$(q "SELECT GROUP_CONCAT(setting_key) FROM settings
+                  WHERE input_type='toggle' AND options IS NOT NULL AND options <> '';")
+[ -z "$TOGGLE_OPTS" ] || [ "$TOGGLE_OPTS" = 'NULL' ] \
+    && pass 'and no switch carries a list nothing reads' \
+    || fail 'toggle settings carrying options' "$TOGGLE_OPTS"
+
+# Those three just passed against clean data, which proves nothing on its own: a query
+# with a typo in it passes too. So break the data on purpose and check each one notices.
+q "INSERT INTO settings (setting_key, setting_value, group_name, label, input_type, options)
+   VALUES ('zz_probe_empty', 'x', 'general', 'Probe', 'select', NULL),
+          ('zz_probe_unlisted', 'orange', 'general', 'Probe', 'select', 'red,green'),
+          ('zz_probe_toggle', '1', 'general', 'Probe', 'toggle', '1,0');" > /dev/null
+
+PROBE_A=$(q "SELECT COUNT(*) FROM settings WHERE input_type='select' AND (options IS NULL OR options='');")
+PROBE_B=$(q "SELECT COUNT(*) FROM settings WHERE input_type='select' AND setting_value IS NOT NULL
+              AND setting_value <> '' AND FIND_IN_SET(setting_value, options) = 0;")
+PROBE_C=$(q "SELECT COUNT(*) FROM settings WHERE input_type='toggle' AND options IS NOT NULL AND options <> '';")
+
+[ "${PROBE_A:-0}" = '1' ] && [ "${PROBE_B:-0}" = '1' ] && [ "${PROBE_C:-0}" = '1' ] \
+    && pass 'and all three of those checks do catch a broken row when there is one' \
+    || fail 'the dropdown-setting guards did not flag a deliberately broken row' \
+            "empty=$PROBE_A unlisted=$PROBE_B toggle=$PROBE_C"
+
+q "DELETE FROM settings WHERE setting_key LIKE 'zz_probe_%';" > /dev/null
+
 echo
 echo '============================================================'
 printf '  SCHEMA: %s passed, %s failed\n' "$PASSED" "$FAILED"

@@ -24,6 +24,15 @@
 <div class="lrms-card mb-3">
     <div class="lrms-card-body">
         <form method="get" action="<?= e(url('/users')) ?>">
+            <?php
+            /*
+             * The sort travels with the filter. Without these two hidden fields the form
+             * submits only its own inputs, so changing any dropdown silently dropped the
+             * column the user had chosen to sort by - while sort_link() kept the filters,
+             * making the loss one-directional and baffling.
+             */
+            ?>
+            <?= sort_hidden($sortBy, $sortDir) ?>
             <div class="lrms-filters">
                 <div>
                     <label class="form-label" for="u-search">Search</label>
