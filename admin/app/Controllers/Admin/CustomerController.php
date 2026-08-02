@@ -829,13 +829,16 @@ final class CustomerController extends Controller
     private function filters(Request $request): array
     {
         return [
-            'search'     => $request->str('search'),
-            'branch_id'  => $this->branchFilter($request),
-            'agent_id'   => $this->agentFilter($request),
-            'status'     => $request->str('status'),
-            'village'    => $request->str('village'),
-            'loan_type'  => $request->str('loan_type'),
-            'npa_only'   => $request->bool('npa_only'),
+            'search'        => $request->str('search'),
+            'branch_id'     => $this->branchFilter($request),
+            'agent_id'      => $this->agentFilter($request),
+            'status'        => $request->str('status'),
+            'village'       => $request->str('village'),
+            'loan_type'     => $request->str('loan_type'),
+            // Same enum the KCC/OD-2 renewal worklists filter on, so "show me only the
+            // OD-2 accounts" means the same thing here as it does on that report.
+            'facility_type' => $request->str('facility_type'),
+            'npa_only'      => $request->bool('npa_only'),
             'unassigned' => $request->bool('unassigned'),
             'date_from'  => $request->str('date_from'),
             'date_to'    => $request->str('date_to'),

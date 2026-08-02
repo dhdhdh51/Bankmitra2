@@ -19,11 +19,33 @@
         android:layout_height="wrap_content"
         android:background="?attr/colorSurface"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
+        android:paddingTop="8dp"
         android:scrollbars="none">
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chipGroupStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleLine="true"
+            app:singleSelection="true" />
+    </HorizontalScrollView>
+
+    <!--
+        Facility filter: KCC vs OD-2. A second row rather than mixed into the status
+        chips above - status and facility are two independent questions ("where is
+        this case?" and "which renewal queue is it in?"), and merging them into one
+        row would make "KCC" look like a status alongside "Pending" and "Closed".
+    -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:paddingHorizontal="12dp"
+        android:paddingBottom="8dp"
+        android:scrollbars="none">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroupFacility"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             app:singleLine="true"

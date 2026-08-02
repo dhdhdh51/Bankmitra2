@@ -146,6 +146,10 @@ data class LeadDto(
     @SerializedName("aadhaar_masked") val aadhaarMasked: String? = null,
     @SerializedName("bc_code") val bcCode: String? = null,
     @SerializedName("loan_type") val loanType: String? = null,
+    // The kcc/od2/other enum, not the free-text loan_type above - what the leads
+    // list filters on and what the facility chip on a row is drawn from.
+    @SerializedName("facility_type") val facilityType: String? = null,
+    @SerializedName("facility_type_label") val facilityTypeLabel: String? = null,
     @SerializedName("outstanding_amount") val outstandingAmount: Double = 0.0,
     @SerializedName("overdue_amount") val overdueAmount: Double = 0.0,
     @SerializedName("npa_date") val npaDate: String? = null,

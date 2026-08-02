@@ -36,6 +36,21 @@
                 tools:text="LN00100001" />
 
             <TextView
+                android:id="@+id/textFacility"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_facility_badge"
+                android:paddingHorizontal="5dp"
+                android:paddingVertical="1dp"
+                android:textColor="@color/lrms_primary_dark"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:text="OD-2"
+                tools:visibility="visible" />
+
+            <TextView
                 android:id="@+id/textNpa"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

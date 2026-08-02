@@ -31,6 +31,9 @@ class LeadsFragment : BaseFragment() {
     private lateinit var adapter: LeadAdapter
 
     private var statusFilter: String? = null
+    // "kcc" | "od2" | "other" | null (all) - the same LoanAccount::FACILITIES keys
+    // the web panel's facility dropdown and the KCC/OD-2 renewal worklists use.
+    private var facilityFilter: String? = null
     private var currentPage = 1
     private var hasMore = false
     private var isLoading = false
@@ -66,6 +69,7 @@ class LeadsFragment : BaseFragment() {
         binding.swipeRefresh.setOnRefreshListener { load(reset = true) }
 
         setUpFilterChips()
+        setUpFacilityChips()
 
         binding.buttonRetry.setOnClickListener { load(reset = true) }
 
@@ -112,6 +116,41 @@ class LeadsFragment : BaseFragment() {
         }
     }
 
+    /**
+     * KCC vs OD-2, as its own chip row - a second, independent question from the
+     * status filter above, not a value of it. Uses the same "kcc"/"od2"/"other" keys
+     * `LoanAccount::FACILITIES` defines on the server, so this filter and the web
+     * panel's facility dropdown (and the KCC/OD-2 renewal worklist reports) can never
+     * disagree about what "OD-2" means.
+     */
+    private fun setUpFacilityChips() {
+        val filters = listOf(
+            null to getString(R.string.leads_filter_facility_all),
+            "kcc" to getString(R.string.leads_filter_facility_kcc),
+            "od2" to getString(R.string.leads_filter_facility_od2),
+            "other" to getString(R.string.leads_filter_facility_other),
+        )
+
+        binding.chipGroupFacility.removeAllViews()
+
+        filters.forEach { (value, label) ->
+            val chip = Chip(requireContext()).apply {
+                text = label
+                isCheckable = true
+                isChecked = value == facilityFilter
+                setOnClickListener {
+                    if (facilityFilter != value) {
+                        facilityFilter = value
+                        load(reset = true)
+                    } else {
+                        isChecked = true
+                    }
+                }
+            }
+            binding.chipGroupFacility.addView(chip)
+        }
+    }
+
     private fun endlessScrollListener() = object : RecyclerView.OnScrollListener() {
         override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
             if (dy <= 0 || isLoading || !hasMore) return
@@ -141,7 +180,11 @@ class LeadsFragment : BaseFragment() {
         binding.groupError.visibility = View.GONE
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val result = repository.leads(status = statusFilter, page = currentPage)
+            val result = repository.leads(
+                status = statusFilter,
+                facilityType = facilityFilter,
+                page = currentPage,
+            )
 
             isLoading = false
             binding.progress.visibility = View.GONE
@@ -188,10 +231,10 @@ class LeadsFragment : BaseFragment() {
         binding.groupEmpty.visibility = if (empty) View.VISIBLE else View.GONE
         binding.recyclerLeads.visibility = if (empty) View.GONE else View.VISIBLE
 
-        binding.textEmptyMessage.text = if (statusFilter == null) {
+        binding.textEmptyMessage.text = if (statusFilter == null && facilityFilter == null) {
             getString(R.string.leads_empty_message)
         } else {
-            "No leads with this status. Try a different filter."
+            getString(R.string.leads_empty_message_filtered)
         }
     }
 

@@ -54,6 +54,20 @@ class LeadAdapter(
             binding.chipStatus.text = Formatters.statusLabel(lead.currentStatus)
             applyStatusColours(lead.currentStatus)
 
+            // Only KCC and OD-2 get a badge - "other" and unset are not worth a tag on
+            // every row, since neither has a renewal queue on the other side of it.
+            val facilityLabel = when (lead.facilityType) {
+                "kcc" -> context.getString(R.string.leads_filter_facility_kcc)
+                "od2" -> context.getString(R.string.leads_filter_facility_od2)
+                else -> null
+            }
+            if (facilityLabel != null) {
+                binding.textFacility.text = facilityLabel
+                binding.textFacility.visibility = View.VISIBLE
+            } else {
+                binding.textFacility.visibility = View.GONE
+            }
+
             binding.textNpa.visibility = if (lead.isNpa) View.VISIBLE else View.GONE
 
             binding.textVisitInfo.text = when {

@@ -141,6 +141,18 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                     </select>
                 </div>
 
+                <div>
+                    <label class="form-label" for="f-facility">Facility</label>
+                    <select class="form-select" id="f-facility" name="facility_type" data-auto-submit>
+                        <option value="">All facilities</option>
+                        <?php foreach (\App\Models\LoanAccount::FACILITIES as $key => $label): ?>
+                            <option value="<?= e($key) ?>" <?= ($filters['facility_type'] ?? '') === $key ? 'selected' : '' ?>>
+                                <?= e($label) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="filter-actions">
                     <button type="submit" class="btn btn-primary"><?= icon('filter') ?> Filter</button>
                     <a href="<?= e(url('/customers')) ?>" class="btn btn-outline-secondary">Reset</a>

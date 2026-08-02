@@ -114,6 +114,11 @@ abstract class Controller
             'aadhaar_masked'      => $lead['aadhaar_masked'] === null ? null : (string) $lead['aadhaar_masked'],
             'bc_code'             => $lead['bc_code'] === null ? null : (string) $lead['bc_code'],
             'loan_type'           => $lead['loan_type'] === null ? null : (string) $lead['loan_type'],
+            // The KCC/OD-2/other enum, not the free-text loan_type - what the app's
+            // lead-list filter matches against and what a renewal badge is drawn from.
+            'facility_type'       => ($lead['facility_type'] ?? null) === null ? null : (string) $lead['facility_type'],
+            'facility_type_label' => ($lead['facility_type'] ?? null) === null
+                ? null : (\App\Models\LoanAccount::FACILITIES[(string) $lead['facility_type']] ?? null),
             'outstanding_amount'  => round((float) $lead['outstanding_amount'], 2),
             'overdue_amount'      => round((float) $lead['overdue_amount'], 2),
             'npa_date'            => $lead['npa_date'] === null ? null : (string) $lead['npa_date'],

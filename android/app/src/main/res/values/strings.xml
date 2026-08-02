@@ -59,6 +59,13 @@
     <string name="leads_filter_promise">Promise</string>
     <string name="leads_filter_followup">Follow-up</string>
     <string name="leads_filter_closed">Closed</string>
+    <!-- Facility filter: separates KCC and OD-2 into two lists, the same split the
+         KCC Renewal Worklist and OD-2 Renewal Worklist reports use on the web panel. -->
+    <string name="leads_filter_facility_all">All facilities</string>
+    <string name="leads_filter_facility_kcc">KCC</string>
+    <string name="leads_filter_facility_od2">OD-2</string>
+    <string name="leads_filter_facility_other">Other</string>
+    <string name="leads_empty_message_filtered">No leads match this filter. Try a different one.</string>
 
     <!-- ==================== Search ==================== -->
     <string name="search_title">Search Customer</string>

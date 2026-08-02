@@ -180,6 +180,10 @@ class LrmsRepository(context: Context) {
 
     suspend fun leads(
         status: String? = null,
+        // "kcc" | "od2" | "other" - the same LoanAccount::FACILITIES keys the web
+        // panel's facility dropdown and the KCC/OD-2 renewal worklists use, so a
+        // filter chosen here means the same thing there.
+        facilityType: String? = null,
         page: Int = 1,
         perPage: Int = 25,
     ): ApiResult<Page<LeadDto>> {
@@ -187,6 +191,7 @@ class LrmsRepository(context: Context) {
             put("page", page.toString())
             put("per_page", perPage.toString())
             if (!status.isNullOrBlank()) put("status", status)
+            if (!facilityType.isNullOrBlank()) put("facility_type", facilityType)
         }
 
         return paged { api.leads(filters) }
@@ -195,6 +200,7 @@ class LrmsRepository(context: Context) {
     suspend fun searchLeads(
         query: String,
         wholeBranch: Boolean,
+        facilityType: String? = null,
         page: Int = 1,
         perPage: Int = 25,
     ): ApiResult<Page<LeadDto>> {
@@ -203,6 +209,7 @@ class LrmsRepository(context: Context) {
             put("page", page.toString())
             put("per_page", perPage.toString())
             if (wholeBranch) put("scope", "branch")
+            if (!facilityType.isNullOrBlank()) put("facility_type", facilityType)
         }
 
         return paged { api.searchLeads(filters) }

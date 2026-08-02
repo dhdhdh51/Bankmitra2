@@ -943,6 +943,27 @@ check('search by formatted mobile normalises', $byMobileFormatted->total === 1, 
 $byAadhaar = LoanAccount::paginate(['search' => '123456789012'], 'created_at', 'DESC', 1, 25);
 check('search by encrypted Aadhaar (HMAC)', $byAadhaar->total === 1, 'total=' . $byAadhaar->total);
 
+// ---------------------------------------------------------------------------
+section('Facility filter (KCC vs OD-2), the same enum the renewal worklists use');
+
+$kccOnly = LoanAccount::paginate(['facility_type' => 'kcc'], 'created_at', 'DESC', 1, 25);
+$kccNumbers = array_column($kccOnly->items, 'loan_account_number');
+check('facility_type=kcc returns the KCC account', in_array('KCCACC001', $kccNumbers, true));
+check('facility_type=kcc excludes the OD-2 account', !in_array('OD2ACC001', $kccNumbers, true));
+
+$od2Only = LoanAccount::paginate(['facility_type' => 'od2'], 'created_at', 'DESC', 1, 25);
+$od2Numbers = array_column($od2Only->items, 'loan_account_number');
+check('facility_type=od2 returns the OD-2 account', in_array('OD2ACC001', $od2Numbers, true));
+check('facility_type=od2 excludes the KCC account', !in_array('KCCACC001', $od2Numbers, true));
+
+// An unrecognised value must be ignored rather than turned into a WHERE clause that
+// matches nothing or, worse, one built from unvalidated input.
+$allLeads = LoanAccount::paginate([], 'created_at', 'DESC', 1, 500);
+$bogus = LoanAccount::paginate(['facility_type' => 'drop table users'], 'created_at', 'DESC', 1, 500);
+check('an unrecognised facility_type is ignored rather than filtering anything out',
+    $bogus->total === $allLeads->total,
+    "bogus={$bogus->total} all={$allLeads->total}");
+
 check('filter by branch', LoanAccount::paginate(['branch_id' => $branchBId], 'created_at', 'DESC', 1, 25)->total === 1);
 check('filter by status pending', LoanAccount::paginate(['status' => 'pending'], 'created_at', 'DESC', 1, 25)->total >= 4);
 check('filter unassigned', LoanAccount::paginate(['unassigned' => true], 'created_at', 'DESC', 1, 25)->total >= 1);

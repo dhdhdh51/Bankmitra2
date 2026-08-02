@@ -215,13 +215,18 @@ final class LeadController extends Controller
     private function filters(Request $request, array $user): array
     {
         $filters = [
-            'search'    => $request->str('search', $request->str('q')),
-            'status'    => $request->str('status'),
-            'village'   => $request->str('village'),
-            'loan_type' => $request->str('loan_type'),
-            'npa_only'  => $request->bool('npa_only'),
-            'date_from' => $request->str('date_from'),
-            'date_to'   => $request->str('date_to'),
+            'search'        => $request->str('search', $request->str('q')),
+            'status'        => $request->str('status'),
+            'village'       => $request->str('village'),
+            'loan_type'     => $request->str('loan_type'),
+            // KCC and OD-2 are worked as two separate renewal queues on the reports
+            // side (see ReportService::renewalWorklist()); the same enum lets the app's
+            // lead list split them the same way, rather than the free-text loan_type
+            // string a bank's own export happens to use.
+            'facility_type' => $request->str('facility_type'),
+            'npa_only'      => $request->bool('npa_only'),
+            'date_from'     => $request->str('date_from'),
+            'date_to'       => $request->str('date_to'),
         ];
 
         if (Auth::isAgent()) {
