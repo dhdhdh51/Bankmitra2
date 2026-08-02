@@ -33,10 +33,6 @@ class PhotoGeoStampTest {
         "src/main/java/com/lrms/recovery/location/GeoStamp.kt",
     ).readText()
 
-    private val signaturePad = File(
-        "src/main/java/com/lrms/recovery/ui/signature/SignatureActivity.kt",
-    ).readText()
-
     private fun code(source: String): String = source
         .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
         .replace(Regex("""//[^\n]*"""), "")
@@ -237,31 +233,31 @@ class PhotoGeoStampTest {
     }
 
     @Test
-    fun `a signature records where it was signed`() {
+    fun `nothing captures a signature any more`() {
+        // The pad is gone: the printed report carries empty ruled boxes and the paper is
+        // signed by hand. This is asserted rather than assumed because the pad left a lot
+        // of scaffolding behind - a form field, a multipart part, a cache directory, a
+        // fullscreen theme - and any one of them surviving would keep sending an image
+        // the server no longer has a table for.
+        assertFalse(
+            "the signature pad activity must be deleted",
+            File("src/main/java/com/lrms/recovery/ui/signature").exists(),
+        )
         val clean = code(formData)
-
         for (field in listOf(
-            "_signature_latitude", "_signature_longitude",
-            "_signature_accuracy_m", "_signature_captured_at",
+            "_signature_latitude", "_signature_gps_source", "customer_signature", "agent_signature",
         )) {
-            assertTrue("a signature must send $field", clean.contains(field))
+            assertFalse("the form must not send $field", clean.contains(field))
         }
-
-        // Sent even with no fix: "declined" and "no signal in the courtyard" are
-        // different answers to a supervisor asking why a signed report has no position.
-        assertTrue(
-            "the signature source must be sent unconditionally",
-            clean.contains("_signature_gps_source\"] = source"),
+        assertFalse(
+            "and no signature file may be attached to the upload",
+            code(File("src/main/java/com/lrms/recovery/data/LrmsRepository.kt").readText())
+                .contains("signatureFiles"),
         )
-
-        val pad = code(signaturePad)
-        assertTrue(
-            "the pad must read a fix when Save is pressed",
-            Regex("""GeoStamp\.current\(this\)[\s\S]*?writeSignaturePng""").containsMatchIn(pad),
-        )
-        assertTrue(
-            "and return the source even when there is no fix",
-            pad.contains("EXTRA_RESULT_GPS_SOURCE, located.wire"),
+        assertFalse(
+            "the cache directory for signatures must go too",
+            code(File("src/main/java/com/lrms/recovery/util/FileStore.kt").readText())
+                .contains("SIGNATURES_DIR"),
         )
     }
 

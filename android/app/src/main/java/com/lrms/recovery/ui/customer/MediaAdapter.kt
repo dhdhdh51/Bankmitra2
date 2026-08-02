@@ -14,7 +14,7 @@ import com.lrms.recovery.data.remote.MediaDto
 import com.lrms.recovery.databinding.ItemMediaBinding
 
 /**
- * Photo and signature thumbnails.
+ * Photo thumbnails.
  *
  * Media is served by an authenticated endpoint - the files are not publicly
  * readable - so each Glide request carries the Bearer token. Without that header

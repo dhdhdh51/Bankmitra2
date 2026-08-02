@@ -4,7 +4,7 @@
 
     Sections follow the specification order exactly - General, Borrower contact,
     Physical verification, Recovery possibility, Non-payment reason, Agent
-    recommendation, Remarks, Documents, Signatures - so an agent who knows the
+    recommendation, Remarks, Documents - so an agent who knows the
     paper form finds the app familiar.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -687,7 +687,7 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <!-- ============ Documents & signatures ============ -->
+            <!-- ============ Documents ============ -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -724,60 +724,6 @@
                         android:textSize="12sp"
                         tools:text="2 photos" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:layout_marginBottom="8dp"
-                        android:text="@string/visit_section_signatures"
-                        android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/visit_customer_signature"
-                        android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/buttonCustomerSignature"
-                        style="@style/Widget.LRMS.Button.Outlined"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/visit_capture_signature"
-                        app:icon="@drawable/ic_pen" />
-
-                    <TextView
-                        android:id="@+id/textCustomerSignatureState"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:textColor="@color/lrms_muted"
-                        android:textSize="12sp"
-                        tools:text="Not captured" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="@string/visit_agent_signature"
-                        android:textAppearance="@style/TextAppearance.LRMS.FieldLabel" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/buttonAgentSignature"
-                        style="@style/Widget.LRMS.Button.Outlined"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/visit_capture_signature"
-                        app:icon="@drawable/ic_pen" />
-
-                    <TextView
-                        android:id="@+id/textAgentSignatureState"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:textColor="@color/lrms_muted"
-                        android:textSize="12sp"
-                        tools:text="Not captured" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -53,7 +53,6 @@ class TimelineAdapter(
             // Attachment counts, so the agent knows evidence exists without opening.
             val meta = buildList {
                 if (event.photoCount > 0) add("${event.photoCount} photo")
-                if (event.signatureCount > 0) add("${event.signatureCount} signature")
                 if (event.promiseAmount != null && event.promiseDate != null) {
                     add(
                         Formatters.rupees(event.promiseAmount, decimals = false) +

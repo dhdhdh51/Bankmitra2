@@ -80,14 +80,6 @@
         <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
     </style>
 
-    <!-- Full-screen theme for the landscape signature pad. -->
-    <style name="Theme.LRMS.Fullscreen" parent="Theme.LRMS">
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-        <item name="android:statusBarColor">@color/lrms_ink</item>
-        <item name="android:navigationBarColor">@color/lrms_ink</item>
-    </style>
-
     <!-- Rounded corners for the brand lockup, so the artwork's own dark edges
          read as a deliberate card on a light screen rather than a stray photo. -->
     <style name="ShapeAppearance.LRMS.Brand" parent="">

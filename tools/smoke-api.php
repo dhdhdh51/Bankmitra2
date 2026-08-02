@@ -303,7 +303,7 @@ section('Customer profile');
 $leadId = (int) ($firstLead['id'] ?? 0);
 $profile = api('GET', '/customers/' . $leadId, null, $agentToken);
 check('GET /customers/{id} returns 200', $profile['status'] === 200, 'HTTP ' . $profile['status']);
-foreach (['lead', 'promises', 'visits', 'timeline', 'photos', 'documents', 'signatures', 'other_accounts'] as $key) {
+foreach (['lead', 'promises', 'visits', 'timeline', 'photos', 'documents', 'other_accounts'] as $key) {
     check("profile includes {$key}", array_key_exists($key, (array) $profile['json']['data']));
 }
 check('agent receives the real mobile number for calling',

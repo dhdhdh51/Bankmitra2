@@ -277,7 +277,7 @@ class VisitFormDataTest {
     }
 
     @Test
-    fun `attachment count reflects photos signatures and documents`() {
+    fun `attachment count reflects photos and documents`() {
         val form = validForm()
         assertEquals(0, form.attachmentCount())
     }

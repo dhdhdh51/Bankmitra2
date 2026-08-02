@@ -39,6 +39,12 @@ android/app/debug/
 *.jks
 keystore.properties
 
+# ... except the debug keystore, which is deliberately committed. Without a fixed
+# debug certificate every CI build signs with a freshly generated key, and Android
+# then refuses to install the new APK over the previous one. A debug key guards
+# nothing: the passwords below are the documented Android defaults.
+!android/app/debug.keystore
+
 # ---------------------------------------------------------------------------
 # Editors / OS
 # ---------------------------------------------------------------------------

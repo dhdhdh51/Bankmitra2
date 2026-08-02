@@ -23,8 +23,8 @@ import java.io.File
 import kotlinx.coroutines.launch
 
 /**
- * Customer profile: loan details, promise history, visit history, photos,
- * signatures and the append-only timeline.
+ * Customer profile: loan details, promise history, visit history, photos and the
+ * append-only timeline.
  *
  * This is where an agent starts a visit report from, so the primary action is
  * kept visible at the bottom rather than buried in a menu.
@@ -194,7 +194,7 @@ class CustomerProfileActivity : BaseActivity() {
             if (data.timeline.size > TIMELINE_PREVIEW) View.VISIBLE else View.GONE
 
         // ---- Media ----
-        val media = data.photos + data.signatures
+        val media = data.photos
         mediaAdapter.submitList(media)
         binding.groupPhotos.visibility = if (media.isEmpty()) View.GONE else View.VISIBLE
         binding.textPhotoCount.text = resources.getQuantityString(

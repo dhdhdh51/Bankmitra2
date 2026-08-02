@@ -226,9 +226,9 @@ class LrmsRepository(context: Context) {
     suspend fun visitFormOptions(): ApiResult<FormOptionsPayload> = call { api.visitFormOptions() }
 
     /**
-     * Submits a visit report with its photos and signatures as one multipart
-     * request, so a report and its evidence cannot be separated by a dropped
-     * connection. The form's client UUID makes a retry idempotent server-side.
+     * Submits a visit report with its photos as one multipart request, so a report
+     * and its evidence cannot be separated by a dropped connection. The form's client
+     * UUID makes a retry idempotent server-side.
      */
     suspend fun submitVisit(form: VisitFormData): ApiResult<VisitSubmitPayload> {
         val fields = form.toFieldMap().map { (key, value) ->
@@ -240,12 +240,6 @@ class LrmsRepository(context: Context) {
         form.photoFiles().forEach { (field, file) ->
             if (file.exists()) {
                 files += filePart(field, file, "image/jpeg")
-            }
-        }
-
-        form.signatureFiles().forEach { (field, file) ->
-            if (file.exists()) {
-                files += filePart(field, file, "image/png")
             }
         }
 

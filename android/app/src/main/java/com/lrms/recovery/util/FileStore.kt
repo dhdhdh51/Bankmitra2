@@ -14,7 +14,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Local file handling for visit photos and signatures.
+ * Local file handling for visit photos.
  *
  * Everything lives in the app cache: these files exist only long enough to be
  * uploaded with the report. Keeping borrower photos in permanent storage on a
@@ -25,30 +25,10 @@ object FileStore {
     private const val TAG = "FileStore"
 
     private const val CAPTURES_DIR = "captures"
-    private const val SIGNATURES_DIR = "signatures"
 
     /** Photos are downscaled before upload: a 12 MP original is pointless here. */
     private const val MAX_PHOTO_DIMENSION = 1600
     private const val PHOTO_QUALITY = 82
-
-    // -----------------------------------------------------------------------
-    // Signatures
-    // -----------------------------------------------------------------------
-
-    /** Writes a signature as a lossless PNG, as the spec requires. */
-    fun writeSignaturePng(context: Context, type: String, bitmap: Bitmap): File? = try {
-        val directory = File(context.cacheDir, SIGNATURES_DIR).apply { mkdirs() }
-        val file = File(directory, "signature_${type}_${timestamp()}.png")
-
-        FileOutputStream(file).use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-
-        file
-    } catch (error: Exception) {
-        Log.e(TAG, "Could not write the signature", error)
-        null
-    }
 
     // -----------------------------------------------------------------------
     // Photos
@@ -164,12 +144,10 @@ object FileStore {
 
     // -----------------------------------------------------------------------
 
-    /** Removes cached captures and signatures after a successful submission. */
+    /** Removes cached captures after a successful submission. */
     fun clearWorkingFiles(context: Context) {
-        listOf(CAPTURES_DIR, SIGNATURES_DIR).forEach { name ->
-            runCatching {
-                File(context.cacheDir, name).listFiles()?.forEach { it.delete() }
-            }
+        runCatching {
+            File(context.cacheDir, CAPTURES_DIR).listFiles()?.forEach { it.delete() }
         }
     }
 

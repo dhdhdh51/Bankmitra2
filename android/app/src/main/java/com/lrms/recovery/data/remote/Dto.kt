@@ -170,7 +170,6 @@ data class CustomerProfilePayload(
     @SerializedName("timeline") val timeline: List<TimelineEventDto> = emptyList(),
     @SerializedName("photos") val photos: List<MediaDto> = emptyList(),
     @SerializedName("documents") val documents: List<MediaDto> = emptyList(),
-    @SerializedName("signatures") val signatures: List<MediaDto> = emptyList(),
     @SerializedName("other_accounts") val otherAccounts: List<OtherAccountDto> = emptyList(),
 )
 
@@ -202,7 +201,6 @@ data class TimelineEventDto(
     @SerializedName("visit_report_id") val visitReportId: Int? = null,
     @SerializedName("promise_id") val promiseId: Int? = null,
     @SerializedName("photo_count") val photoCount: Int = 0,
-    @SerializedName("signature_count") val signatureCount: Int = 0,
     @SerializedName("promise_amount") val promiseAmount: Double? = null,
     @SerializedName("promise_date") val promiseDate: String? = null,
 )
@@ -259,7 +257,6 @@ data class VisitSummaryDto(
     @SerializedName("remarks") val remarks: String? = null,
     @SerializedName("photo_count") val photoCount: Int = 0,
     @SerializedName("document_count") val documentCount: Int = 0,
-    @SerializedName("signature_count") val signatureCount: Int = 0,
     @SerializedName("created_at") val createdAt: String = "",
 )
 
@@ -276,7 +273,6 @@ data class VisitDetailPayload(
     @SerializedName("report") val report: VisitReportDto? = null,
     @SerializedName("photos") val photos: List<MediaDto> = emptyList(),
     @SerializedName("documents") val documents: List<MediaDto> = emptyList(),
-    @SerializedName("signatures") val signatures: List<MediaDto> = emptyList(),
 )
 
 data class VisitReportDto(

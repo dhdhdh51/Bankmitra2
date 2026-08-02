@@ -2,5 +2,4 @@
 <resources>
     <!-- Used where a card must blend into the page background. -->
     <color name="transparent_surface">#00000000</color>
-    <color name="signature_ink">#1C2128</color>
 </resources>

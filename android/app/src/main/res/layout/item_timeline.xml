@@ -87,7 +87,7 @@
             android:layout_marginTop="3dp"
             android:textColor="?attr/colorPrimary"
             android:textSize="11sp"
-            tools:text="2 photos - 2 signatures" />
+            tools:text="2 photos" />
 
         <TextView
             android:id="@+id/textActor"

@@ -127,19 +127,6 @@
             android:name=".ui.photo.PhotoUploadActivity"
             android:exported="false" />
 
-        <!--
-            The signature pad is a full-screen, landscape-only activity: a small
-            inline box produces unusable signatures on a phone. Rotation is locked
-            so a mid-signature orientation change cannot discard the strokes.
-        -->
-        <activity
-            android:name=".ui.signature.SignatureActivity"
-            android:exported="false"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="keyboardHidden|screenSize|orientation"
-            android:theme="@style/Theme.LRMS.Fullscreen"
-            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
-
         <!-- FileProvider for handing a camera capture target to the camera app. -->
         <provider
             android:name="androidx.core.content.FileProvider"

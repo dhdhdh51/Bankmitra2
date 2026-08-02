@@ -90,9 +90,9 @@ interface ApiService {
     /**
      * Submits a field visit report.
      *
-     * Multipart, because a report carries up to three photos, several documents
-     * and two signature PNGs alongside its fields. Sent as a single request so a
-     * report and its evidence can never be separated by a dropped connection.
+     * Multipart, because a report carries several photos and documents alongside its
+     * fields. Sent as a single request so a report and its evidence can never be
+     * separated by a dropped connection.
      */
     @Multipart
     @POST("visits")

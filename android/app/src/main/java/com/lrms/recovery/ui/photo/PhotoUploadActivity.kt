@@ -290,7 +290,7 @@ class PhotoUploadActivity : BaseActivity() {
         bindSlot(agentPhoto, binding.imageAgent, binding.buttonRemoveAgent, binding.textAgentSize)
 
         binding.textOtherCount.text = if (otherDocuments.isEmpty()) {
-            getString(R.string.visit_signature_not_captured)
+            getString(R.string.visit_none_attached)
         } else {
             resources.getQuantityString(
                 R.plurals.photo_count, otherDocuments.size, otherDocuments.size,

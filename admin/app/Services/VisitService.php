@@ -24,7 +24,7 @@ use App\Services\TrackingService;
  *   1. a new visit_reports row (with a borrower/loan snapshot)
  *   2. a `visit` timeline event
  *   3. optionally a promises row + `promise_created` timeline event
- *   4. photo / document / signature rows
+ *   4. photo / document rows
  * and then refreshes the derived counters on loan_accounts.
  *
  * All of it happens in one transaction so a half-written visit is impossible.
@@ -77,7 +77,7 @@ final class VisitService
                     'visit_id'   => (int) $existing['id'],
                     'promise_id' => null,
                     'duplicate'  => true,
-                    'media'      => ['photos' => 0, 'documents' => 0, 'signatures' => 0],
+                    'media'      => ['photos' => 0, 'documents' => 0],
                     'warnings'   => ['This visit was already submitted.'],
                 ];
             }
@@ -106,7 +106,7 @@ final class VisitService
         $warnings = [];
         $visitId = 0;
         $promiseId = null;
-        $mediaCounts = ['photos' => 0, 'documents' => 0, 'signatures' => 0];
+        $mediaCounts = ['photos' => 0, 'documents' => 0];
 
         $db->transaction(static function () use (
             $db,
@@ -354,8 +354,8 @@ final class VisitService
     // -----------------------------------------------------------------------
 
     /**
-     * Handles both multipart uploads and base64 payloads (the Android app uses
-     * base64 for signatures and may use either for photos).
+     * Handles both multipart uploads and base64 payloads (the Android app may use
+     * either for photos).
      *
      * @param array<string,mixed> $input
      * @param list<string>        $warnings
@@ -363,7 +363,7 @@ final class VisitService
      */
     private static function attachMedia(int $visitId, int $loanAccountId, int $userId, array $input, array &$warnings): array
     {
-        $counts = ['photos' => 0, 'documents' => 0, 'signatures' => 0];
+        $counts = ['photos' => 0, 'documents' => 0];
 
         $imageMime = (array) Config::get('uploads.allowed_image_mime', ['image/jpeg', 'image/png', 'image/webp']);
         $docMime = (array) Config::get('uploads.allowed_doc_mime', ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
@@ -419,42 +419,6 @@ final class VisitService
             }
         } catch (\Throwable $e) {
             $warnings[] = 'A document could not be saved: ' . $e->getMessage();
-        }
-
-        // ---- signatures (one customer + one agent per visit) --------------
-        foreach (['customer', 'agent'] as $type) {
-            try {
-                $field = $type . '_signature';
-                $stored = null;
-
-                if (Uploader::hasUpload($field)) {
-                    $files = Uploader::normalizeMultiple($field);
-                    if ($files !== []) {
-                        $stored = Uploader::store($files[0], 'signatures', ['image/png', 'image/jpeg'], $maxPhoto);
-                    }
-                } else {
-                    $base64 = trim((string) ($input[$field . '_base64'] ?? ''));
-                    if ($base64 !== '') {
-                        $stored = Uploader::storeBase64($base64, 'signatures', $maxPhoto);
-                    }
-                }
-
-                if ($stored !== null) {
-                    Database::instance()->insert('signatures', [
-                        'visit_report_id' => $visitId,
-                        'loan_account_id' => $loanAccountId,
-                        'signature_type'  => $type,
-                        'file_path'       => $stored['path'],
-                        'signed_name'     => self::str($input[$type . '_signature_name'] ?? null, 150),
-                        'file_size'       => $stored['size'],
-                        'captured_at'     => self::deviceClock($input[$type . '_signature_captured_at'] ?? null),
-                        'uploaded_by'     => $userId,
-                    ] + self::signaturePoint($input, $type, $userId));
-                    $counts['signatures']++;
-                }
-            } catch (\Throwable $e) {
-                $warnings[] = sprintf('The %s signature could not be saved: %s', $type, $e->getMessage());
-            }
         }
 
         return $counts;
@@ -693,54 +657,6 @@ final class VisitService
         return $parsed !== false && $parsed <= time() + 300
             ? date('Y-m-d H:i:s', $parsed)
             : $default;
-    }
-
-    /**
-     * Where a signature was signed.
-     *
-     * A signature has no camera, so there is no "was this from the gallery" question
-     * to answer - the pad was either signed with a fix available or it was not. The
-     * three-way source is kept anyway, because "the agent declined location
-     * recording" and "there was no signal in the borrower's courtyard" are different
-     * answers to a supervisor asking why a signed report has no position on it.
-     *
-     * Same server-side gates as every other coordinate: consent is checked here, not
-     * trusted from the client, and an implausible fix is discarded rather than stored.
-     *
-     * @param  array<string,mixed> $input
-     * @return array{gps_latitude:float|null,gps_longitude:float|null,gps_accuracy_m:int|null,gps_source:string}
-     */
-    private static function signaturePoint(array $input, string $type, int $agentId): array
-    {
-        $blank = ['gps_latitude' => null, 'gps_longitude' => null, 'gps_accuracy_m' => null];
-
-        if ((string) ($input[$type . '_signature_gps_source'] ?? '') === 'denied') {
-            return $blank + ['gps_source' => 'denied'];
-        }
-
-        $latitude = self::nullableAmount($input[$type . '_signature_latitude'] ?? null);
-        $longitude = self::nullableAmount($input[$type . '_signature_longitude'] ?? null);
-
-        if ($latitude === null || $longitude === null) {
-            return $blank + ['gps_source' => 'unavailable'];
-        }
-
-        if (!TrackingService::hasConsented($agentId)) {
-            return $blank + ['gps_source' => 'denied'];
-        }
-
-        if (!TrackingService::plausible((float) $latitude, (float) $longitude)) {
-            return $blank + ['gps_source' => 'unavailable'];
-        }
-
-        $accuracy = $input[$type . '_signature_accuracy_m'] ?? null;
-
-        return [
-            'gps_latitude'   => (float) $latitude,
-            'gps_longitude'  => (float) $longitude,
-            'gps_accuracy_m' => $accuracy === null || $accuracy === '' ? null : max(0, (int) $accuracy),
-            'gps_source'     => 'device',
-        ];
     }
 
     // -----------------------------------------------------------------------

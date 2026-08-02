@@ -107,33 +107,6 @@ final class Geo
     }
 
     /**
-     * The caption under a signature.
-     *
-     * Where the pad was signed, not where the report was filed. On a document a
-     * borrower puts their name to, those can differ and the difference matters.
-     *
-     * @param array<string,mixed> $signature A row from `signatures`.
-     */
-    public static function signature(array $signature): string
-    {
-        // An image attached from a desk is never given a position, and says why. The
-        // only coordinate available at upload time is the office the file came from,
-        // which would be a fact about a clerk presented as a fact about a doorstep.
-        if ((string) ($signature['capture_method'] ?? 'device_pad') === 'panel_upload') {
-            return 'Uploaded image - not signed at the visit.';
-        }
-
-        return self::caption(
-            $signature['gps_latitude'] ?? null,
-            $signature['gps_longitude'] ?? null,
-            $signature['gps_accuracy_m'] ?? null,
-            ($signature['captured_at'] ?? null) !== null ? fmt_datetime((string) $signature['captured_at']) : null,
-            (string) ($signature['gps_source'] ?? 'unavailable'),
-            'No location recorded at signing.'
-        );
-    }
-
-    /**
      * Where the approver was when they approved.
      *
      * @param array<string,mixed> $report A row from `visit_reports`.

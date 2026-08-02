@@ -11,7 +11,7 @@ use App\Core\Response;
 use App\Core\Uploader;
 
 /**
- * Streams borrower photos, documents and signatures to the app.
+ * Streams borrower photos and documents to the app.
  *
  * Authenticated with the Bearer JWT, then scoped: an agent only receives media
  * belonging to leads in their own branch. Files on disk are never web-readable
@@ -80,15 +80,11 @@ final class MediaController extends Controller
                FROM documents d JOIN loan_accounts la ON la.id = d.loan_account_id
               WHERE d.file_path = ?
               UNION
-             SELECT la.branch_id
-               FROM signatures s JOIN loan_accounts la ON la.id = s.loan_account_id
-              WHERE s.file_path = ?
-              UNION
              SELECT vr.branch_id
                FROM visit_reports vr
-              WHERE vr.approval_photo_path = ? OR vr.approval_signature_path = ?
+              WHERE vr.approval_photo_path = ?
               LIMIT 1',
-            [$relative, $relative, $relative, $relative, $relative]
+            [$relative, $relative, $relative]
         );
 
         if ($branchId === null) {

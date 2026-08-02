@@ -268,9 +268,9 @@ final class Pdf
      * Lays out images side by side, each with an optional label and caption.
      *
      * Used for the two things a printed visit report has to show rather than
-     * describe: the agent's photograph next to their signature, and each field
-     * photograph with the coordinates it was taken at. A report that merely says
-     * "Photos: 3" is not evidence of anything.
+     * describe: the agent's own photograph at the door, and each field photograph
+     * with the coordinates it was taken at. A report that merely says "Photos: 3" is
+     * not evidence of anything.
      *
      * An image that cannot be read is skipped and its cell shows why, rather than
      * aborting the whole report. A missing file is a housekeeping problem; a print
@@ -330,8 +330,8 @@ final class Pdf
                     'center'
                 );
             } else {
-                // Fit inside the cell without distorting: a stretched signature is a
-                // different signature.
+                // Fit inside the cell without distorting. A stretched photograph is
+                // evidence of a place that does not look like that.
                 $scale = min($cellWidth / $image['width'], $maxHeight / $image['height'], 1.0);
                 $drawWidth = $image['width'] * $scale;
                 $drawHeight = $image['height'] * $scale;
@@ -357,6 +357,84 @@ final class Pdf
         }
 
         $this->y = $top - $labelSpace - $maxHeight - $captionSpace - 10.0;
+    }
+
+    /**
+     * Empty ruled boxes to be signed by hand on the printed copy.
+     *
+     * This replaced a captured signature image. The bank's decision, and a sound one:
+     * a finger-drawn scrawl on a 5-inch screen is not a signature anybody would accept
+     * across a counter, and it was being collected anyway - so the printout now carries
+     * the space and the paper carries the signature.
+     *
+     * Deliberately drawn even when nothing else on the page needs space, because the
+     * whole point is that the box is empty. A form that omits the box when there is
+     * "nothing to show" is a form nobody can sign.
+     *
+     * @param list<array{label?:string,caption?:string}> $items
+     */
+    public function signatureBlock(array $items, float $height = 60.0, float $gap = 16.0): void
+    {
+        $items = array_values($items);
+        if ($items === []) {
+            return;
+        }
+
+        $count = count($items);
+        $cellWidth = ($this->contentWidth() - ($gap * ($count - 1))) / $count;
+
+        $labelSpace = 0.0;
+        $captionLines = 0;
+        foreach ($items as $item) {
+            if (($item['label'] ?? '') !== '') {
+                $labelSpace = 12.0;
+            }
+            if (($item['caption'] ?? '') !== '') {
+                $captionLines = max($captionLines, count(self::wrap(self::text($item['caption']), $cellWidth, 7.2, false)));
+            }
+        }
+        $captionSpace = $captionLines * 9.6;
+
+        // Measured and kept together, like imageStrip: a signature line at the top of
+        // the next page, with its label left behind on this one, is worse than a break.
+        $this->ensureSpace($labelSpace + $height + $captionSpace + 10.0);
+
+        $top = $this->y;
+        $x = $this->marginX;
+
+        foreach ($items as $item) {
+            $cellTop = $top;
+
+            if (($item['label'] ?? '') !== '') {
+                $this->textAt(self::text($item['label']), $x, $cellTop - 8.0, 7.6, true, '#4b5563');
+                $cellTop -= $labelSpace;
+            }
+
+            // The box is the space to sign in; the darker rule inside its foot is the
+            // line to sign ON. Without the rule people sign across the border and the
+            // scan clips it.
+            $this->rect($x, $cellTop - $height, $cellWidth, $height, '#c8cdd4', false);
+            $this->line(
+                $x + 8.0,
+                $cellTop - $height + 15.0,
+                $x + $cellWidth - 8.0,
+                $cellTop - $height + 15.0,
+                '#8a919b',
+                0.6
+            );
+
+            if (($item['caption'] ?? '') !== '') {
+                $lineY = $cellTop - $height - 10.0;
+                foreach (self::wrap(self::text($item['caption']), $cellWidth, 7.2, false) as $line) {
+                    $this->textAt($line, $x, $lineY, 7.2, false, '#6b7280');
+                    $lineY -= 9.6;
+                }
+            }
+
+            $x += $cellWidth + $gap;
+        }
+
+        $this->y = $top - $labelSpace - $height - $captionSpace - 10.0;
     }
 
     /** True when at least one of these paths can actually be embedded. */
@@ -423,7 +501,7 @@ final class Pdf
      *   /DCTDecode. PDF speaks JPEG natively, so this costs no quality and no time -
      *   which matters because field photographs are JPEG and there can be several.
      *
-     *   Everything else is re-encoded through GD: PNG (signatures), WebP, CMYK JPEG
+     *   Everything else is re-encoded through GD: PNG, WebP, CMYK JPEG
      *   and progressive JPEG. Progressive is the subtle one - it is still DCT, but
      *   /DCTDecode does not support it and viewers render a grey box, so it has to be
      *   detected rather than assumed safe.
@@ -473,9 +551,9 @@ final class Pdf
     /**
      * Re-encodes anything GD can open.
      *
-     * Transparency is flattened onto white, which is not cosmetic: a signature is
-     * dark ink on nothing, and "nothing" in an RGB buffer is black - so an
-     * unflattened signature prints as a solid black rectangle.
+     * Transparency is flattened onto white, which is not cosmetic: a transparent PNG -
+     * a logo, a line drawing, a stamp - is dark ink on nothing, and "nothing" in an RGB
+     * buffer is black, so unflattened it prints as a solid black rectangle.
      *
      * @return array{data:string,width:int,height:int,filter:string,colorspace:string}|null
      */
@@ -614,6 +692,18 @@ final class Pdf
     public function spacer(float $height = 10.0): void
     {
         $this->y -= $height;
+    }
+
+    /**
+     * The current vertical cursor, in points from the foot of the page.
+     *
+     * Read-only, and exposed for the tests: how far a block advances the cursor is the
+     * difference between a signature box the next section prints on top of and one it
+     * does not, and that cannot be asserted from the PDF bytes.
+     */
+    public function cursorY(): float
+    {
+        return $this->y;
     }
 
     /** Renders the final document. */

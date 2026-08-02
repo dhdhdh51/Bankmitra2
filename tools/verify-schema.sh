@@ -12,8 +12,8 @@ ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$ROOT_DIR/.verify
 mkdir -p "$WORK"
 
-EXPECT_TABLES=35
-EXPECT_FKS=57
+EXPECT_TABLES=34
+EXPECT_FKS=54
 
 PASSED=0
 FAILED=0

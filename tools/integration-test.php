@@ -1044,7 +1044,7 @@ $dupe = VisitService::submit([
 check('duplicate client_uuid is idempotent', $dupe['duplicate'] === true && $dupe['visit_id'] === $visit1['visit_id']);
 check('visit_count unchanged after duplicate', (int) LoanAccount::find($leadId)['visit_count'] === 1);
 
-// Visit 2 with a promise + signature + photo
+// Visit 2 with a promise + photos
 $png = base64_encode((string) file_get_contents(__DIR__ . '/fixtures/pixel.png'));
 $visit2 = VisitService::submit([
     'loan_account_id' => $leadId,
@@ -1059,32 +1059,28 @@ $visit2 = VisitService::submit([
     'rec_recovery_possible' => '1',
     'remarks'         => 'Agreed to pay after selling milk stock.',
     'client_uuid'     => 'bbbbbbbb-1111-2222-3333-444444444444',
-    'customer_signature_base64' => $png,
-    'agent_signature_base64'    => $png,
     'customer_photo_base64'     => $png,
     'house_photo_base64'        => $png,
-    'customer_signature_name'   => 'Ramesh Kumar',
 ], $agentCtx);
 
 check('visit 2 created', $visit2['visit_id'] > 0 && $visit2['visit_id'] !== $visit1['visit_id']);
 check('visit 2 warnings empty', $visit2['warnings'] === [], json_encode($visit2['warnings']));
 check('promise created', $visit2['promise_id'] !== null);
 check('promise amount "25,000" parsed', abs((float) Promise::find((int) $visit2['promise_id'])['promise_amount'] - 25000.0) < 0.01);
-check('2 signatures saved', $visit2['media']['signatures'] === 2, json_encode($visit2['media']));
 check('2 photos saved', $visit2['media']['photos'] === 2, json_encode($visit2['media']));
-check('signature files exist on disk', (function () use ($visit2, $workDir): bool {
-    foreach (VisitReport::signatures($visit2['visit_id']) as $sig) {
-        if (!is_file($workDir . '/uploads/' . $sig['file_path'])) {
+check('photo files exist on disk', (function () use ($visit2, $workDir): bool {
+    foreach (VisitReport::photos($visit2['visit_id']) as $photo) {
+        if (!is_file($workDir . '/uploads/' . $photo['file_path'])) {
             return false;
         }
     }
     return true;
 })());
-check('signature unique per visit+type',
-    (int) $db->scalar('SELECT COUNT(*) FROM signatures WHERE visit_report_id = ?', [$visit2['visit_id']]) === 2);
-check('signed_name recorded',
-    (string) ($db->scalar("SELECT signed_name FROM signatures WHERE visit_report_id = ? AND signature_type = 'customer'",
-        [$visit2['visit_id']]) ?? '') === 'Ramesh Kumar');
+// Signatures used to be counted here. Nothing captures one now - the printed report
+// carries empty ruled boxes - so the media counter must not report a kind it no
+// longer stores, or the app shows "2 attachments" for a report that has none.
+check('the media counter has no signature bucket left',
+    !array_key_exists('signatures', $visit2['media']), json_encode($visit2['media']));
 check('visit_count now 2', (int) LoanAccount::find($leadId)['visit_count'] === 2);
 check('status -> promise', (string) LoanAccount::find($leadId)['current_status'] === 'promise');
 check('next_followup_date = promise date',
@@ -2612,7 +2608,7 @@ check('a visit-report field is a third namespace',
     \App\Models\CustomField::valuesFor('visit_report', $reportId) === []);
 
 // ---------------------------------------------------------------------------
-section('The agent\'s own photograph and signature, and where they were taken');
+section('The agent\'s own photograph, and where it was taken');
 
 // Consent first: every coordinate in the system is gated on it server-side, so a test
 // that skipped this would prove the gate works and nothing else.
@@ -2643,17 +2639,6 @@ $geoVisit = VisitService::submit([
     // A gallery pick, which must never inherit a position.
     'house_photo_base64' => $pixel,
     'house_photo_source' => 'gallery',
-
-    // Both signatures, one with a fix and one without.
-    'customer_signature_base64'      => $pixel,
-    'customer_signature_name'        => 'Ramesh Kumar Yadav',
-    'customer_signature_latitude'    => '26.9126000',
-    'customer_signature_longitude'   => '75.7875000',
-    'customer_signature_accuracy_m'  => '9',
-    'customer_signature_captured_at' => date('Y-m-d H:i:s', time() - 300),
-
-    'agent_signature_base64'     => $pixel,
-    'agent_signature_gps_source' => 'unavailable',
 ], $agentCtx);
 
 $geoVisitId = (int) $geoVisit['visit_id'];
@@ -2683,46 +2668,26 @@ check('a gallery photograph still refuses a position',
 check('and refuses a capture time it was never given',
     ($geoPhotos['house']['captured_at'] ?? null) === null);
 
-$geoSignatures = [];
-foreach (VisitReport::signatures($geoVisitId) as $row) {
-    $geoSignatures[(string) $row['signature_type']] = $row;
-}
-
-check('the borrower signature records where it was signed',
-    abs((float) ($geoSignatures['customer']['gps_latitude'] ?? 0) - 26.9126) < 0.00001,
-    (string) ($geoSignatures['customer']['gps_latitude'] ?? 'null'));
-check('with its accuracy', (int) ($geoSignatures['customer']['gps_accuracy_m'] ?? 0) === 9);
-check('and is marked as coming from the device',
-    (string) ($geoSignatures['customer']['gps_source'] ?? '') === 'device');
-check('a signature signed with no fix says so',
-    (string) ($geoSignatures['agent']['gps_source'] ?? '') === 'unavailable',
-    (string) ($geoSignatures['agent']['gps_source'] ?? 'null'));
-check('and stores no coordinates rather than the visit\'s',
-    ($geoSignatures['agent']['gps_latitude'] ?? null) === null);
-
-// The signature position is a different fact from the visit position. If the code ever
-// starts copying one into the other this is the assertion that notices.
-check('the signature position is not silently the visit position',
-    abs((float) $geoSignatures['customer']['gps_latitude'] - 26.9124) > 0.0000001);
-
-// Consent is the gate, and it is checked on the server for signatures too.
+// Consent is the gate, and it is checked on the server rather than trusted from the
+// app. This used to be asserted through a signature coordinate; the visit's own
+// position runs the identical three rules, so the gate is still covered.
 \App\Services\TrackingService::withdrawConsent($agent1Id, '127.0.0.1', 'itest');
 $withdrawnVisit = VisitService::submit([
     'loan_account_id' => $leadId,
     'visit_date'      => date('Y-m-d'),
     'visit_time'      => '12:15',
     'client_uuid'     => 'geo00002-1111-2222-3333-444444444444',
-    'customer_signature_base64'     => $pixel,
-    'customer_signature_latitude'   => '26.9126000',
-    'customer_signature_longitude'  => '75.7875000',
+    'gps_source'      => 'device',
+    'gps_latitude'    => '26.9126000',
+    'gps_longitude'   => '75.7875000',
 ], $agentCtx);
 
-$withdrawnSignature = VisitReport::signatures((int) $withdrawnVisit['visit_id'])[0] ?? [];
-check('without consent a signature coordinate is refused',
-    ($withdrawnSignature['gps_latitude'] ?? null) === null);
+$withdrawnReport = VisitReport::find((int) $withdrawnVisit['visit_id']) ?? [];
+check('without consent a coordinate is refused',
+    ($withdrawnReport['gps_latitude'] ?? null) === null);
 check('and it is recorded as declined, not as no signal',
-    (string) ($withdrawnSignature['gps_source'] ?? '') === 'denied',
-    (string) ($withdrawnSignature['gps_source'] ?? 'null'));
+    (string) ($withdrawnReport['gps_source'] ?? '') === 'denied',
+    (string) ($withdrawnReport['gps_source'] ?? 'null'));
 
 \App\Services\TrackingService::recordConsent($agent1Id, '127.0.0.1', 'itest');
 
@@ -2733,13 +2698,13 @@ $nullIslandVisit = VisitService::submit([
     'visit_date'      => date('Y-m-d'),
     'visit_time'      => '12:45',
     'client_uuid'     => 'geo00003-1111-2222-3333-444444444444',
-    'customer_signature_base64'    => $pixel,
-    'customer_signature_latitude'  => '0',
-    'customer_signature_longitude' => '0',
+    'gps_source'      => 'device',
+    'gps_latitude'    => '0',
+    'gps_longitude'   => '0',
 ], $agentCtx);
 
-$nullIsland = VisitReport::signatures((int) $nullIslandVisit['visit_id'])[0] ?? [];
-check('a (0,0) signature fix is thrown away',
+$nullIsland = VisitReport::find((int) $nullIslandVisit['visit_id']) ?? [];
+check('a (0,0) fix is thrown away',
     ($nullIsland['gps_latitude'] ?? null) === null);
 check('and reported as unavailable rather than declined',
     (string) ($nullIsland['gps_source'] ?? '') === 'unavailable',

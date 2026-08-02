@@ -440,7 +440,7 @@
                             </com.google.android.material.card.MaterialCardView>
                         </LinearLayout>
 
-                        <!-- Photos & signatures -->
+                        <!-- Photos -->
                         <LinearLayout
                             android:id="@+id/groupPhotos"
                             android:layout_width="match_parent"

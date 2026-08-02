@@ -18,7 +18,7 @@ views/             page templates              (blocked from the web)
 assets/            CSS and JS                  (public)
 cron/              scheduled scripts
 storage/           logs, backups, import files (blocked from the web)
-uploads/           photos and signatures       (served only through PHP)
+uploads/           photos and documents        (served only through PHP)
 schema.sql         database schema and seed data
 DEPLOYMENT.md      the full deployment guide
 ```
@@ -183,7 +183,7 @@ Take a database backup first — the panel has a button for it under *Backup*.
 
 - `config/config.php` is the only file holding secrets. It is blocked from the
   web by `config/.htaccess`, but never make it world-readable either.
-- `uploads/` is **not** web-served. Photos, signatures and documents stream
+- `uploads/` is **not** web-served. Photos and documents stream
   through PHP after an authentication and branch-scope check, so a guessed
   filename returns 403 rather than someone's Aadhaar photo. Do not "fix" this by
   removing `uploads/.htaccess`.

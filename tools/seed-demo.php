@@ -148,27 +148,6 @@ function demo_photo_base64(int $seed): string
     return base64_encode($bytes);
 }
 
-/** Line art on transparency, like a real captured signature. */
-function demo_signature_base64(): string
-{
-    $image = imagecreatetruecolor(520, 180);
-    imagesavealpha($image, true);
-    imagefill($image, 0, 0, (int) imagecolorallocatealpha($image, 0, 0, 0, 127));
-
-    $ink = (int) imagecolorallocate($image, 12, 12, 24);
-    imagesetthickness($image, 5);
-    imagearc($image, 150, 90, 200, 90, 20, 300, $ink);
-    imagearc($image, 320, 95, 180, 70, 200, 20, $ink);
-    imageline($image, 40, 140, 480, 132, $ink);
-
-    ob_start();
-    imagepng($image);
-    $bytes = (string) ob_get_clean();
-    imagedestroy($image);
-
-    return base64_encode($bytes);
-}
-
 // ---------------------------------------------------------------------------
 // Branches
 // ---------------------------------------------------------------------------
@@ -351,10 +330,11 @@ foreach ($assigned as $index => $lead) {
         'app_version'     => '1.0.0',
     ];
 
-    // Every third visit carries a geo-stamped photograph and both signatures, so the
-    // printed report, the photo gallery and the approval screen all have something
-    // real to render. Seeded data with no media meant the PDF's image embedding was
-    // exercised by nothing at all.
+    // Every third visit carries geo-stamped photographs, so the printed report, the
+    // photo gallery and the approval screen all have something real to render. Seeded
+    // data with no media meant the PDF's image embedding was exercised by nothing at
+    // all. Signatures are not seeded because they are not captured any more - the
+    // printout carries blank boxes and the paper is signed by hand.
     if ($index % 3 === 0) {
         $payload['gps_source'] = 'device';
         $payload['gps_latitude'] = (string) round(19.0728 + ($index * 0.0007), 7);
@@ -386,25 +366,6 @@ foreach ($assigned as $index => $lead) {
         $payload['agent_photo_longitude'] = $payload['gps_longitude'];
         $payload['agent_photo_accuracy_m'] = $payload['gps_accuracy_m'];
         $payload['agent_photo_captured_at'] = $payload['gps_captured_at'];
-
-        $payload['customer_signature_base64'] = demo_signature_base64();
-        $payload['customer_signature_name'] = (string) $lead['customer_name'];
-        $payload['agent_signature_base64'] = demo_signature_base64();
-        $payload['agent_signature_name'] = (string) $agentCtx['name'];
-
-        // Both signatures record where the pad was signed. Every fourth stamped visit
-        // deliberately leaves the agent's signature without a fix, so the "signed
-        // indoors, no signal" wording is exercised too rather than only the happy path.
-        foreach (['customer', 'agent'] as $signatureType) {
-            if ($signatureType === 'agent' && $index % 4 === 0) {
-                $payload['agent_signature_gps_source'] = 'unavailable';
-                continue;
-            }
-            $payload[$signatureType . '_signature_latitude'] = $payload['gps_latitude'];
-            $payload[$signatureType . '_signature_longitude'] = $payload['gps_longitude'];
-            $payload[$signatureType . '_signature_accuracy_m'] = $payload['gps_accuracy_m'];
-            $payload[$signatureType . '_signature_captured_at'] = $payload['gps_captured_at'];
-        }
     }
 
     if ($makesPromise) {

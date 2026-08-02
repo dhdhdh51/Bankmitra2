@@ -90,33 +90,6 @@ data class VisitFormData(
     var agentPhoto: File? = null,
     var otherDocuments: MutableList<File> = mutableListOf(),
 
-    // ---- Signatures --------------------------------------------------------
-    var customerSignature: File? = null,
-    var agentSignature: File? = null,
-    var customerSignatureName: String = "",
-    var agentSignatureName: String = "",
-
-    /**
-     * Where each pad was signed, packed as "lat,lng,accuracyOrBlank,capturedAt".
-     *
-     * A signature is the borrower agreeing to what the report says and the agent
-     * asserting they were there to collect it. "Signed at these coordinates" is what
-     * makes it more than a squiggle, and it is a different fact from where the report
-     * was later submitted - an agent can walk back to the road before pressing send.
-     */
-    var customerSignatureFix: String = "",
-    var agentSignatureFix: String = "",
-
-    /**
-     * Mirrors the server's `gps_source`: device, denied or unavailable.
-     *
-     * Sent even when there is no fix, because "the agent refused location recording"
-     * and "there was no signal in the courtyard" are different answers to a supervisor
-     * asking why a signed report has no position on it.
-     */
-    var customerSignatureGpsSource: String = "unavailable",
-    var agentSignatureGpsSource: String = "unavailable",
-
     // ---- KRM / OTS settlement (report_type = ots) ---------------------------
     var otsEligible: Boolean = false,
     var otsScheme: String = "",
@@ -610,8 +583,6 @@ data class VisitFormData(
         }
 
         putIfNotBlank(fields, "remarks", remarks)
-        putIfNotBlank(fields, "customer_signature_name", customerSignatureName)
-        putIfNotBlank(fields, "agent_signature_name", agentSignatureName)
         putIfNotBlank(fields, "app_version", appVersion)
         putIfNotBlank(fields, "device_info", deviceInfo)
 
@@ -644,22 +615,6 @@ data class VisitFormData(
             // photograph was taken but never when, so two photographs of the same door
             // an hour apart were indistinguishable.
             fix.capturedAt?.let { fields["${slot}_photo_captured_at"] = it }
-        }
-
-        // Signatures carry their own position, sent under their own names so the
-        // server never has to guess that a signature was signed wherever the report
-        // was submitted from.
-        listOf(
-            Triple("customer", customerSignatureFix, customerSignatureGpsSource),
-            Triple("agent", agentSignatureFix, agentSignatureGpsSource),
-        ).forEach { (type, packed, source) ->
-            fields["${type}_signature_gps_source"] = source
-
-            val fix = unpackFix(packed) ?: return@forEach
-            fields["${type}_signature_latitude"] = fix.latitude
-            fields["${type}_signature_longitude"] = fix.longitude
-            fix.accuracyMetres?.let { fields["${type}_signature_accuracy_m"] = it }
-            fix.capturedAt?.let { fields["${type}_signature_captured_at"] = it }
         }
 
         return fields
@@ -706,13 +661,7 @@ data class VisitFormData(
         renewalFormPhoto?.let { put("renewal_form_photo", it) }
     }
 
-    fun signatureFiles(): Map<String, File> = buildMap {
-        customerSignature?.let { put("customer_signature", it) }
-        agentSignature?.let { put("agent_signature", it) }
-    }
-
-    fun attachmentCount(): Int =
-        photoFiles().size + signatureFiles().size + otherDocuments.size
+    fun attachmentCount(): Int = photoFiles().size + otherDocuments.size
 
     /** True when the user has entered anything worth warning about on exit. */
     fun hasUnsavedInput(): Boolean =

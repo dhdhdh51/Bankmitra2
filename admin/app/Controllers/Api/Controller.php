@@ -155,7 +155,6 @@ abstract class Controller
             'remarks'            => $visit['remarks'] === null ? null : (string) $visit['remarks'],
             'photo_count'        => (int) ($visit['photo_count'] ?? 0),
             'document_count'     => (int) ($visit['document_count'] ?? 0),
-            'signature_count'    => (int) ($visit['signature_count'] ?? 0),
             'created_at'         => (string) ($visit['created_at'] ?? ''),
         ];
     }
@@ -293,7 +292,6 @@ abstract class Controller
             'visit_report_id' => $event['visit_report_id'] === null ? null : (int) $event['visit_report_id'],
             'promise_id'      => $event['promise_id'] === null ? null : (int) $event['promise_id'],
             'photo_count'     => (int) ($event['photo_count'] ?? 0),
-            'signature_count' => (int) ($event['signature_count'] ?? 0),
             'promise_amount'  => $event['promise_amount'] === null ? null : round((float) $event['promise_amount'], 2),
             'promise_date'    => $event['promise_date'] === null ? null : (string) $event['promise_date'],
         ];
@@ -311,10 +309,9 @@ abstract class Controller
         return [
             'id'         => (int) $media['id'],
             'kind'       => $kind,
-            'type'       => (string) ($media['photo_type'] ?? $media['signature_type'] ?? $media['doc_type'] ?? 'other'),
+            'type'       => (string) ($media['photo_type'] ?? $media['doc_type'] ?? 'other'),
             'url'        => '/api/v1/media?f=' . rawurlencode((string) $media['file_path']),
             'title'      => $media['title'] ?? $media['original_name'] ?? null,
-            'signed_name' => $media['signed_name'] ?? null,
             'created_at' => (string) $media['created_at'],
         ];
     }

@@ -256,10 +256,31 @@ if grep -q 'Verifies' "$WORK/verify-debug.log"; then
 else
     fail 'the debug APK does not verify'
 fi
-if grep -qi 'Android Debug' "$WORK/verify-debug.log"; then
-    pass 'the debug APK carries the standard Android debug certificate'
+# The debug APK is the one the field actually installs, so its certificate has to be
+# the SAME one every build. Gradle's default is a keystore generated on the build
+# machine, which on CI means a new certificate per run - and Android refuses to install
+# over an app signed by a different certificate. "The new APK does not work" is what
+# that looks like on a phone. So: a committed keystore, and this check that the APK
+# really came from it.
+if [ -f app/debug.keystore ]; then
+    pass 'a debug keystore is committed rather than generated per machine'
 else
-    fail 'unexpected certificate on the debug APK'
+    die 'app/debug.keystore is missing - every build would sign with a different key'
+fi
+
+if git -C "$ROOT" ls-files --error-unmatch android/app/debug.keystore > /dev/null 2>&1; then
+    pass 'and it is tracked by git, so every runner signs with it'
+else
+    fail 'app/debug.keystore exists but is not tracked - CI will generate its own'
+fi
+
+KEYSTORE_FP=$(keytool -list -keystore app/debug.keystore -storepass android 2>/dev/null \
+    | sed -n 's/.*SHA-256): //p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')
+APK_FP=$(sed -n 's/.*certificate SHA-256 digest: //p' "$WORK/verify-debug.log" | head -1 | tr 'A-F' 'a-f')
+if [ -n "$KEYSTORE_FP" ] && [ "$KEYSTORE_FP" = "$APK_FP" ]; then
+    pass 'the debug APK is signed by the committed keystore, so it installs as an update'
+else
+    fail "debug APK certificate ($APK_FP) is not the committed keystore's ($KEYSTORE_FP)"
 fi
 
 # ---------------------------------------------------------------------------

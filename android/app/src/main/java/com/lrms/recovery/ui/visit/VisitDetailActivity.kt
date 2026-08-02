@@ -73,7 +73,7 @@ class VisitDetailActivity : BaseActivity() {
 
                     render(report)
 
-                    val media = result.data.photos + result.data.signatures
+                    val media = result.data.photos
                     mediaAdapter.submitList(media)
                     binding.groupMedia.visibility = if (media.isEmpty()) View.GONE else View.VISIBLE
 

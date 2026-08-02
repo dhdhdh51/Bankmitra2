@@ -142,10 +142,14 @@ CREATE TABLE `users` (
   -- There were two, printed at the foot of every report the person filed. They were
   -- removed because a stored image says nothing about the visit it gets printed on: a
   -- portrait uploaded once in a branch office, captioned nothing, sitting on a
-  -- document that geo-captions every other photograph, reads as field evidence. An
-  -- image now belongs to the thing it evidences - a photograph to the visit it was
-  -- taken at (photos.photo_type = 'agent', with its own fix), a signature to the
-  -- report it signs (signatures, with where and how it was captured).
+  -- document that geo-captions every other photograph, reads as field evidence. A
+  -- photograph now belongs to the thing it evidences - the visit it was taken at
+  -- (photos.photo_type = 'agent', with its own fix).
+  --
+  -- Signatures are not stored anywhere at all any more, against a person or against a
+  -- report. A fingertip scrawl on a phone is not a signature anybody would accept
+  -- across a counter, so the printed report carries empty ruled boxes instead and the
+  -- paper is signed by hand.
   `created_by`           INT UNSIGNED DEFAULT NULL,
   `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -517,9 +521,10 @@ CREATE TABLE `visit_reports` (
   `device_info`  VARCHAR(255) DEFAULT NULL,
   -- ---- Approval -----------------------------------------------------------
   -- An agent files the report; somebody senior signs it off. The approver's own
-  -- position and signature are recorded, not just their user id, because "I approved
+  -- position and photograph are recorded, not just their user id, because "I approved
   -- it from the branch" and "I approved forty of them from home at midnight" are
-  -- different claims and only one of them is verification.
+  -- different claims and only one of them is verification. Their signature goes on
+  -- the printed page by hand: the printout carries a blank box for it.
   --
   -- This does NOT make the report editable in place. The submitted values stay in the
   -- row and every subsequent change is written to visit_report_revisions with its
@@ -532,7 +537,6 @@ CREATE TABLE `visit_reports` (
   `approved_at`            DATETIME     DEFAULT NULL,
   `approval_remarks`       VARCHAR(1000) DEFAULT NULL,
   `approval_photo_path`    VARCHAR(500) DEFAULT NULL COMMENT 'the approver, at the moment of approval',
-  `approval_signature_path` VARCHAR(500) DEFAULT NULL,
   `approval_gps_latitude`  DECIMAL(10,7) DEFAULT NULL,
   `approval_gps_longitude` DECIMAL(10,7) DEFAULT NULL,
   `approval_gps_accuracy_m` SMALLINT UNSIGNED DEFAULT NULL,
@@ -798,7 +802,7 @@ CREATE TABLE `visit_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- 10. MEDIA: photos / documents / signatures
+-- 10. MEDIA: photos / documents
 -- ============================================================================
 
 DROP TABLE IF EXISTS `photos`;
@@ -859,51 +863,6 @@ CREATE TABLE `documents` (
   CONSTRAINT `fk_docs_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_docs_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_docs_user`  FOREIGN KEY (`uploaded_by`)     REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- One customer signature + one agent signature per visit report.
-DROP TABLE IF EXISTS `signatures`;
-CREATE TABLE `signatures` (
-  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `visit_report_id` BIGINT UNSIGNED NOT NULL,
-  `loan_account_id` BIGINT UNSIGNED NOT NULL,
-  `signature_type`  ENUM('customer','agent') NOT NULL,
-  `file_path`       VARCHAR(500) NOT NULL COMMENT 'PNG',
-  `signed_name`     VARCHAR(150) DEFAULT NULL,
-  `file_size`       INT UNSIGNED DEFAULT NULL,
-  `captured_at`     DATETIME     DEFAULT NULL,
-
-  -- How the mark got here, and it is not a detail.
-  --
-  -- 'device_pad' was drawn on the phone at the visit, which is why it can carry a
-  -- position. 'panel_upload' is an image somebody attached from a desk afterwards -
-  -- a photographed paper signature, usually. Both are legitimate; presenting the
-  -- second as the first is not. So the printed report labels an upload as an upload
-  -- and never puts a coordinate under it, because the only coordinate available
-  -- would be the office the file was uploaded from.
-  `capture_method`  ENUM('device_pad','panel_upload') NOT NULL DEFAULT 'device_pad',
-  `uploaded_note`   VARCHAR(255) DEFAULT NULL COMMENT 'why a panel upload was needed',
-
-  -- Where the pad was signed. A signature is the borrower agreeing to what the
-  -- report says and the agent asserting they were there to collect it, so "signed
-  -- at these coordinates" is the part that makes it more than a squiggle. Same
-  -- three rules as every other coordinate here: no consent means no point, an
-  -- implausible fix is discarded, and 'device' vs 'denied' vs 'unavailable' stay
-  -- distinct because "the agent refused" and "there was no signal indoors" are
-  -- different statements about the same missing latitude.
-  `gps_latitude`    DECIMAL(10,7) DEFAULT NULL,
-  `gps_longitude`   DECIMAL(10,7) DEFAULT NULL,
-  `gps_accuracy_m`  SMALLINT UNSIGNED DEFAULT NULL,
-  `gps_source`      ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable',
-
-  `uploaded_by`     INT UNSIGNED NOT NULL,
-  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_signature_visit_type` (`visit_report_id`, `signature_type`),
-  KEY `idx_sign_loan` (`loan_account_id`),
-  CONSTRAINT `fk_sign_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_sign_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_sign_user`  FOREIGN KEY (`uploaded_by`)     REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -1249,8 +1208,7 @@ CREATE TABLE `geocode_cache` (
 --   lead distribution     -> `loan_accounts.assigned_agent_id` / `assigned_at` /
 --                            `assigned_by`, with `visit_history` as the audit trail.
 --   import batches        -> `lead_imports`.
---   field visit reports   -> `visit_reports` plus `photos` / `signatures` /
---                            `documents`.
+--   field visit reports   -> `visit_reports` plus `photos` / `documents`.
 -- ============================================================================
 
 DROP TABLE IF EXISTS `bc_targets`;

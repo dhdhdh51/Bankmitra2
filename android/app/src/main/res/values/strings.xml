@@ -78,7 +78,6 @@
     <string name="profile_promises">Promise history</string>
     <string name="profile_visits">Visit history</string>
     <string name="profile_photos">Photos</string>
-    <string name="profile_signatures">Signatures</string>
     <string name="profile_timeline">Timeline</string>
     <string name="profile_new_visit">Submit visit report</string>
     <string name="profile_call">Call</string>
@@ -117,7 +116,6 @@
     <string name="visit_section_recommendation">Agent recommendation</string>
     <string name="visit_section_remarks">Remarks</string>
     <string name="visit_section_documents">Documents</string>
-    <string name="visit_section_signatures">Signatures</string>
 
     <string name="visit_date">Visit date</string>
     <string name="visit_time">Visit time</string>
@@ -171,12 +169,14 @@
     <string name="visit_agent_photo_hint">Camera only — records that you were here</string>
     <string name="visit_other_documents">Other documents</string>
 
-    <string name="visit_customer_signature">Customer signature</string>
-    <string name="visit_agent_signature">Agent signature</string>
-    <string name="visit_capture_signature">Capture signature</string>
-    <string name="visit_recapture">Recapture</string>
-    <string name="visit_signature_captured">Captured</string>
-    <string name="visit_signature_not_captured">Not captured</string>
+    <!--
+      Nothing here captures a signature any more. The printed report carries empty
+      ruled boxes and the paper is signed by hand, so the pad, its buttons and the
+      "Captured / Not captured" states are gone. This one string survives because the
+      photo screen borrowed it for "no other documents attached", which is a different
+      sentence that happened to read the same.
+    -->
+    <string name="visit_none_attached">Not attached</string>
 
     <string name="visit_submit">Submit visit report</string>
     <string name="visit_submitting">Submitting…</string>
@@ -195,17 +195,6 @@
     <string name="photo_camera_denied">Camera permission is needed to take a photo.</string>
     <string name="photo_agent_camera_only">Your own photo must be taken with the camera so it records where you are.</string>
     <string name="photo_gallery_denied">Storage permission is needed to pick a photo.</string>
-
-    <!-- ==================== Signature ==================== -->
-    <string name="signature_title">Signature</string>
-    <string name="signature_hint">Sign inside the box using your finger or a stylus</string>
-    <string name="signature_undo">Undo</string>
-    <string name="signature_redo">Redo</string>
-    <string name="signature_clear">Clear</string>
-    <string name="signature_save">Save</string>
-    <string name="signature_cancel">Cancel</string>
-    <string name="signature_empty">Please sign before saving</string>
-    <string name="signature_name_hint">Name of signatory (optional)</string>
 
     <!-- ==================== Visit history ==================== -->
     <string name="history_title">Visit History</string>
@@ -311,7 +300,6 @@
     <!-- Content descriptions -->
     <string name="cd_call">Call customer</string>
     <string name="cd_photo">Photo</string>
-    <string name="cd_signature">Signature</string>
     <string name="cd_back">Back</string>
     <string name="cd_notification_icon">Notification type</string>
     <string name="cd_avatar">Profile initial</string>

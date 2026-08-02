@@ -766,16 +766,6 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 /* A 2 km fix reads exactly like an 8 m one unless it is marked. */
 .lrms-geo-coarse { color: #8a5a00; font-weight: 650; cursor: help; }
 
-.lrms-signature {
-    border: 1px solid var(--lrms-border); border-radius: var(--lrms-radius-sm);
-    background: #fff; padding: 8px; text-align: center;
-}
-.lrms-signature img { max-height: 90px; max-width: 100%; object-fit: contain; }
-.lrms-signature .cap {
-    font-size: .6875rem; color: var(--lrms-muted); text-transform: uppercase;
-    letter-spacing: .04em; font-weight: 650; margin-top: 5px;
-}
-
 /* ==========================================================================
    Definition lists (customer profile, visit report detail)
    ========================================================================== */

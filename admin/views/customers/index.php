@@ -260,12 +260,31 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                                     <?php endif; ?>
                                 </td>
 
+                                <?php
+                                /*
+                                 * View AND edit, on the row.
+                                 *
+                                 * Edit used to live only on the profile page. That is one click
+                                 * further than it sounds: an operator fixing ten mistyped mobile
+                                 * numbers off a list had to open a borrower, find Edit, save, go
+                                 * back, and lose their filter and page position each time. The
+                                 * list is where somebody notices a field is wrong, so it is where
+                                 * the pencil belongs.
+                                 */
+                                ?>
                                 <td class="text-end nowrap">
                                     <a href="<?= e(url('/customers/' . (int) $lead['id'])) ?>"
                                        class="btn btn-ghost btn-sm btn-icon" title="View profile"
                                        data-bs-toggle="tooltip">
                                         <?= icon('eye') ?>
                                     </a>
+                                    <?php if (can('customers.update')): ?>
+                                        <a href="<?= e(url('/customers/' . (int) $lead['id'] . '/edit')) ?>"
+                                           class="btn btn-ghost btn-sm btn-icon" title="Edit borrower details"
+                                           data-bs-toggle="tooltip">
+                                            <?= icon('edit') ?>
+                                        </a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

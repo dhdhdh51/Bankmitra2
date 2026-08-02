@@ -113,7 +113,6 @@ final class LeadController extends Controller
             'timeline'   => array_map(fn (array $e): array => $this->presentTimelineEvent($e), $timeline),
             'photos'     => array_map(fn (array $m): array => $this->presentMedia($m, 'photo'), VisitReport::photosForLoanAccount($id)),
             'documents'  => array_map(fn (array $m): array => $this->presentMedia($m, 'document'), VisitReport::documentsForLoanAccount($id)),
-            'signatures' => array_map(fn (array $m): array => $this->presentMedia($m, 'signature'), VisitReport::signaturesForLoanAccount($id)),
             'other_accounts' => array_map(
                 static fn (array $row): array => [
                     'id'                  => (int) $row['id'],

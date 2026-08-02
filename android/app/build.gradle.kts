@@ -36,8 +36,11 @@ android {
         applicationId = "com.lrms.recovery"
         minSdk = 24          // Android 7.0 - covers the low-end devices agents use
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // Bumped on every release that changes the app. An agent comparing "which build
+        // am I on" against what the bank sent out has nothing else to go by, and Android
+        // will not install a lower versionCode over a higher one.
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -57,6 +60,27 @@ android {
     }
 
     signingConfigs {
+        /**
+         * A COMMITTED debug keystore, and it is not laziness.
+         *
+         * Gradle's default is to generate ~/.android/debug.keystore on whatever machine
+         * is building, which means every CI runner signs with a brand-new certificate.
+         * Android refuses to install an APK over an app signed by a different
+         * certificate, so each build was a fresh app that could only be installed after
+         * uninstalling the previous one - and "the new APK does not work" is exactly what
+         * that looks like on a phone, with the agent's queued work lost to the uninstall.
+         *
+         * A debug key protects nothing (the passwords are the public defaults, and the
+         * debug build carries a .debug application id), so committing it costs nothing
+         * and makes every build a normal update of the one before it.
+         */
+        getByName("debug") {
+            storeFile = rootProject.file("app/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         if (hasSigningConfig) {
             create("release") {
                 storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))

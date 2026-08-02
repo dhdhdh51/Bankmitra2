@@ -20,7 +20,6 @@ import com.lrms.recovery.domain.VisitFormData
 import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.location.GeoStamp
 import com.lrms.recovery.ui.photo.PhotoUploadActivity
-import com.lrms.recovery.ui.signature.SignatureActivity
 import com.lrms.recovery.util.FileStore
 import com.lrms.recovery.reminder.ReportReminderScheduler
 import com.lrms.recovery.util.Formatters
@@ -51,40 +50,6 @@ class VisitReportActivity : BaseActivity() {
     private var submitting = false
 
     // ---- Child screen results ---------------------------------------------
-
-    private val signatureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode != RESULT_OK) return@registerForActivityResult
-
-        val path = result.data?.getStringExtra(SignatureActivity.EXTRA_RESULT_PATH)
-        val type = result.data?.getStringExtra(SignatureActivity.EXTRA_TYPE)
-
-        if (path.isNullOrBlank()) return@registerForActivityResult
-        val file = File(path)
-
-        // The position the pad was signed at, and the source even when there is no
-        // position - "declined" and "no signal in the courtyard" are different answers
-        // to a supervisor asking why a signed report carries no location.
-        val packedFix = result.data?.getStringExtra(SignatureActivity.EXTRA_RESULT_GPS).orEmpty()
-        val gpsSource = result.data?.getStringExtra(SignatureActivity.EXTRA_RESULT_GPS_SOURCE)
-            ?: "unavailable"
-
-        when (type) {
-            SignatureActivity.TYPE_AGENT -> {
-                form.agentSignature = file
-                form.agentSignatureFix = packedFix
-                form.agentSignatureGpsSource = gpsSource
-            }
-            else -> {
-                form.customerSignature = file
-                form.customerSignatureFix = packedFix
-                form.customerSignatureGpsSource = gpsSource
-            }
-        }
-
-        renderSignatureState()
-    }
 
     private val photoLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -754,7 +719,7 @@ class VisitReportActivity : BaseActivity() {
     }
 
     // =======================================================================
-    // Documents & signatures
+    // Documents
     // =======================================================================
 
     private fun setUpAttachments() {
@@ -771,62 +736,17 @@ class VisitReportActivity : BaseActivity() {
             )
         }
 
-        binding.buttonCustomerSignature.setOnClickListener {
-            signatureLauncher.launch(
-                SignatureActivity.intent(
-                    this,
-                    SignatureActivity.TYPE_CUSTOMER,
-                    intent.getStringExtra(EXTRA_CUSTOMER_NAME),
-                ),
-            )
-        }
-
-        binding.buttonAgentSignature.setOnClickListener {
-            signatureLauncher.launch(
-                SignatureActivity.intent(
-                    this,
-                    SignatureActivity.TYPE_AGENT,
-                    session.user?.name,
-                ),
-            )
-        }
-
         renderPhotoState()
-        renderSignatureState()
     }
 
     private fun renderPhotoState() {
         val count = form.photoFiles().size + form.otherDocuments.size
 
         binding.textPhotoState.text = if (count == 0) {
-            getString(R.string.visit_signature_not_captured)
+            getString(R.string.visit_none_attached)
         } else {
             resources.getQuantityString(R.plurals.photo_count, count, count)
         }
-    }
-
-    private fun renderSignatureState() {
-        binding.textCustomerSignatureState.text = getString(
-            if (form.customerSignature != null) {
-                R.string.visit_signature_captured
-            } else {
-                R.string.visit_signature_not_captured
-            },
-        )
-        binding.textAgentSignatureState.text = getString(
-            if (form.agentSignature != null) {
-                R.string.visit_signature_captured
-            } else {
-                R.string.visit_signature_not_captured
-            },
-        )
-
-        binding.buttonCustomerSignature.text = getString(
-            if (form.customerSignature != null) R.string.visit_recapture else R.string.visit_capture_signature,
-        )
-        binding.buttonAgentSignature.text = getString(
-            if (form.agentSignature != null) R.string.visit_recapture else R.string.visit_capture_signature,
-        )
     }
 
     // =======================================================================
@@ -882,8 +802,8 @@ class VisitReportActivity : BaseActivity() {
                 is ApiResult.Success -> {
                     val payload = result.data
 
-                    // Cached photos and signatures are no longer needed once the
-                    // report is on the server.
+                    // Cached photos are no longer needed once the report is on the
+                    // server.
                     FileStore.clearWorkingFiles(this@VisitReportActivity)
 
                     val message = when {

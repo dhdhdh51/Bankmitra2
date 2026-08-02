@@ -18,7 +18,6 @@
     <dimen name="text_title">17sp</dimen>
     <dimen name="text_headline">22sp</dimen>
 
-    <dimen name="signature_stroke_width">4dp</dimen>
     <dimen name="photo_thumb_size">96dp</dimen>
     <dimen name="touch_target">48dp</dimen>
 </resources>

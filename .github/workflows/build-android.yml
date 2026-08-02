@@ -50,6 +50,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    # Needed to publish the APK as a release asset. An artefact download is a ZIP and
+    # requires a signed-in GitHub session, neither of which a phone handles - a release
+    # asset is a plain .apk on a public URL that installs straight from the browser.
+    permissions:
+      contents: write
+
     # Lifted to job level so the steps below can branch on whether a keystore
     # was supplied: the `secrets` context is not usable in a step-level `if`,
     # but `env` is.
@@ -259,6 +265,67 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      # ---------------------------------------------------------------------
+      # The one link an agent can actually use
+      # ---------------------------------------------------------------------
+      # An artefact is a ZIP behind a login. On a phone that is a dead end: no unzip
+      # tool, no session, no install. So the newest APK is also published as a release
+      # asset under a FIXED name, which gives one permanent URL to circulate:
+      #
+      #   https://github.com/<owner>/<repo>/releases/download/latest-apk/d2recovery-latest.apk
+      #
+      # Only from a push to main - a feature branch or a pull request must not quietly
+      # become "the build everyone installs".
+      - name: Publish the APK where a phone can install it
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+
+          # Prefer the properly signed release build when a keystore is configured.
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            SRC=app/build/outputs/apk/release/app-release.apk
+            KIND='release (signed with your keystore, minified)'
+          elif [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            SRC=app/build/outputs/apk/debug/app-debug.apk
+            KIND='debug (signed with the committed debug key, installs anywhere)'
+          else
+            echo '::error::No APK was built, so there is nothing to publish.'
+            exit 1
+          fi
+
+          ASSET=d2recovery-latest.apk
+          cp "$SRC" "$ASSET"
+
+          NOTES=$(printf '%s\n' \
+            "**Version ${{ steps.version.outputs.name }}**, build #${{ github.run_number }}, commit \`${GITHUB_SHA:0:8}\`." \
+            "" \
+            "Variant: $KIND" \
+            "" \
+            "Open this page on the phone and tap \`$ASSET\`. Android will ask to allow" \
+            "installing from the browser; allow it once. It installs over the previous" \
+            "build as an update - nothing needs uninstalling and no data is lost." \
+            "" \
+            "This tag always holds the newest build, so the download link never changes.")
+
+          # A rolling prerelease, created on first use and moved to this commit after.
+          if gh release view latest-apk > /dev/null 2>&1; then
+            gh release edit latest-apk --target "$GITHUB_SHA" \
+              --title "D2 Recovery ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
+              --notes "$NOTES"
+          else
+            gh release create latest-apk --prerelease --target "$GITHUB_SHA" \
+              --title "D2 Recovery ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
+              --notes "$NOTES"
+          fi
+
+          # --clobber, so the fixed name always points at this build.
+          gh release upload latest-apk "$ASSET" --clobber
+          rm -f "$ASSET"
+
+          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/download/latest-apk/$ASSET"
+
       - name: Upload R8 mapping file
         if: ${{ steps.plan.outputs.release == 'yes' }}
         # Required to symbolise a stack trace from a minified release build.
@@ -282,6 +349,17 @@ jobs:
             echo "| Commit | \`${GITHUB_SHA:0:8}\` |"
             echo "| Release signing | ${{ steps.plan.outputs.sign == 'yes' && 'configured' || 'not configured' }} |"
             echo ""
+            if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
+              echo "### Install it on a phone"
+              echo ""
+              echo "Open this link on the device — it is a plain \`.apk\`, not a zip, and it"
+              echo "needs no GitHub login:"
+              echo ""
+              echo "<https://github.com/${GITHUB_REPOSITORY}/releases/download/latest-apk/d2recovery-latest.apk>"
+              echo ""
+              echo "It installs over the previous build as an update."
+              echo ""
+            fi
             # --apparent-size, not plain du: a signed and zipaligned APK is
             # block-padded on disk, so `du -h` reports roughly 6.7M for a 2.7M
             # file and makes the app look bloated in the summary.

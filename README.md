@@ -3,7 +3,7 @@
 Field verification and recovery follow-up for **BC/DC agents** working on behalf of banks.
 
 Agents visit borrowers, record what they found, capture a photo and the borrower's
-signature, and log a promise-to-pay date. **Agents never collect cash and the system
+photograph, and log a promise-to-pay date. **Agents never collect cash and the system
 never processes a payment** — repayment always happens through the bank's own channels.
 
 | Component | Stack |
@@ -72,7 +72,7 @@ never processes a payment** — repayment always happens through the bank's own 
 **Field visits**
 - Agent opens a lead, records outcome (paid, promised, refused, not found,
   disputed, absent, …), amount promised, promise date and free-text remarks.
-- Photo capture (borrower/house/document) and on-device signature pad.
+- Photo capture (borrower / house / document / the agent's own, at the door).
 - **Photographs are geo-stamped and carry their source.** Each photo stores its own
   coordinates, accuracy, capture time and whether it came from the camera or the gallery,
   and both the printed report *and the panel* caption every photograph with that. The
@@ -82,24 +82,22 @@ never processes a payment** — repayment always happens through the bank's own 
   camera capture, and a fix too coarse to place a particular house (worse than 50 m —
   roughly a cell-tower triangulation) is marked as such, because "26.912400, 75.787300"
   reads identically whether it is accurate to 8 metres or to a district.
-- **The agent's own photograph and signature record where the agent was standing.** A
-  camera-only slot takes the agent's photograph at the door — camera-only because the
-  slot's entire purpose is to record presence, and an image chosen from the gallery was
-  taken at an unknown time in an unknown place. Both signatures record the position the
-  pad was signed at, which is a different fact from where the report was submitted: a
-  borrower signs in their courtyard and the agent may well press send from the road.
+- **The agent's own photograph records where the agent was standing.** A camera-only slot
+  takes it at the door — camera-only because the slot's entire purpose is to record
+  presence, and an image chosen from the gallery was taken at an unknown time in an unknown
+  place.
 - **Only photographs taken at the visit are printed.** There is no fallback to a stored
   portrait. No image is held against a person at all any more — an image belongs to the
-  thing it evidences, so a photograph belongs to the visit it was taken at and a signature
-  to the report it signs. When a report has no doorstep photograph the printed copy says so
-  in words, which is a weaker claim than a portrait and a true one.
-- **A signature can be uploaded from the panel** for the reports that arrive without one —
-  a photographed paper signature, usually, because the borrower signed an acknowledgement
-  or the phone died. It is stored and printed as an *uploaded image* with no position, and
-  labelled that way, because the only coordinate available at upload time is the office the
-  file came from. A signature drawn on the device **cannot** be overwritten by one: that
-  swaps something signed in front of the signer for a picture attached from a desk, and the
-  server refuses it rather than doing it quietly.
+  thing it evidences, so a photograph belongs to the visit it was taken at. When a report
+  has no doorstep photograph the printed copy says so in words, which is a weaker claim
+  than a portrait and a true one.
+- **Signatures are signed on paper, not on a screen.** Nothing in the app or the panel
+  captures one. The printed report carries empty ruled boxes — the borrower's and the
+  agent's, directly under the agent's photograph from the visit, each with a rule to sign
+  above and a name and date line beneath — and they are signed by hand after printing. A
+  mark drawn with a fingertip on a 5-inch screen is not something anybody accepts across a
+  counter, and a bank that has to produce a signed acknowledgement needs the signed
+  acknowledgement rather than a photograph of a squiggle.
 - Submissions are **multipart and idempotent** — a `client_uuid` makes a retry on a
   flaky rural connection return the original report instead of creating a duplicate.
 - **Visit history is append-only.** The `visit_history` table is written by trigger-free
@@ -117,15 +115,15 @@ never processes a payment** — repayment always happens through the bank's own 
 
 **Approval of a filed report**
 - A branch manager or admin approves or rejects a visit report with **their own
-  geo-tagged photograph and signature**, plus remarks — because "I approved it at the
-  branch" and "I approved forty of them from home at midnight" are different claims and
-  only one of them is verification.
+  geo-tagged photograph**, plus remarks — because "I approved it at the branch" and "I
+  approved forty of them from home at midnight" are different claims and only one of them
+  is verification. Their signature goes in the blank box the printout carries for it.
 - The position comes from the browser and records `device`, `denied` and `unavailable`
   as distinct outcomes. A missing fix does not block the approval: refusing to accept it
   would push approvals off the system and onto a phone call, which records nothing.
 - Approval is purely additive — it writes the approval columns and touches nothing the
-  agent submitted. The approver's photograph, signature, position and remarks all print
-  on the report.
+  agent submitted. The approver's photograph, position and remarks all print on the report,
+  above a blank box for their signature.
 
 **Promises to pay**
 - Promise ledger per loan account with kept / broken / pending state.
@@ -140,9 +138,10 @@ never processes a payment** — repayment always happens through the bank's own 
 - Branch, user and role/permission management with a real permission matrix.
 - **No photograph or signature is held against a person.** Creating a BC asks for neither.
   There were both, printed at the foot of every report that person filed, and they were
-  removed: a stored image says nothing about the visit it gets printed on. An image now
-  belongs to the thing it evidences — a photograph to the visit it was taken at, with its
-  own fix, and a signature to the report it signs, with where and how it was captured.
+  removed: a stored image says nothing about the visit it gets printed on. A photograph now
+  belongs to the thing it evidences — the visit it was taken at, with its own fix. And no
+  signature is stored anywhere at all: the printed page carries the space, the paper
+  carries the mark.
 - **Borrower and loan figures are fully editable**, and every hand-correction is
   recorded in `manual_overrides` with who and when. The next import **skips** the columns
   a human corrected and reports which accounts and fields it left alone. Without that the
@@ -313,7 +312,7 @@ admin/                      web root for the panel and the API
     routes/api.php          /api/v1 routes
   views/                    43 server-rendered view files
   assets/                   app.css + app.js (Bootstrap itself comes from CDN)
-  uploads/                  photos, signatures, approvals, documents — denied to the web
+  uploads/                  photos, approvals, documents — denied to the web
   storage/                  logs, backups, import files, tmp
   cron/
     backup.php              nightly database backup + retention
@@ -322,7 +321,7 @@ admin/                      web root for the panel and the API
 android/                    Gradle project (AGP 8.13, Kotlin 2.2, Gradle 8.14, JDK 17)
   app/src/main/java/com/lrms/recovery/
     data/                   Retrofit service, DTOs, repository, encrypted session store
-    ui/                     11 screens (splash, login, main + 4 tabs, visit, signature, …)
+    ui/                     10 screens (splash, login, main + 4 tabs, visit, photos, …)
     util/                   formatters, image compression / file store
 
 tools/                      verification harnesses (see Verification below)
@@ -483,7 +482,7 @@ so no PDF library. A baseline RGB or greyscale JPEG passes straight through as
 `/DCTDecode`; PNG, GIF and BMP are decoded with GD, **flattened onto white**, and
 deflated as raw RGB; WebP, CMYK JPEG and **progressive** JPEG are re-encoded to baseline
 JPEG. Two details are not optional. Flattening is mandatory because transparent pixels
-read as black in RGB, so an unflattened signature prints as a solid black rectangle.
+read as black in RGB, so an unflattened logo prints as a solid black rectangle.
 Progressive JPEGs are detected by scanning the markers rather than trusted, because
 `/DCTDecode` renders one as a grey box — a report that looks fine until someone opens it.
 
@@ -496,9 +495,12 @@ The printed report carries:
   distinguishing "the device had no fix" from "the agent declined location",
 - **Field photographs**, each captioned with its own coordinates and whether it came from
   the camera or the gallery,
-- **Signatures** — the borrower's, next to the **agent's photograph and signature**, each
-  captioned with the position it was signed at (or with why there isn't one),
-- **Approval** — status, approver, their position, remarks, photograph and signature,
+- **Signatures** — the **agent's own photograph** from the visit, captioned with where it
+  was taken, and directly beneath it **empty ruled boxes** for the borrower's and the
+  agent's signature, each with a name and date line: they are signed by hand on the
+  printed copy,
+- **Approval** — status, approver, their position, remarks and photograph, above a blank
+  box for their signature,
 - any custom fields marked to print,
 - and, in the footer, the number of times the report was corrected after filing.
 
@@ -547,17 +549,18 @@ device refreshes.
 
 ## Android app
 
-Eleven screens, Material 3, no Compose (Views + ViewBinding for build reliability):
+Ten screens, Material 3, no Compose (Views + ViewBinding for build reliability):
 
 Splash · Login · Forgot password · Change password · Main (bottom nav: **Leads**,
 **Search**, **Notifications**, **Account**) · Customer profile (timeline, promises,
-media) · Visit report · Signature pad · Photo upload · Visit history · Visit detail.
+media) · Visit report · Photo upload · Visit history · Visit detail.
 
 Notable choices:
 
-- **Signature capture is landscape-only and full-screen.** A narrow portrait box
-  produces unusable signatures, so `SignatureActivity` locks `sensorLandscape` and
-  the pad is a custom `SignaturePadView` (no third-party signature dependency).
+- **There is no signature pad.** There was one — landscape-only and full-screen, because a
+  narrow portrait box produced marks nobody could recognise. It is gone: even at full
+  width, a fingertip signature is not one anybody accepts across a counter. The printed
+  report carries empty ruled boxes and the paper is signed after printing.
 - **Photos are downscaled and re-compressed on device** before upload — rural
   uplinks cannot carry a 12 MP JPEG.
 - **Session tokens live in `EncryptedSharedPreferences`.**
@@ -616,12 +619,12 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | Harness | Command | Checks |
 |---|---|---|
 | Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **236** — includes column detection against real bank-export shapes, the PDF image encoder and how a recorded position is worded |
-| Schema | `sh tools/verify-schema.sh` | **24** — 35 tables, 57 FKs, seeds, bcrypt login hash |
-| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **17** — all four release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting, and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **752** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph and signature, every banking column a recovery statement carries, and leads spread evenly across a branch |
+| Core unit tests | `php tools/selftest-core.php` | **242** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, and how a recorded position is worded |
+| Schema | `sh tools/verify-schema.sh` | **24** — 34 tables, 54 FKs, seeds, bcrypt login hash |
+| **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **17** — all five release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting, and grant by grant |
+| Integration | `sh tools/integration-test.sh` | **744** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, and leads spread evenly across a branch |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **324** panel + **227** API |
+| Panel smoke | `sh tools/smoke-panel.sh` | **319** panel + **226** API |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -633,16 +636,16 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **24** — real behavioural tests: never in the past, never on a Sunday, and a repeat that keeps firing until the report is filed but stops at the cutoff hour (a subset of the Android row) |
 | **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **16** — survives reboot, cannot stop rescheduling, no exact-alarm permission, and filing the report is the only thing that clears it (a subset of the Android row) |
 | **Tab switching** | `:app:testDebugUnitTest` (`TabSwitchingTest`) | **9** — one source of truth for which tab is on screen; verified to fail against the old code (a subset of the Android row) |
-| Release signing | `sh tools/verify-signing.sh` | **19** — signs, verifies, and proves the unsigned fallback |
+| Release signing | `sh tools/verify-signing.sh` | **21** — signs, verifies, proves the unsigned fallback, and proves the debug APK comes from the committed keystore so a new build installs as an update rather than demanding an uninstall |
 | **Real Apache** | `sh tools/verify-apache.sh` | **27** — `.htaccess` under `AllowOverride All` + php-fpm |
 | Cross-validation | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | exported PDF/XLSX re-parsed independently |
 | CDN integrity | `php tools/verify-cdn-integrity.php` | **5** — every SRI hash matches the file the browser fetches |
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,973 assertions total** — the sum of the bold counts above, counting the seven
+**1,967 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
-is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
+is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
 
 Exported files are cross-validated by a *second, independent* implementation: the
@@ -954,7 +957,7 @@ Kept here because they are the reason the tests exist:
     coordinate behind it — so all seeded visits stored `gps_source='denied'`, every
     per-photo fix was dropped, and the demo data proved the feature absent rather than
     present. The seed now consents per agent and files GPS, a camera-stamped photo, a
-    gallery photo and both signatures on every third visit.
+    gallery photo on every third visit.
 54. **Bug 42 recurred, in the same shape.** `LoanAccount::findWithPii()` and
     `LoanAccount::SELECT` each spell their columns out by hand, so `closure_amount` and
     `manual_overrides` existed in the table, were written correctly, and were invisible
@@ -1122,6 +1125,23 @@ Kept here because they are the reason the tests exist:
     answers 412 until it is on file and the service reads a 412 as a withdrawal and stops
     itself. `LocationTrackingTest` now asserts the live path, that signing out stops
     recording, and that the deleted screen's strings went with it.
+74. **Every CI build was a different app.** No debug signing config was declared, so
+    Gradle generated `debug.keystore` on whichever machine ran the build — a fresh
+    certificate per CI run. Android refuses to install an APK over an app signed by a
+    different certificate, so the "new" APK could only be installed by uninstalling the
+    old one, which takes the agent's cached captures with it. From the outside it looks
+    exactly like the build never happened: the file downloads, the install fails, and the
+    old app is still there. Nothing in any test noticed, because every harness built and
+    verified a *single* APK and never asked whether two consecutive builds agreed. Fixed
+    by committing a debug keystore (public default passwords, `.debug` application id, so
+    it guards nothing) and asserting the APK's certificate against its fingerprint.
+75. **And the build nobody could download.** The APK was published only as a workflow
+    artifact, which GitHub serves as a ZIP to signed-in users. The people who need it are
+    holding the phone they want to install it on: no unzip tool, no GitHub session. It is
+    now also a release asset under a fixed name, so one permanent link downloads a plain
+    `.apk`. Worth writing down because the build itself was correct every time — the
+    failure was entirely in how it was handed over, which is not something a test suite
+    is ever asked about.
 
 ---
 
@@ -1130,7 +1150,7 @@ Kept here because they are the reason the tests exist:
 | Workflow | Trigger | Output |
 |---|---|---|
 | `.github/workflows/verify-backend.yml` | push / PR | `php -l` sweep, core self-test, schema import and integration suite against a MySQL 8 service container |
-| `.github/workflows/build-android.yml` | push / PR / manual | JDK 17 + Android SDK, unit tests, and an **installable** APK as an artifact |
+| `.github/workflows/build-android.yml` | push / PR / manual | JDK 17 + Android SDK, unit tests, and an **installable** APK — as a build artifact, and on `main` also as a release asset |
 
 Both trigger on `main` and on `feat/**` / `fix/**` branches.
 
@@ -1143,9 +1163,31 @@ and deletes the keystore afterwards.
 part: `assembleRelease` with no signing config emits `app-release-unsigned.apk`,
 and **Android refuses to install an unsigned APK**, so uploading one as "the
 build" would give you a file you cannot put on a phone. The debug APK is signed
-with the auto-generated debug key and installs immediately. `tools/verify-signing.sh`
-asserts both halves of this: that the unsigned release APK fails `apksigner verify`,
-and that the debug APK passes it.
+and installs immediately. `tools/verify-signing.sh` asserts both halves of this:
+that the unsigned release APK fails `apksigner verify`, and that the debug APK
+passes it.
+
+**The debug keystore is committed**, which is deliberate and is what makes the
+build usable in the field. Gradle's default is to generate one on whichever machine
+is building, so every CI run signed with a fresh certificate — and Android refuses
+to install an APK over an app signed by a different certificate. Each build was
+therefore a *new app* that could only be installed by uninstalling the previous one,
+taking the agent's cached work with it. "The new APK does not work" is exactly what
+that looks like on a phone. A debug key protects nothing (public default passwords,
+and a `.debug` application id), so it is committed and every build is a normal
+update of the one before it. `verify-signing.sh` compares the APK's certificate
+against that keystore's fingerprint.
+
+**On `main`, the APK is also published as a release asset** under a fixed name, so
+there is one permanent link that installs straight from a phone browser:
+
+```
+https://github.com/<owner>/<repo>/releases/download/latest-apk/d2recovery-latest.apk
+```
+
+A build artifact is a ZIP behind a GitHub login. On a phone that is a dead end — no
+unzip tool, no session, nothing installable — which is a fine way to ship a build
+nobody can actually run.
 
 ---
 

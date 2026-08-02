@@ -72,6 +72,7 @@ HEADINGS = [
     '### Adding geo-tagged agent photographs and signatures to an existing install',
     '### Adding the full banking columns, panel signatures and agent access to an existing install',
     '### Splitting KCC from OD-2, and making the alarm persist, on an existing install',
+    '### Removing captured signatures on an existing install',
 ]
 
 chunks = []
@@ -129,6 +130,39 @@ db lrms_upg < "$ROOT/schema.sql"
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
+--
+-- Signatures were dropped by it, so the whole table has to come back before anything
+-- older can be undone: two earlier releases added columns TO it, and their undo steps
+-- need something to strip. Recreated in the shape it had immediately before the drop,
+-- which is what the pre-release database is supposed to be.
+CREATE TABLE `signatures` (
+  `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `visit_report_id` BIGINT UNSIGNED NOT NULL,
+  `loan_account_id` BIGINT UNSIGNED NOT NULL,
+  `signature_type`  ENUM('customer','agent') NOT NULL,
+  `file_path`       VARCHAR(500) NOT NULL COMMENT 'PNG',
+  `signed_name`     VARCHAR(150) DEFAULT NULL,
+  `file_size`       INT UNSIGNED DEFAULT NULL,
+  `captured_at`     DATETIME     DEFAULT NULL,
+  `capture_method`  ENUM('device_pad','panel_upload') NOT NULL DEFAULT 'device_pad',
+  `uploaded_note`   VARCHAR(255) DEFAULT NULL COMMENT 'why a panel upload was needed',
+  `gps_latitude`    DECIMAL(10,7) DEFAULT NULL,
+  `gps_longitude`   DECIMAL(10,7) DEFAULT NULL,
+  `gps_accuracy_m`  SMALLINT UNSIGNED DEFAULT NULL,
+  `gps_source`      ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable',
+  `uploaded_by`     INT UNSIGNED NOT NULL,
+  `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_signature_visit_type` (`visit_report_id`, `signature_type`),
+  KEY `idx_sign_loan` (`loan_account_id`),
+  CONSTRAINT `fk_sign_visit` FOREIGN KEY (`visit_report_id`) REFERENCES `visit_reports` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sign_loan`  FOREIGN KEY (`loan_account_id`) REFERENCES `loan_accounts` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sign_user`  FOREIGN KEY (`uploaded_by`)     REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `visit_reports`
+  ADD COLUMN `approval_signature_path` VARCHAR(500) DEFAULT NULL AFTER `approval_photo_path`;
+
 DELETE FROM `settings`
  WHERE `setting_key` IN ('daily_report_reminder_repeat_minutes', 'daily_report_reminder_until_hour');
 
@@ -276,9 +310,12 @@ def q(db, sql):
                          capture_output=True, text=True)
     return [line.split('\t') for line in out.stdout.strip().splitlines() if line.strip()]
 
+# `signatures` is deliberately absent: the newest migration drops it, so comparing it
+# column by column would be comparing two tables that must not exist. That it is GONE
+# from the upgraded database is covered by the table-count and column comparisons below.
 TABLES = ['users','loan_accounts','visit_reports','visit_history',
           'visit_report_revisions','custom_field_definitions','custom_field_values',
-          'photos','signatures']
+          'photos']
 tlist = "','".join(TABLES)
 results = []
 

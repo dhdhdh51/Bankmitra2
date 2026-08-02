@@ -617,8 +617,8 @@ check('pdf text() converts rupee', Pdf::text('₹100') === 'Rs.100', Pdf::text('
 section('PDF image embedding');
 
 // The writer carried no images at all until visit reports had to print the agent's
-// photograph beside their signature, and each field photograph with the coordinates
-// it was taken at. A report that says "Photos: 3" is not evidence of anything.
+// own photograph and each field photograph with the coordinates it was taken at. A
+// report that says "Photos: 3" is not evidence of anything.
 $imgDir = sys_get_temp_dir() . '/lrms_pdfimg_' . bin2hex(random_bytes(4));
 @mkdir($imgDir, 0777, true);
 
@@ -631,16 +631,16 @@ for ($x = 0; $x < 1600; $x += 8) {
 imagejpeg($photo, $imgDir . '/photo.jpg', 90);
 imagedestroy($photo);
 
-// A signature: PNG line art on a TRANSPARENT background. Unflattened, the
+// Line art on a TRANSPARENT background - a logo or a stamp. Unflattened, the
 // transparent pixels are zero in an RGB buffer, so the whole thing prints as a solid
-// black rectangle over the signature block.
-$sig = imagecreatetruecolor(600, 200);
-imagesavealpha($sig, true);
-imagefill($sig, 0, 0, imagecolorallocatealpha($sig, 0, 0, 0, 127));
-imagesetthickness($sig, 6);
-imagearc($sig, 300, 100, 400, 120, 20, 300, imagecolorallocate($sig, 5, 5, 5));
-imagepng($sig, $imgDir . '/sign.png');
-imagedestroy($sig);
+// black rectangle over whatever it sits on.
+$art = imagecreatetruecolor(600, 200);
+imagesavealpha($art, true);
+imagefill($art, 0, 0, imagecolorallocatealpha($art, 0, 0, 0, 127));
+imagesetthickness($art, 6);
+imagearc($art, 300, 100, 400, 120, 20, 300, imagecolorallocate($art, 5, 5, 5));
+imagepng($art, $imgDir . '/lineart.png');
+imagedestroy($art);
 
 // A progressive JPEG. Still DCT, but /DCTDecode cannot read it: embedded raw it
 // opens without complaint and renders as a grey box, which is the kind of fault that
@@ -651,25 +651,25 @@ imageinterlace($prog, true);
 imagejpeg($prog, $imgDir . '/prog.jpg', 85);
 imagedestroy($prog);
 
-$imgPdf = new Pdf('Image embedding', 'photo, signature, progressive', false, 'test');
+$imgPdf = new Pdf('Image embedding', 'photo, line art, progressive', false, 'test');
 $imgPdf->heading('Agent');
 $imgPdf->imageStrip([
     ['path' => $imgDir . '/photo.jpg', 'label' => 'Photograph', 'caption' => 'Lat 19.072835, Lng 72.882610'],
-    ['path' => $imgDir . '/sign.png',  'label' => 'Signature',  'caption' => 'Ramesh Kumar'],
+    ['path' => $imgDir . '/lineart.png', 'label' => 'Line art', 'caption' => 'Ramesh Kumar'],
 ], 90.0);
 $imgPdf->heading('Awkward inputs');
 $imgPdf->imageStrip([
     ['path' => $imgDir . '/prog.jpg',    'label' => 'Progressive'],
     ['path' => $imgDir . '/missing.jpg', 'label' => 'Missing'],
-    ['path' => $imgDir . '/sign.png',    'label' => 'Repeat'],
+    ['path' => $imgDir . '/lineart.png', 'label' => 'Repeat'],
 ], 90.0);
 $imgBytes = $imgPdf->output();
 
 check('a pdf with images is still a pdf', str_starts_with($imgBytes, '%PDF-'));
 check('three distinct images are embedded', substr_count($imgBytes, '/Subtype /Image') === 3,
     (string) substr_count($imgBytes, '/Subtype /Image'));
-// Four draw operators for three images: the signature is used twice and must embed
-// once. Without deduplication a report with the same signature on every page grows
+// Four draw operators for three images: the line art is used twice and must embed
+// once. Without deduplication a report carrying the same logo on every page grows
 // without bound.
 check('a repeated file is embedded once but drawn twice', substr_count($imgBytes, ' Do') === 4,
     (string) substr_count($imgBytes, ' Do'));
@@ -712,6 +712,51 @@ $before = strlen($emptyPdf->output());
 $emptyPdf2 = new Pdf('Empty strip', '', false, '');
 $emptyPdf2->imageStrip([]);
 check('an empty image strip renders nothing', abs(strlen($emptyPdf2->output()) - $before) < 40);
+
+// ---------------------------------------------------------------------------
+section('Blank signature boxes');
+
+// Nothing captures a signature any more: the printed report carries empty ruled
+// boxes and the paper is signed by hand. Which makes the box itself the deliverable,
+// so it is tested like one. The failure mode this guards against is the opposite of
+// imageStrip's - a block that renders NOTHING when there is nothing to draw would
+// leave a form nobody can sign, and nothing else on the page would look wrong.
+$sigPdf = new Pdf('Signature space', 'blank boxes', false, 'test');
+$sigPdf->heading('Signatures');
+$yBefore = $sigPdf->cursorY();
+$sigPdf->signatureBlock([
+    ['label' => 'Borrower Signature / Thumb Impression', 'caption' => "Ram Lal\nDate:"],
+    ['label' => 'BC / DC Agent Signature', 'caption' => "Suresh Yadav\nBC0007\nDate:"],
+], 60.0);
+$yAfter = $sigPdf->cursorY();
+$sigBytes = $sigPdf->output();
+
+check('a signature block draws a box for every signatory', substr_count($sigBytes, ' re') >= 2,
+    (string) substr_count($sigBytes, ' re'));
+// One ruled line per box, and it has to be INSIDE the box: people sign across a plain
+// border and the scan clips the descenders. Counted against a page carrying only the
+// heading, because the document furniture draws rules of its own.
+$rulePdf = new Pdf('Signature space', 'blank boxes', false, 'test');
+$rulePdf->heading('Signatures');
+$ruleBaseline = substr_count($rulePdf->output(), ' l S');
+check('and one rule inside each box to sign above',
+    substr_count($sigBytes, ' l S') - $ruleBaseline === 2,
+    (string) (substr_count($sigBytes, ' l S') - $ruleBaseline));
+check('the labels are printed', str_contains($sigBytes, 'Borrower Signature') && str_contains($sigBytes, 'Agent Signature'));
+check('the caption names whoever signs, and asks for a date', substr_count($sigBytes, 'Date:') === 2,
+    (string) substr_count($sigBytes, 'Date:'));
+// The cursor has to clear the boxes, or the next section prints on top of them - the
+// caption is measured too, and the two cells have different caption heights.
+check('the cursor advances past the tallest cell', $yBefore - $yAfter >= 60.0 + (3 * 9.6),
+    (string) round($yBefore - $yAfter, 1));
+// No image is embedded, which is the whole point: an empty box cannot be mistaken
+// for a captured mark.
+check('no image is embedded for a blank signature', !str_contains($sigBytes, '/Subtype /Image'));
+
+$noSigPdf = new Pdf('Signature space', '', false, '');
+$noSigBefore = $noSigPdf->cursorY();
+$noSigPdf->signatureBlock([]);
+check('but an empty list still draws nothing', $noSigPdf->cursorY() === $noSigBefore);
 
 array_map('unlink', glob($imgDir . '/*') ?: []);
 @rmdir($imgDir);
@@ -826,10 +871,6 @@ check('a gallery photo row never borrows a position',
     Geo::photo(['gps_latitude' => null, 'gps_longitude' => null, 'gps_accuracy_m' => null,
                 'captured_at' => null, 'capture_source' => 'gallery'])
         === 'Chosen from the gallery - no location recorded.');
-check('a signature with no fix says so in its own words',
-    Geo::signature(['gps_latitude' => null, 'gps_longitude' => null,
-                    'gps_accuracy_m' => null, 'captured_at' => null, 'gps_source' => 'unavailable'])
-        === 'No location fix was available.');
 check('an approval away from a fix is reported',
     Geo::approval(['approval_gps_source' => 'denied', 'approval_gps_latitude' => null])
         === 'Location declined by the approver');

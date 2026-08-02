@@ -434,9 +434,20 @@ if ($pdfWithMedia !== null) {
         !str_contains($pdfWithMedia, 'photo on file')
         || str_contains($pdfWithMedia, 'not taken at this visit'));
 
-    // A signature says where the pad was signed, and says so when it does not.
-    check('a signature records where it was signed',
-        preg_match('/\d{2}\.\d{6}, \d{2}\.\d{6}/', $pdfWithMedia) === 1);
+    // Nothing captures a signature any more, so the printed page has to carry the
+    // space to sign instead. Asserted on the bytes rather than trusted: a report that
+    // prints without the boxes cannot be signed at all, and nothing on screen would
+    // look wrong.
+    check('the printed report asks for a signature by hand',
+        str_contains($pdfWithMedia, 'signed by hand on this printed copy'));
+    check('with a box for the borrower and one for the agent',
+        str_contains($pdfWithMedia, 'Thumb Impression')
+        && str_contains($pdfWithMedia, 'Agent Signature'));
+    check('and a date line under each', substr_count($pdfWithMedia, 'Date:') >= 2,
+        (string) substr_count($pdfWithMedia, 'Date:'));
+    check('no captured signature is printed any more',
+        !str_contains($pdfWithMedia, 'No location recorded at signing')
+        && !str_contains($pdfWithMedia, 'Signature (uploaded)'));
 
     $pdfFile = sys_get_temp_dir() . '/lrms_visit_pdf_' . bin2hex(random_bytes(4)) . '.pdf';
     file_put_contents($pdfFile, $pdfWithMedia);
@@ -479,14 +490,12 @@ if ($panelWithMedia !== null) {
         preg_match('/\+\/-\d+ m/', $panelWithMedia) === 1);
     check('the agent photograph appears in the panel too',
         str_contains($panelWithMedia, 'BC / DC Agent'));
-    check('a signature reports where it was signed',
-        str_contains($panelWithMedia, 'Borrower signature')
-        && !str_contains($panelWithMedia, 'No location recorded at signing.</span>'
-            . '</div></div><div class="mb-3"><div class="text-muted mb-1"'));
-    // The panel used to say "Not captured" for a report whose PDF showed a signature.
-    check('the panel does not claim a signature is missing when one is on file',
-        !str_contains($panelWithMedia, 'Not captured')
-        || !str_contains($panelWithMedia, 'Agent Signature (on file)'));
+    // The signature card is gone from the panel, and its absence is asserted: a card
+    // reading "Not captured" twice on every report would be worse than no card, and
+    // an upload form that still posts to a deleted route is a 404 with a lost file.
+    check('the panel no longer shows a signature card',
+        !str_contains($panelWithMedia, 'Upload an image of the signature')
+        && !str_contains($panelWithMedia, 'lrms-signature'));
 }
 
 // ---------------------------------------------------------------------------
@@ -733,70 +742,24 @@ page('GET /users/create', '/users/create', 200, 'Add user');
 page('GET /users/{id}/edit', '/users/2/edit', 200, 'Edit user');
 
 // ---------------------------------------------------------------------------
-section('A signature can be uploaded onto a filed report');
+section('No signature is captured anywhere');
 
-// The pad on the phone is the primary path. This is the alternative for the reports
-// that arrive without one - a photographed paper signature - and the whole point is
-// that the two must not look alike on the document that gets read later.
-$signatureVisitId = null;
-foreach ($mediaCandidates as $candidateId) {
-    $candidate = request($base . '/visits/' . $candidateId);
-    if ($candidate['status'] === 200 && str_contains($candidate['body'], 'Upload an image of the signature')) {
-        $signatureVisitId = $candidateId;
-        break;
-    }
-}
+// There used to be a pad on the phone and an upload form on the panel. Both are gone:
+// a fingertip scrawl is not a signature anybody accepts across a counter, so the
+// printout carries the space and the paper carries the mark. Asserted from the outside,
+// because a route left registered on a deleted handler is a 500, and a form left in a
+// view is a lost file and a confused clerk.
+$signatureRoute = postMultipart(
+    $base . '/visits/1/signature',
+    ['_csrf' => csrfToken(request($base . '/visits/1')['body'] ?? '')],
+    []
+);
+check('the upload route is gone rather than broken', $signatureRoute['status'] === 404,
+    'HTTP ' . $signatureRoute['status']);
 
-check('a report with an unsigned slot offers an upload', $signatureVisitId !== null,
-    'no seeded visit had a signature slot open for upload');
-
-if ($signatureVisitId !== null) {
-    $before = request($base . '/visits/' . $signatureVisitId);
-    check('the upload form states it will carry no position',
-        str_contains($before['body'], 'only position available now is this office'));
-
-    $uploadPng = tempPng(140, 50, [12, 12, 40]);
-    $uploaded = postMultipart(
-        $base . '/visits/' . $signatureVisitId . '/signature',
-        ['_csrf' => csrfToken($before['body']),
-         'signature_type' => 'agent', 'signed_name' => 'Uploaded By Hand',
-         'uploaded_note' => 'Signed on paper, phone battery died'],
-        ['signature_file' => $uploadPng]
-    );
-    check('the upload is accepted', in_array($uploaded['status'], [200, 302], true),
-        'HTTP ' . $uploaded['status']);
-
-    $after = request($base . '/visits/' . $signatureVisitId);
-    check('the uploaded signature renders in the panel',
-        str_contains($after['body'], 'Uploaded By Hand'));
-    check('and is described as an upload, not as signed at the visit',
-        str_contains($after['body'], 'Uploaded image - not signed at the visit.'));
-    check('no coordinates are attached to it',
-        !str_contains($after['body'], 'Uploaded image - not signed at the visit.</span></div>'
-            . '<div class="lrms-photo-geo"><span style="line-height:0">'));
-
-    // The printed report is the document that matters here.
-    $uploadedPdf = request($base . '/visits/' . $signatureVisitId . '/pdf');
-    check('the uploaded signature prints', $uploadedPdf['status'] === 200
-        && str_contains($uploadedPdf['body'], '/Subtype /Image'), 'HTTP ' . $uploadedPdf['status']);
-    // Searched without brackets: a PDF content stream escapes "(" and ")".
-    check('and prints marked as uploaded',
-        str_contains($uploadedPdf['body'], 'uploaded'));
-
-    // A signature drawn on the device may not be overwritten by a desk upload.
-    $overwrite = postMultipart(
-        $base . '/visits/' . $signatureVisitId . '/signature',
-        ['_csrf' => csrfToken($after['body']), 'signature_type' => 'customer'],
-        ['signature_file' => $uploadPng]
-    );
-    $afterOverwrite = request($base . '/visits/' . $signatureVisitId);
-    check('a pad signature cannot be replaced by an uploaded image',
-        str_contains($afterOverwrite['body'], 'cannot replace it')
-        || !str_contains($afterOverwrite['body'], 'Borrower Signature (uploaded)'),
-        'HTTP ' . $overwrite['status']);
-
-    @unlink($uploadPng);
-}
+$anyVisit = request($base . '/visits/1');
+check('and no page still offers to upload one',
+    !str_contains($anyVisit['body'], 'Upload an image of the signature'));
 
 // The BC form no longer asks for a photograph or a signature: an image now belongs to
 // the thing it evidences, not to a person's profile.
@@ -851,14 +814,14 @@ check('the position the approval was made from is shown',
 check('the approver photograph is rendered',
     str_contains($afterApproval['body'], 'Approver photograph'));
 
-// No signature was uploaded and this approver has none on file, so none is shown.
-// Asserted rather than assumed: silently printing an empty signature block would look
-// like a signature that failed to load.
-check('no approver signature is shown when there is none to show',
+// The approver is not asked for a signature at all now, on screen or in the form. They
+// sign the printed page, in the blank box the PDF carries for them.
+check('the approval form no longer asks for a signature',
+    !str_contains($approveForm['body'], 'name="approval_signature"'));
+check('and none is rendered on the report',
     !str_contains($afterApproval['body'], 'Approver signature'));
 
-// Now approve again with a signature, which is the normal case.
-$approverSignature = tempPng(140, 50, [15, 15, 25]);
+// A second decision, this time with the position declined.
 $approveForm3 = request($base . '/visits/' . $visitId . '/approve');
 check('an already-approved report says so on the form',
     str_contains($approveForm3['body'], 'already'));
@@ -866,26 +829,21 @@ check('an already-approved report says so on the form',
 $reApproved = postMultipart($base . '/visits/' . $visitId . '/approve', [
     '_csrf'            => csrfToken($approveForm3['body']),
     'decision'         => 'approve',
-    'approval_remarks' => 'Re-checked with the signature attached.',
+    'approval_remarks' => 'Re-checked against the branch register.',
     'gps_source'       => 'denied',
-], ['approval_signature' => $approverSignature]);
+], []);
 check('a second decision is accepted', $reApproved['status'] === 200, 'HTTP ' . $reApproved['status']);
 
-$withSignature = request($base . '/visits/' . $visitId);
-check('the approver signature is rendered when supplied',
-    str_contains($withSignature['body'], 'Approver signature'));
+$reDecided = request($base . '/visits/' . $visitId);
 // A declined position must be recorded as declined, not as "no fix".
 check('a declined position is reported as declined',
-    str_contains($withSignature['body'], 'declined to share'));
+    str_contains($reDecided['body'], 'declined to share'));
 
 // A new decision must not keep the previous decision's photograph: that image was
 // taken at a different moment and presenting it as evidence of this one is a lie.
 check('the previous decision\'s photograph is not carried forward',
-    !str_contains($withSignature['body'], 'Approver photograph'));
+    !str_contains($reDecided['body'], 'Approver photograph'));
 
-// And the fallback must never delete the approver's PROFILE signature - that file
-// appears on every report they have ever approved.
-$adminForm = request($base . '/users/2/edit');
 // And it reaches the printed report.
 $approvedPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('the printed report carries the approval', $approvedPdf['status'] === 200
