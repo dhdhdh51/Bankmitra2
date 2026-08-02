@@ -3,7 +3,7 @@ package com.lrms.recovery.data.remote
 import com.google.gson.annotations.SerializedName
 
 /**
- * Wire models for the D2 Recovery REST API.
+ * Wire models for the D2 Recovery Solutions & Services REST API.
  *
  * Every endpoint answers with the same envelope, so [ApiEnvelope] is the single
  * type the networking layer unwraps. Nullable fields mirror the server contract
@@ -116,7 +116,7 @@ data class UserDto(
 
 data class PingPayload(
     @SerializedName("status") val status: String = "",
-    @SerializedName("app_name") val appName: String = "D2 Recovery",
+    @SerializedName("app_name") val appName: String = "D2 Recovery Solutions & Services",
     @SerializedName("bank_name") val bankName: String? = null,
     @SerializedName("app_version") val appVersion: String = "",
     @SerializedName("min_version") val minVersion: String = "",

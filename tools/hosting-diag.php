@@ -1,6 +1,6 @@
 <?php
 /**
- * D2 Recovery hosting diagnostic.
+ * D2 Recovery Solutions & Services hosting diagnostic.
  *
  * Upload this next to index.php as diag.php, open https://your-domain/diag.php,
  * fix whatever it reports, then DELETE IT. It is not part of the application and
@@ -19,7 +19,7 @@ header('Content-Type: text/plain; charset=utf-8');
 // versions, absolute paths and module lists. It is not access control - it just
 // means the page says nothing useful unless you asked for it on purpose.
 if (!isset($_GET['i-understand'])) {
-    echo "D2 Recovery diagnostic.\n\n";
+    echo "D2 Recovery Solutions & Services diagnostic.\n\n";
     echo "Add ?i-understand=1 to the URL to run it, then delete this file.\n";
     exit;
 }
@@ -53,7 +53,7 @@ function perms(string $path): string
     return $p . ' owner=' . $owner;
 }
 
-echo "D2 Recovery hosting diagnostic\n";
+echo "D2 Recovery Solutions & Services hosting diagnostic\n";
 echo str_repeat('=', 66), "\n\n";
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ echo "PHP\n";
 $phpOk = PHP_VERSION_ID >= 80100;
 row('PHP version', PHP_VERSION, $phpOk);
 if (!$phpOk) {
-    problem('PHP ' . PHP_VERSION . ' is too old. D2 Recovery needs 8.1 or newer. In cPanel: MultiPHP Manager.');
+    problem('PHP ' . PHP_VERSION . ' is too old. D2 Recovery Solutions & Services needs 8.1 or newer. In cPanel: MultiPHP Manager.');
 }
 row('SAPI', PHP_SAPI);
 row('running as user', function_exists('posix_geteuid') && function_exists('posix_getpwuid')

@@ -1,6 +1,6 @@
 <?php
 /**
- * D2 Recovery one-time key setup.
+ * D2 Recovery Solutions & Services one-time key setup.
  *
  * Ships in the hosting package as setup-keys.php. Its only job is to fill the
  * three cryptographic keys in config/config.php so nobody has to hand-edit PHP
@@ -31,7 +31,7 @@ $configFile = $root . '/config/config.php';
 $sampleFile = $root . '/config/config.sample.php';
 $keys       = ['app_key', 'data_key', 'hash_pepper'];
 
-echo "D2 Recovery key setup\n";
+echo "D2 Recovery Solutions & Services key setup\n";
 echo str_repeat('=', 66), "\n\n";
 
 function bail(string $msg): never

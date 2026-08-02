@@ -40,12 +40,25 @@ final class CustomerSheetService
         $account = (string) $lead['loan_account_number'];
         $customer = (string) $lead['customer_name'];
 
+        // Same masthead the field visit report uses, not the generic header band -
+        // every printed document this system produces is recognised by the same head,
+        // and the agency's own name (not the bank's) is what belongs across the top of
+        // it. See VisitController::pdf() for the fuller reasoning.
+        $organisation = trim((string) Settings::get('report_org_name', '')) !== ''
+            ? (string) Settings::get('report_org_name')
+            : 'D2 Recovery Solutions & Services';
+
         $pdf = new Pdf(
             'Customer Data Sheet',
             sprintf('%s · %s', $account, $customer),
             false,
-            ($bank !== '' ? $bank . ' · ' : '') . 'D2 Recovery confidential - for authorised recovery use only'
+            ($bank !== '' ? $bank . ' · ' : '') . 'D2 Recovery Solutions & Services confidential - for authorised recovery use only'
         );
+
+        $pdf->useRunningHeader($organisation . '  |  Customer Data Sheet');
+        $pdf->titleBlock($organisation, 'Customer Data Sheet', [
+            sprintf('%s · %s', $account, $customer),
+        ]);
 
         // ---- Borrower ------------------------------------------------------
         $pdf->heading('Borrower');
@@ -79,7 +92,7 @@ final class CustomerSheetService
             'Sanction Date'     => self::date($lead['sanction_date']),
             // Probable until the account is classified, actual afterwards - one column,
             // two readings, so the label says both.
-            'Probable NPA Date / NPA Date' => self::date($lead['npa_date']),
+            'Probable NPA/NPA DATE' => self::date($lead['npa_date']),
             'NPA'               => ((int) $lead['is_npa']) === 1 ? 'Yes' : 'No',
             'CKCC Renewal Due'  => self::date($lead['ckcc_renewal_due_date']),
             'Assigned Agent'    => $lead['agent_name'],

@@ -9,7 +9,7 @@
 
 use App\Core\Settings;
 
-$appName = Settings::get('app_name', 'D2 Recovery') ?? 'D2 Recovery';
+$appName = Settings::get('app_name', 'D2 Recovery Solutions & Services') ?? 'D2 Recovery Solutions & Services';
 $bankName = Settings::get('bank_name', '');
 ?>
 <!doctype html>
@@ -82,7 +82,7 @@ $bankName = Settings::get('bank_name', '');
             <?= $content ?>
 
             <p class="text-muted mt-4 mb-0" style="font-size:.75rem">
-                Agents: use the D2 Recovery Android app. This panel is for administrators and branch managers.
+                Agents: use the D2 Recovery Solutions & Services Android app. This panel is for administrators and branch managers.
             </p>
         </div>
     </section>

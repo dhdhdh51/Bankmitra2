@@ -14,7 +14,7 @@ import retrofit2.http.QueryMap
 import retrofit2.http.Streaming
 
 /**
- * The D2 Recovery REST API as the app consumes it.
+ * The D2 Recovery Solutions & Services REST API as the app consumes it.
  *
  * Responses are wrapped in [Response] so the repository can read the HTTP status
  * (401 to refresh, 422 for field errors) instead of only the body.

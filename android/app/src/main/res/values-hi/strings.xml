@@ -182,7 +182,7 @@
     <string name="account_change_password">पासवर्ड बदलें</string>
     <string name="account_dark_mode">डार्क मोड</string>
     <string name="account_sign_out">साइन आउट</string>
-    <string name="account_sign_out_confirm">D2 Recovery से साइन आउट करें?</string>
+    <string name="account_sign_out_confirm">D2 Recovery Solutions &amp; Services से साइन आउट करें?</string>
     <string name="account_about">ऐप के बारे में</string>
     <string name="account_my_stats">मेरा प्रदर्शन</string>
     <string name="account_assigned">सौंपे गए</string>
@@ -204,7 +204,7 @@
     <string name="yes">हाँ</string>
     <string name="no">नहीं</string>
     <string name="update_required_title">अपडेट ज़रूरी है</string>
-    <string name="update_required_message">D2 Recovery का यह वर्शन अब समर्थित नहीं है। आगे बढ़ने के लिए नया वर्शन इंस्टॉल करें।</string>
+    <string name="update_required_message">D2 Recovery Solutions &amp; Services का यह वर्शन अब समर्थित नहीं है। आगे बढ़ने के लिए नया वर्शन इंस्टॉल करें।</string>
     <string name="account_version_format">वर्शन %1$s (बिल्ड %2$d)</string>
     <string name="visit_submitted_from">%1$s v%2$s से %3$s को भेजी गई। यह रिकॉर्ड केवल जोड़ा जाता है और बदला नहीं गया है।</string>
     <string name="account_pending">लंबित</string>

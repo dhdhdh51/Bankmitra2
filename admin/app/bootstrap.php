@@ -64,7 +64,7 @@ $lrmsSetupFailure = static function (string $title, string $apiMessage, string $
     }
 
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><meta charset="utf-8"><title>D2 Recovery setup</title>'
+    echo '<!doctype html><meta charset="utf-8"><title>D2 Recovery Solutions & Services setup</title>'
        . '<div style="font:15px/1.6 system-ui,sans-serif;max-width:680px;margin:12vh auto;padding:0 24px;color:#1c2128">'
        . '<h1 style="font-size:20px;color:#b3261e;margin:0 0 12px">' . $title . '</h1>'
        . $htmlBody
@@ -137,7 +137,7 @@ foreach (['app_key', 'data_key', 'hash_pepper'] as $keyName) {
 if ($configProblems !== []) {
     if (PHP_SAPI === 'cli') {
         http_response_code(500);
-        fwrite(STDERR, "D2 Recovery configuration is incomplete:\n");
+        fwrite(STDERR, "D2 Recovery Solutions & Services configuration is incomplete:\n");
         foreach ($configProblems as [$key, $why]) {
             fwrite(STDERR, sprintf("  - %s %s\n", $key, $why));
         }

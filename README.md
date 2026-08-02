@@ -1,4 +1,4 @@
-# D2 Recovery — Loan Recovery Management System
+# D2 Recovery Solutions & Services — Loan Recovery Management System
 
 Field verification and recovery follow-up for **BC/DC agents** working on behalf of banks.
 
@@ -971,7 +971,7 @@ Kept here because they are the reason the tests exist:
 33. **The app looked nothing like its own icon.** The UI carried a brighter blue
     borrowed from the web panel, so tapping a navy-and-gold launcher icon opened
     a plainly blue app, and a dozen strings still said LRMS after the product
-    became D2 Recovery. `BrandingTest` now pins the name, requires the primary to
+    became D2 Recovery Solutions & Services. `BrandingTest` now pins the name, requires the primary to
     be the same navy as the icon background, and computes WCAG contrast for the
     brand pairs — including an assertion that white on the gold measures about
     2:1, so nobody "tidies" `colorOnSecondary` back to white.

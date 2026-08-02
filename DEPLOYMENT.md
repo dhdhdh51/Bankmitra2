@@ -1,4 +1,4 @@
-# D2 Recovery Deployment Guide
+# D2 Recovery Solutions & Services Deployment Guide
 
 Loan Recovery Management System — admin panel, REST API and Android app.
 
@@ -268,7 +268,7 @@ a reset has to be done by an administrator.
 | `smtp_password` | an **app password**, not the account password |
 | `smtp_encryption` | `tls` (or `ssl` on port 465) |
 | `smtp_from_email` | `no-reply@yourbank.example` |
-| `smtp_from_name` | `D2 Recovery` |
+| `smtp_from_name` | `D2 Recovery Solutions & Services` |
 
 Most shared hosts block outbound port 25 but allow 587. If cPanel provides a mail
 account on your own domain, use that — mail from your own domain is far less likely
@@ -2127,11 +2127,11 @@ Afterwards:
   record that those exist. The approver signs in the panel, where their identity, time,
   position and photograph are recorded against their account; a pen mark beside that adds
   nothing and invites signing the paper while never recording the decision.
-- **The NPA date now reads "Probable NPA Date / NPA Date"** on the form, the door sheet and
-  every screen. It is one column with two readings — the day an account is expected to turn
+- **The NPA date now reads "Probable NPA/NPA DATE"** on the printed form and the door
+  sheet. It is one column with two readings — the day an account is expected to turn
   NPA, and the day it did — and labelling it only "NPA Date" made a projection look like a
-  classification that had already happened. Spreadsheet column headers are unchanged: they
-  are keys another system reads back.
+  classification that had already happened. The panel screens and spreadsheet column
+  headers are unchanged: they are keys another system reads back.
 - **Print one report.** It comes out as the paper form: a numbered band per section, every
   tick box shown whether or not it is ticked, the declaration in full, the closing note,
   and blank ruled boxes for the agent, the borrower, the supervisor and the approver.
@@ -2146,7 +2146,7 @@ Afterwards:
   for every case type. If your staff were trained to look for it inside the renewal block,
   tell them where it went.
 
-### Renaming to D2 Recovery on an existing install
+### Renaming to D2 Recovery Solutions & Services on an existing install
 
 The product name is stored in the `settings` table, not in the code — that is the
 point of the setting, so an operator can change it without a deploy. Copying new
@@ -2158,11 +2158,11 @@ once in phpMyAdmin; it is idempotent and touches nothing an operator has already
 customised:
 
 ```sql
-UPDATE `settings` SET `setting_value` = 'D2 Recovery'
+UPDATE `settings` SET `setting_value` = 'D2 Recovery Solutions & Services'
  WHERE `setting_key` IN ('app_name', 'smtp_from_name')
    AND `setting_value` = 'LRMS';
 
-UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery')
+UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery Solutions & Services')
  WHERE `setting_key` = 'sms_otp_template'
    AND `setting_value` LIKE '%LRMS%';
 ```

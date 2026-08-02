@@ -238,11 +238,11 @@ $loginPage = page('GET /login renders', '/login', 200, 'Sign in');
 check('login page has CSRF token', csrfToken($loginPage) !== '');
 check('login page shows the brand panel', str_contains($loginPage, 'Loan Recovery'));
 
-// The product is D2 Recovery. app_name lives in the settings table, so this also
-// proves the seed carries the new name - an install seeded with the old one keeps
-// showing it until the row is updated, which is the one thing a rename cannot
-// reach from the code.
-check('login page shows the product name', str_contains($loginPage, 'D2 Recovery'));
+// The product is D2 Recovery Solutions & Services. app_name lives in the settings
+// table, so this also proves the seed carries the new name - an install seeded with
+// the old one keeps showing it until the row is updated, which is the one thing a
+// rename cannot reach from the code.
+check('login page shows the product name', str_contains($loginPage, 'D2 Recovery Solutions &amp; Services'));
 check(
     'login page has no trace of the old product name',
     !str_contains($loginPage, 'LRMS'),
@@ -313,7 +313,7 @@ check('password change succeeds', $changed['status'] === 200 && str_contains($ch
 section('Authenticated pages');
 
 $dashboard = page('GET /dashboard', '/dashboard', 200, 'Total leads');
-check('signed-in header shows the product name', str_contains($dashboard, 'D2 Recovery'));
+check('signed-in header shows the product name', str_contains($dashboard, 'D2 Recovery Solutions &amp; Services'));
 check(
     'signed-in page has no trace of the old product name',
     !str_contains($dashboard, 'LRMS'),
@@ -439,11 +439,11 @@ if ($pdfWithMedia !== null) {
     // bank_name, which put the client bank at the top of a document the bank did not
     // write - and this report carries a declaration and is filed with that same bank.
     check('the masthead names the agency, not the client bank',
-        str_contains($pdfWithMedia, 'D2 RECOVERY SOLUTIONS & SERVICES'));
+        str_contains($pdfWithMedia, 'D2 RECOVERY SOLUTIONS &amp; SERVICES'));
     // One column, two readings: the day an account is expected to turn NPA, and the day
     // it did. Labelled only "NPA Date", a projection read as a classification.
     check('the NPA date is labelled as both a projection and a fact',
-        str_contains($pdfWithMedia, 'Probable NPA Date / NPA Date'));
+        str_contains($pdfWithMedia, 'Probable NPA/NPA DATE'));
     // "Page 4" on an eight-page form is what somebody misses when two pages vanish in a
     // fax. The total cannot be known while a page is being drawn, so it is stamped on at
     // the end - and that is exactly the kind of thing that silently stops happening.
@@ -2062,7 +2062,7 @@ check('the agent session is authenticated, not bounced to the login form',
 
 // Landing anywhere that refuses them would read as a broken sign-in.
 check('signing in does not land an agent on a refusal page',
-    !str_contains($agentLogin['body'], 'Use the D2 Recovery mobile app'));
+    !str_contains($agentLogin['body'], 'Use the D2 Recovery Solutions'));
 
 $agentLeads = request($base . '/customers');
 check('an agent reaches their borrower list', $agentLeads['status'] === 200, 'HTTP ' . $agentLeads['status']);
@@ -2084,7 +2084,7 @@ foreach ([
     $body = $attempt['body'] ?? '';
     $refused = $attempt['status'] === 403
         || $attempt['status'] === 302
-        || str_contains($body, 'Use the D2 Recovery mobile app');
+        || str_contains($body, 'Use the D2 Recovery Solutions');
     check("an agent cannot open {$forbidden}", $refused, 'HTTP ' . $attempt['status']);
 }
 
@@ -2298,7 +2298,7 @@ if ($ownLeadId > 0) {
 $agentCreateForm = request($base . '/customers/create');
 check('an agent reaches the create form rather than the "use the app" page',
     $agentCreateForm['status'] === 200
-    && !str_contains($agentCreateForm['body'], 'Use the D2 Recovery mobile app'),
+    && !str_contains($agentCreateForm['body'], 'Use the D2 Recovery Solutions'),
     'HTTP ' . $agentCreateForm['status']);
 check('their own list offers it too', str_contains($agentLeads['body'], 'Add borrower'));
 

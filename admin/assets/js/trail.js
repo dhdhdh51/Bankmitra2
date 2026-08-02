@@ -1,5 +1,5 @@
 /* ==========================================================================
-   D2 Recovery - the location trail map
+   D2 Recovery Solutions & Services - the location trail map
    ==========================================================================
    Leaflet against OpenStreetMap's own tiles. No API key, no account, nothing
    that expires - the same reasoning as GeocodingService, which uses Nominatim.
