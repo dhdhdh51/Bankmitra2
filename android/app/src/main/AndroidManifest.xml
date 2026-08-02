@@ -61,6 +61,13 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!--
+        android:localeConfig declares English and Hindi, so Android 13+ lists this app
+        under Settings → System → Languages with its own per-app picker, and appcompat's
+        backport knows the same list on older phones. The app also carries its own
+        switcher on the Account tab: an agent who cannot read the phone's Settings in
+        English is exactly the person who needs to change the language.
+    -->
     <application
         android:name=".LrmsApp"
         android:allowBackup="false"
@@ -68,6 +75,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"

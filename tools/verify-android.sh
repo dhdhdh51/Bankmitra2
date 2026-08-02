@@ -58,6 +58,12 @@ echo ""
 echo "==> adaptive icon safe zone"
 python3 "$ROOT_DIR/tools/check-icon-safezone.py"
 
+# Before the build, because it costs a second and the failure it catches costs a crash on
+# somebody else's phone in a language nobody here tests in.
+echo ""
+echo "==> translations"
+python3 "$ROOT_DIR/tools/verify-android-strings.py"
+
 echo ""
 echo "==> unit tests"
 ./gradlew --no-daemon testDebugUnitTest

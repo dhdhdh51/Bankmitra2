@@ -80,18 +80,27 @@ class BrandingTest {
     // Name
     // -----------------------------------------------------------------------
 
+    /** Every shipped strings file. Add a locale here when one is added to res/. */
+    private val LOCALES = listOf("values/strings.xml", "values-hi/strings.xml")
+
     @Test
     fun `the app is called D2 Recovery`() {
         val strings = text("values/strings.xml")
-        val appName = Regex("""<string name="app_name">([^<]+)</string>""")
+        // The attribute list is matched loosely on purpose: app_name carries
+        // translatable="false" (a product name is not translated), and a regex pinned to
+        // `name="app_name">` stopped matching the moment that was added - which made this
+        // test pass by finding nothing rather than by finding the right thing.
+        val appName = Regex("""<string name="app_name"[^>]*>([^<]+)</string>""")
             .find(strings)?.groupValues?.get(1)
         assertEquals("D2 Recovery", appName)
     }
 
     @Test
     fun `no string shown to a user still says LRMS`() {
-        val strings = text("values/strings.xml")
-        val offenders = Regex("""<string name="([^"]+)">([^<]*)</string>""")
+        // Every locale, not only the default. A stale product name left in a translation
+        // is shown to exactly the people least able to report it.
+        val strings = LOCALES.joinToString("\n") { text(it) }
+        val offenders = Regex("""<string name="([^"]+)"[^>]*>([^<]*)</string>""")
             .findAll(strings)
             .filter { it.groupValues[2].contains("LRMS", ignoreCase = false) }
             .map { it.groupValues[1] }

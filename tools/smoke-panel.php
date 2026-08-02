@@ -435,6 +435,15 @@ if ($pdfWithMedia !== null) {
         str_contains($pdfWithMedia, 'FIELD VISIT VERIFICATION REPORT')
         && str_contains($pdfWithMedia, 'Recovery Verification Report')
         && str_contains($pdfWithMedia, 'Code of Conduct Compliant Format'));
+    // The masthead names the agency whose form this is. It used to fall back to
+    // bank_name, which put the client bank at the top of a document the bank did not
+    // write - and this report carries a declaration and is filed with that same bank.
+    check('the masthead names the agency, not the client bank',
+        str_contains($pdfWithMedia, 'D2 RECOVERY SOLUTIONS & SERVICES'));
+    // One column, two readings: the day an account is expected to turn NPA, and the day
+    // it did. Labelled only "NPA Date", a projection read as a classification.
+    check('the NPA date is labelled as both a projection and a fact',
+        str_contains($pdfWithMedia, 'Probable NPA Date / NPA Date'));
     // "Page 4" on an eight-page form is what somebody misses when two pages vanish in a
     // fax. The total cannot be known while a page is being drawn, so it is stamped on at
     // the end - and that is exactly the kind of thing that silently stops happening.
@@ -456,12 +465,11 @@ if ($pdfWithMedia !== null) {
         str_contains($pdfWithMedia, 'Reserve Bank of India')
         && str_contains($pdfWithMedia, 'Fair Practices Code'));
     check('and the closing note prints', str_contains($pdfWithMedia, 'Important Note'));
-    // Four blank boxes: agent, borrower, supervisor, approver. Nothing fills them but a pen.
-    check('with a box for the borrower, the agent, the supervisor and the approver',
+    // TWO blank boxes: the agent who filed it and the supervisor who verified it, which
+    // is what section 12 of the paper form asks for. Nothing fills them but a pen.
+    check('with a box for the agent and one for the supervisor',
         str_contains($pdfWithMedia, 'BC Agent / DRA Signature')
-        && str_contains($pdfWithMedia, 'Borrower Signature')
-        && str_contains($pdfWithMedia, 'Supervisor Signature')
-        && str_contains($pdfWithMedia, 'Approver Signature'));
+        && str_contains($pdfWithMedia, 'Supervisor Signature'));
 
     // A geo caption is the whole point of a geo-tagged photograph: latitude to six
     // decimal places, so pasting it into a map lands where the agent stood.
@@ -492,12 +500,24 @@ if ($pdfWithMedia !== null) {
     // look wrong.
     check('the printed report asks for a signature by hand',
         str_contains($pdfWithMedia, 'signed by hand on this printed copy'));
-    // The form's own wording: "BC Agent / DRA", not "BC / DC Agent".
-    check('with a box for the borrower and one for the agent',
-        str_contains($pdfWithMedia, 'Thumb Impression')
-        && str_contains($pdfWithMedia, 'BC Agent / DRA Signature'));
+    // TWO boxes, and only two: the agent who filed the report and the supervisor who
+    // verified it. That is section 12 of the paper form.
+    check('with a box for the agent and one for the supervisor',
+        str_contains($pdfWithMedia, 'BC Agent / DRA Signature')
+        && str_contains($pdfWithMedia, 'Supervisor Signature'));
     check('and a date line under each', substr_count($pdfWithMedia, 'Date:') >= 2,
         (string) substr_count($pdfWithMedia, 'Date:'));
+    // The borrower's box is gone on purpose: a signature line on a bank's internal
+    // verification record makes a document the borrower had no say in look endorsed by
+    // them. Their consent, where it matters, is a separate paper.
+    check('and no box asking the borrower to sign the bank\'s own record',
+        !str_contains($pdfWithMedia, 'Thumb Impression')
+        && !str_contains($pdfWithMedia, 'Borrower Signature'));
+    // And none for the approver: approval is recorded in the panel against a user
+    // account, with a time and a position, which is a stronger record than a pen mark -
+    // and a box invites signing the paper while never recording the decision.
+    check('nor one for the approver, who signs off in the panel instead',
+        !str_contains($pdfWithMedia, 'Approver Signature'));
     check('no captured signature is printed any more',
         !str_contains($pdfWithMedia, 'No location recorded at signing')
         && !str_contains($pdfWithMedia, 'Signature (uploaded)'));
@@ -937,15 +957,21 @@ check('a rejection with no remarks is refused',
     str_contains($rejectNoReason['body'], 'Say why') || str_contains($rejectNoReason['body'], 'invalid-feedback'),
     'HTTP ' . $rejectNoReason['status']);
 
-// The approving officer's box has to be on the page BEFORE anybody approves. The copy
-// somebody prints in order to sign it is exactly the one that is still pending, so a box
-// that only appears after approval is a box that is never there when it is needed.
+// THE APPROVER DOES NOT SIGN THE PAPER, and this reverses an earlier decision here.
+//
+// The argument for the box was that the copy somebody prints in order to sign is exactly
+// the one still pending, so a box appearing only after approval is never there when it is
+// wanted. That was right about the timing and wrong about the mechanism: approval happens
+// in the panel, where the approver's identity, timestamp, position and photograph are all
+// recorded against their user account. A pen mark beside that adds nothing, and offering
+// one invites the opposite habit - signing the paper and never recording the decision,
+// which leaves the report unlistable as approved and the approval provable by nobody.
 $pendingPdf = request($base . '/visits/' . $visitId . '/pdf');
-check('a pending report still prints an approver signature box',
-    $pendingPdf['status'] === 200 && str_contains($pendingPdf['body'], 'Approver Signature'),
+check('a pending report prints no approver signature box',
+    $pendingPdf['status'] === 200 && !str_contains($pendingPdf['body'], 'Approver Signature'),
     'HTTP ' . $pendingPdf['status']);
-check('labelled with the role, since nobody has signed it yet',
-    str_contains($pendingPdf['body'], 'Branch Manager'));
+check('and says in words that it has not been reviewed',
+    str_contains($pendingPdf['body'], 'has not yet been reviewed'));
 check('and it does not claim a photograph is missing from an approval nobody has made',
     !str_contains($pendingPdf['body'], 'No photograph of the approver'));
 
@@ -1006,17 +1032,20 @@ check('the previous decision\'s photograph is not carried forward',
 $approvedPdf = request($base . '/visits/' . $visitId . '/pdf');
 check('the printed report carries the approval', $approvedPdf['status'] === 200
     && str_contains($approvedPdf['body'], 'Approved'), 'HTTP ' . $approvedPdf['status']);
-// The approver ends up with what the agent has: a photograph, and an empty box under it.
-// This decision declined its position and supplied no photograph, so the absence has to
-// be stated - on an approved report a silent gap reads as an image that failed to load.
+// The approver's PHOTOGRAPH still prints - it is the evidence that a person looked at this
+// report, taken at the moment they did. This decision supplied none, so the absence is
+// stated: on an approved report a silent gap reads as an image that failed to load.
 check('an approver with no photograph is reported in words',
     str_contains($approvedPdf['body'], 'No photograph of the approver'));
-check('and the signature box is still printed for them',
-    str_contains($approvedPdf['body'], 'Approver Signature'));
-// Now that somebody has approved it, the box carries their name rather than the role it
-// falls back to on a pending report.
-check('the approver is named on their own box once they are known',
-    !str_contains($approvedPdf['body'], 'Branch Manager'));
+// But no box, even now. The approval is already recorded here with a name, a time and a
+// position; a signature line would only offer a way to approve without recording it.
+check('and still no signature box, because the approval is recorded not signed',
+    !str_contains($approvedPdf['body'], 'Approver Signature'));
+// The approver is named in the approval block itself - which is the whole point of
+// recording rather than signing: the document says who, when and from where.
+check('the approver is named on the printed report',
+    str_contains($approvedPdf['body'], 'Approved By')
+    && str_contains($approvedPdf['body'], 'Approved At'));
 
 // ---- Correction, and the append-only guarantee ------------------------------
 page('GET /visits/{id}/revise', '/visits/' . $visitId . '/revise', 200, 'Correct visit report');
@@ -1713,6 +1742,14 @@ check('menus are closed by our own stylesheet, not only by the CDN\'s',
     str_contains($ownCss, '.dropdown-menu:not(.show)') && str_contains($ownCss, '.modal:not(.show)'));
 check('and so are the settings tabs',
     str_contains($ownCss, '.tab-content > .tab-pane:not(.active)'));
+check('the visit screen says which two people sign, and why not the other two',
+    str_contains($visitShow, 'BC agent&nbsp;/&nbsp;DRA')
+    && str_contains($visitShow, 'supervisor')
+    && str_contains($visitShow, 'no borrower box')
+    && str_contains($visitShow, 'no approver box'));
+check('and the report screen labels the NPA date as both readings',
+    str_contains($visitShow, 'Probable NPA date / NPA date'));
+
 check('the shared dialog is also hidden inline, for no stylesheet at all',
     str_contains($usersPage, 'id="resetModal"') && str_contains($usersPage, 'style="display:none"'));
 

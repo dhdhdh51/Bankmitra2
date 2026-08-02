@@ -273,7 +273,7 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                         <?php endforeach; ?>
 
                         <div class="col-md-6">
-                            <label class="form-label" for="npa_date">NPA date</label>
+                            <label class="form-label" for="npa_date">Probable NPA date / NPA date</label>
                             <input type="date" class="form-control<?= has_error($errors, 'npa_date') ?>"
                                    id="npa_date" name="npa_date" value="<?= $value('npa_date') ?>">
                             <?= field_error($errors, 'npa_date') ?>

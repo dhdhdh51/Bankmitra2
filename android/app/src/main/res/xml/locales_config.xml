@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The languages this app ships.
+
+    Declared so Android 13+ lists the app under Settings → System → Languages with its
+    own per-app language picker, and so the framework knows which locales to offer. On
+    older versions appcompat reads the same list through its backport.
+
+    Order matters only for the system picker's default; the app's own switcher offers
+    English first because the source is written in it.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="hi" />
+</locale-config>

@@ -147,6 +147,17 @@ class SessionStore(context: Context) {
         get() = prefs.getBoolean(KEY_REMEMBER, true)
         set(value) = prefs.edit().putBoolean(KEY_REMEMBER, value).apply()
 
+    /**
+     * The chosen app language as a BCP-47 tag, or "" to follow the phone.
+     *
+     * Kept OUTSIDE the block that clear() wipes on sign-out: a language is a property of
+     * the person holding the phone, not of the session. Signing out and back in should not
+     * put an agent who reads Hindi back into English.
+     */
+    var languageTag: String
+        get() = prefs.getString(KEY_LANGUAGE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
+
     // ---- Daily report reminder ---------------------------------------------
 
     /**
@@ -243,6 +254,7 @@ class SessionStore(context: Context) {
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_REMEMBER = "remember_me"
+        private const val KEY_LANGUAGE = "app_language"
         private const val KEY_LAST_CODE = "last_employee_code"
         private const val KEY_DEVICE_TOKEN = "device_token"
         private const val KEY_REPORT_DUE = "report_due_time"

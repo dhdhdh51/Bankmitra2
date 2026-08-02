@@ -16,6 +16,7 @@ import com.lrms.recovery.ui.BaseActivity
 import com.lrms.recovery.ui.BaseFragment
 import com.lrms.recovery.ui.login.ChangePasswordActivity
 import com.lrms.recovery.ui.sss.SssEntryActivity
+import com.lrms.recovery.util.AppLanguage
 import com.lrms.recovery.util.Formatters
 import kotlinx.coroutines.launch
 
@@ -73,6 +74,9 @@ class AccountFragment : BaseFragment() {
             session.themeMode = mode
             AppCompatDelegate.setDefaultNightMode(mode)
         }
+
+        bindLanguage()
+        binding.rowLanguage.setOnClickListener { chooseLanguage() }
 
         binding.rowSss.setOnClickListener {
             startActivity(SssEntryActivity.intent(requireContext()))
@@ -147,6 +151,67 @@ class AccountFragment : BaseFragment() {
                 }
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Language
+    // -----------------------------------------------------------------------
+
+    /**
+     * Shows the current choice under the row.
+     *
+     * Each option is labelled in its OWN script - English as "English", Hindi as
+     * "हिन्दी" - so the row is legible whichever language the app happens to be in.
+     * Labelling them in the current language would leave an agent stuck in a language
+     * they cannot read looking at a list they also cannot read.
+     */
+    private fun bindLanguage() {
+        binding.textLanguageValue.text = languageLabel(currentLanguage())
+    }
+
+    private fun currentLanguage(): AppLanguage {
+        // Read from the system first: an agent may have used Android 13's own per-app
+        // language picker, and this row must not contradict it. Falls back to what we
+        // stored, which is the only source on older phones.
+        val applied = AppCompatDelegate.getApplicationLocales()
+        return if (applied.isEmpty) {
+            AppLanguage.fromTag(session.languageTag)
+        } else {
+            AppLanguage.fromTag(applied[0]?.language)
+        }
+    }
+
+    private fun languageLabel(language: AppLanguage): String = getString(
+        when (language) {
+            AppLanguage.ENGLISH -> R.string.account_language_english
+            AppLanguage.HINDI -> R.string.account_language_hindi
+            AppLanguage.SYSTEM -> R.string.account_language_system
+        },
+    )
+
+    private fun chooseLanguage() {
+        val choices = AppLanguage.CHOICES
+        val labels = choices.map { languageLabel(it) }.toTypedArray()
+        val current = choices.indexOf(currentLanguage()).coerceAtLeast(0)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.account_language)
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                dialog.dismiss()
+
+                val picked = choices[which]
+                session.languageTag = AppLanguage.tagFor(picked)
+
+                // Android performs the switch and recreates what needs recreating. We do
+                // NOT recreate the activity ourselves, and we do not wrap any context: a
+                // hand-rolled Configuration override is what makes dialogs, notifications
+                // and services disagree about the language, and it is the version of this
+                // feature that crashes.
+                AppLanguage.apply(picked)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .setMessage(R.string.account_language_hint)
+            .show()
     }
 
     private fun confirmSignOut() {

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">D2 Recovery</string>
+    <string name="app_name" translatable="false">D2 Recovery</string>
     <string name="app_full_name">Loan Recovery Management System</string>
 
     <!-- ==================== Customer data sheet ==================== -->
@@ -22,7 +22,7 @@
     <string name="login_button">Sign in</string>
     <string name="login_forgot">Forgot password?</string>
     <string name="login_server">Server address</string>
-    <string name="login_server_hint">https://your-domain.com/api/v1/</string>
+    <string name="login_server_hint" translatable="false">https://your-domain.com/api/v1/</string>
     <string name="login_change_server">Change server</string>
     <string name="login_error_code">Enter your employee code</string>
     <string name="login_error_password">Enter your password</string>
@@ -137,7 +137,7 @@
     <string name="visit_ready_to_pay">Ready to pay</string>
     <string name="visit_not_ready">Not ready</string>
     <string name="visit_interest_payment">Interest payment</string>
-    <string name="visit_ots">OTS</string>
+    <string name="visit_ots" translatable="false">OTS</string>
     <string name="visit_promise_amount">Promise amount</string>
     <string name="visit_promise_date">Promise date</string>
     <string name="visit_promise_incomplete">A promise needs both an amount and a date</string>
@@ -155,8 +155,8 @@
     <string name="visit_rec_recovery_possible">Recovery possible</string>
     <string name="visit_rec_followup">Regular follow-up</string>
     <string name="visit_rec_legal">Legal action</string>
-    <string name="visit_rec_rc">RC</string>
-    <string name="visit_rec_ots">OTS</string>
+    <string name="visit_rec_rc" translatable="false">RC</string>
+    <string name="visit_rec_ots" translatable="false">OTS</string>
     <string name="visit_rec_others">Others</string>
     <string name="visit_rec_other_text">Specify recommendation</string>
 
@@ -236,9 +236,9 @@
     <string name="error_unknown">Something went wrong. Please try again.</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
-    <string name="not_available">—</string>
-    <string name="npa_badge">NPA</string>
-    <string name="required_marker">*</string>
+    <string name="not_available" translatable="false">—</string>
+    <string name="npa_badge" translatable="false">NPA</string>
+    <string name="required_marker" translatable="false">*</string>
     <string name="update_required_title">Update required</string>
     <string name="update_required_message">This version of D2 Recovery is no longer supported. Please install the latest version to continue.</string>
 
@@ -270,15 +270,15 @@
     <string name="sss_counted_note">Taken from the visit reports you have filed. You never type these.</string>
     <string name="sss_counted_visits">Visits</string>
     <string name="sss_counted_contacts">Met</string>
-    <string name="sss_counted_ptp">PTP</string>
+    <string name="sss_counted_ptp" translatable="false">PTP</string>
     <string name="sss_entry_heading">Enrolments you did today</string>
-    <string name="sss_apy">APY</string>
+    <string name="sss_apy" translatable="false">APY</string>
     <string name="sss_apy_full">Atal Pension Yojana</string>
-    <string name="sss_pmjjby">PMJJBY</string>
+    <string name="sss_pmjjby" translatable="false">PMJJBY</string>
     <string name="sss_pmjjby_full">Pradhan Mantri Jeevan Jyoti Bima Yojana</string>
-    <string name="sss_pmsby">PMSBY</string>
+    <string name="sss_pmsby" translatable="false">PMSBY</string>
     <string name="sss_pmsby_full">Pradhan Mantri Suraksha Bima Yojana</string>
-    <string name="sss_pmjdy">PMJDY</string>
+    <string name="sss_pmjdy" translatable="false">PMJDY</string>
     <string name="sss_pmjdy_full">Pradhan Mantri Jan Dhan Yojana</string>
     <string name="sss_remarks">Remarks (optional)</string>
     <string name="sss_save">Save today\'s enrolment</string>
@@ -314,7 +314,7 @@
     <string name="report_type_ckcc">CKCC OD-2 Renewal</string>
     <string name="visit_ckcc_suggested">This is a CKCC account - the renewal form may be the one you want</string>
 
-    <string name="rupee">\u20B9</string>
+    <string name="rupee" translatable="false">\u20B9</string>
 
     <!-- ===================================================================
          KRM / OTS settlement
@@ -488,4 +488,12 @@
     <string name="ots_st_initial_deposit_received">Initial deposit received</string>
     <string name="ots_st_ots_closed">OTS closed</string>
     <string name="ots_st_followup_required">Follow-up required</string>
+
+    <!-- The language switcher. English and Hindi ship as full translations; the third
+         choice follows whatever the phone is set to. -->
+    <string name="account_language">Language</string>
+    <string name="account_language_english">English</string>
+    <string name="account_language_hindi">हिन्दी</string>
+    <string name="account_language_system">Phone\'s language</string>
+    <string name="account_language_hint">The app\'s language. The report form keeps the wording that is printed on the paper copy.</string>
 </resources>

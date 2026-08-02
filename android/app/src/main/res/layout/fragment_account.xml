@@ -470,6 +470,66 @@
                             android:layout_height="1dp"
                             android:background="@color/lrms_border" />
 
+                        <!--
+                            Language. Sits in the app rather than only in the phone's
+                            Settings, because an agent whose phone is in English and who
+                            reads Hindi cannot find the phone's language screen to fix it -
+                            and the row shows the current choice in its own script, so it
+                            is legible whichever language the app is currently in.
+                        -->
+                        <LinearLayout
+                            android:id="@+id/rowLanguage"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackground"
+                            android:gravity="center_vertical"
+                            android:minHeight="@dimen/touch_target"
+                            android:orientation="horizontal"
+                            android:padding="14dp">
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_language"
+                                app:tint="@color/lrms_slate" />
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/account_language"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textSize="14sp" />
+
+                                <TextView
+                                    android:id="@+id/textLanguageValue"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="@color/lrms_muted"
+                                    android:textSize="12sp"
+                                    tools:text="English" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="18dp"
+                                android:layout_height="18dp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/ic_chevron_right"
+                                app:tint="@color/lrms_muted" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:background="@color/lrms_border" />
+
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"

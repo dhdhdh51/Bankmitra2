@@ -701,6 +701,38 @@ Or download the APK from the **Build Android APK** GitHub Actions run — see
 
 ---
 
+### English and Hindi
+
+The app ships **both languages in full** — 387 translated strings, not a partial pass — and
+the agent switches between them from **Account → Language**. The choice survives a
+restart, and it survives signing out: a language belongs to the person holding the phone,
+not to the session.
+
+The switch is `AppCompatDelegate.setApplicationLocales()`, the platform's own per-app
+locale API (framework on Android 13+, backported below it), and the choice is also
+declared in `res/xml/locales_config.xml` so Android 13's own Settings → Languages picker
+lists the app. **It is not a `Configuration` override with a wrapped base context**, which
+is the obvious implementation and the one that breaks: the wrapped context and the one
+Android hands to a dialog, a `WebView` or a notification builder disagree, and anything
+outliving the activity — a foreground service, an alarm receiver, a notification channel
+name — reads whichever locale it was created under. The locale is applied in
+`Application.onCreate()` for exactly that reason: the daily reminder's text and the duty
+notification are built where no activity exists.
+
+**Banking acronyms stay in English** — NPA, OTS, KRM, CKCC, KYC, PAN, CIF, GPS, RBI, APY,
+PMJJBY, PMSBY, PMJDY. That is what the paper forms say and what branch staff say out loud;
+translating them would make the app harder to use and stop it matching the printed report.
+Fourteen strings are marked `translatable="false"` for the same reason — a product name and
+a currency symbol are not translated — and the checker fails if one of them is translated
+anyway.
+
+`tools/verify-android-strings.py` runs before every build. The check that matters is the
+last one: **every format specifier must match the default exactly, including its positional
+index.** A Hindi value that drops a `%1$s` does not look wrong in a diff — it throws
+`IllegalFormatException` the moment that screen opens, in Hindi only, on a phone in a
+village, with no report coming back to anybody. It cannot be found by opening the app in
+English, which is how it would otherwise be tested.
+
 ## Security
 
 - **Passwords**: bcrypt cost 12, forced rotation flag, throttled login attempts.
@@ -738,8 +770,9 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all ten release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
 | Integration | `sh tools/integration-test.sh` | **841** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, a lead typed in by hand which the next import then owns, a second phone number that no import can flatten, and every box on the printed Field Visit Verification Report — the six case types, the encrypted PAN, the address break-up, the asset classification mapped out of the bank's free text, the document and evidence checklists, the declaration, and the settlement's customer response |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **490** panel + **228** API — includes an audit of **every `<select>` on every page** (none empty, none with two options selected, every filter dropdown holding the value it was given), a stylesheet audit that no control Bootstrap paints with a background *image* is styled with the `background` shorthand, and the printed visit report checked band by band against the paper form it has to match |
-| Android | `sh tools/verify-android.sh` | **249** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **496** panel + **228** API — includes an audit of **every `<select>` on every page** (none empty, none with two options selected, every filter dropdown holding the value it was given), a stylesheet audit that no control Bootstrap paints with a background *image* is styled with the `background` shorthand, and the printed visit report checked band by band against the paper form it has to match |
+| Android | `sh tools/verify-android.sh` | **256** unit tests + both APKs + adaptive-icon safe zone |
+| **Translations** | `python3 tools/verify-android-strings.py` | **7** — every translatable string is translated, nothing is translated that should not be, and **every format specifier matches the default exactly**: a Hindi string that loses a `%1$s` throws `IllegalFormatException` the moment that screen opens, in Hindi only, on somebody else's phone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
@@ -757,7 +790,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,304 assertions total** — the sum of the bold counts above, counting the seven
+**2,324 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

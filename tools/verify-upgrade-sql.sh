@@ -244,6 +244,9 @@ ALTER TABLE `branches`
   DROP COLUMN `regional_office`,
   DROP COLUMN `zone`;
 
+-- The masthead printed the bank's name before it, which is why it needed its own key.
+DELETE FROM `settings` WHERE `setting_key` = 'report_org_name';
+
 --
 -- The recorded trail could not be looked at by anybody, so there was no permission for a
 -- screen to sit behind.

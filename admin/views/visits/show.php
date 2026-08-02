@@ -346,7 +346,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                         <dd class="lg" style="color:var(--lrms-danger)"><?= e(rupees($report['overdue_amount'])) ?></dd>
                     </div>
                     <div>
-                        <dt>NPA date</dt>
+                        <dt>Probable NPA date / NPA date</dt>
                         <dd><?= $report['npa_date'] === null ? '<span class="text-muted">Not classified</span>' : e(fmt_date((string) $report['npa_date'])) ?></dd>
                     </div>
                     <div><dt>Current status</dt><dd><?= status_badge($report['current_status']) ?></dd></div>
@@ -434,7 +434,7 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
                     <dl class="lrms-dl">
                         <div><dt>Borrower&rsquo;s name</dt><dd><?= nullable($ots['borrower_name'] ?? $report['customer_name']) ?></dd></div>
                         <div>
-                            <dt>NPA date</dt>
+                            <dt>Probable NPA date / NPA date</dt>
                             <dd><?= empty($ots['npa_date']) ? '<span class="text-muted">Not classified</span>' : fmt_date($ots['npa_date']) ?></dd>
                         </div>
                         <div><dt>Eligible for KRM / OTS</dt><dd><?= yes_no($ots['eligible_for_ots']) ?></dd></div>
@@ -774,8 +774,17 @@ $revisionCount = (int) ($report['revision_count'] ?? 0);
             <div class="lrms-card-body">
                 <p class="text-muted mb-0" style="font-size:.8125rem">
                     Nothing is signed on a screen. <strong>Print this report</strong> &mdash; it
-                    carries empty boxes for the borrower, the BC&nbsp;/&nbsp;DC agent and the
-                    approving officer, to be signed by hand on the paper.
+                    carries empty boxes for the <strong>BC agent&nbsp;/&nbsp;DRA</strong> and the
+                    <strong>supervisor</strong>, to be signed by hand on the paper, which is what
+                    section&nbsp;12 of the form asks for.
+                </p>
+                <p class="text-muted mb-0 mt-2" style="font-size:.75rem">
+                    There is no borrower box: this is the bank&rsquo;s own verification record, and
+                    a signature line would make a document the borrower had no say in look
+                    endorsed by them. Their consent, where it matters, is a separate paper &mdash;
+                    an OTS consent letter or a renewal form &mdash; and sections&nbsp;7 and&nbsp;10
+                    record whether it exists. There is no approver box either: approval is
+                    recorded here, against a user account, with a time and a position.
                 </p>
             </div>
         </div>
