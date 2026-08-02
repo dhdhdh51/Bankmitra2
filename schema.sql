@@ -1683,6 +1683,11 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `options`, `is_secret`, `is_required`, `hint`, `sort_order`) VALUES
   ('app_name',           'D2 Recovery',     'general', 'Application name',        'text', NULL,     0, 0, 'Shown in the header and on exports', 1),
   ('bank_name',          '',                'general', 'Bank / institution name', 'text', NULL,     0, 1, 'Printed on report headers',          2),
+  -- The masthead of the Field Visit Verification Report. Deliberately NOT bank_name:
+  -- the form is the recovery agency's own document, filed WITH a bank, and printing the
+  -- bank's name at the top of it claimed the bank had issued it. A separate key so an
+  -- agency running this can put its own name there without touching either of the above.
+  ('report_org_name',    'D2 Recovery Solutions & Services', 'general', 'Organisation name on printed forms', 'text', NULL, 0, 0, 'Masthead of the Field Visit Verification Report', 3),
   ('app_version',        '1.0.0',           'general', 'Android app version',     'text', NULL,     0, 1, 'Latest published APK version',       3),
   ('app_min_version',    '1.0.0',           'general', 'Minimum supported app version', 'text', NULL, 0, 0, 'Older apps are asked to update',  4),
   ('records_per_page',   '25',              'general', 'Records per page',        'number', NULL,   0, 0, 'Default pagination size',            5),

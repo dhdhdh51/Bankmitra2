@@ -415,7 +415,7 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                         <?php endif; ?>
                     <?php endforeach; ?>
                     <div>
-                        <dt>NPA date</dt>
+                        <dt>Probable NPA date / NPA date</dt>
                         <dd>
                             <?php if ($lead['npa_date'] !== null): ?>
                                 <?= e(fmt_date((string) $lead['npa_date'])) ?>

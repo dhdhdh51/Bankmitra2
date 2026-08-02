@@ -723,8 +723,9 @@ Everything in the repository is covered by runnable checks.
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 490 panel + 228 API checks over real HTTP, including every dropdown on every page (markup *and* the CSS that paints its caret), a borrower created by hand as both an admin and an agent, and the printed visit report checked band by band against the paper form |
-| `sh tools/verify-android.sh` | 249 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `sh tools/smoke-panel.sh` | 496 panel + 228 API checks over real HTTP, including every dropdown on every page (markup *and* the CSS that paints its caret), a borrower created by hand as both an admin and an agent, and the printed visit report checked band by band against the paper form |
+| `sh tools/verify-android.sh` | 256 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
+| `python3 tools/verify-android-strings.py` | 7 checks — English and Hindi are paired key for key and every format specifier matches, so a translation cannot crash a screen |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
 | `php tools/crossvalidate.php .verify && python3 tools/crossvalidate.py .verify` | Generated XLSX opens in openpyxl, PDF opens in pypdf |
@@ -1916,6 +1917,17 @@ the mobile hash normalises to digits only, so run a PAN through it and every car
 to its four-digit block, and two unrelated borrowers would share a hash.
 
 ```sql
+-- The masthead of the printed form. NOT bank_name: the form is the recovery agency's own
+-- document, filed WITH a bank, and printing the bank's name over the whole of it claimed
+-- the bank had issued it. A separate key so an agency can put its own name there.
+INSERT INTO `settings`
+  (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `options`,
+   `is_secret`, `is_required`, `hint`, `sort_order`)
+VALUES
+  ('report_org_name', 'D2 Recovery Solutions & Services', 'general',
+   'Organisation name on printed forms', 'text', NULL, 0, 0,
+   'Masthead of the Field Visit Verification Report', 3);
+
 -- Where a branch sits in the bank's hierarchy. Held here once so the printed header
 -- does not carry four spellings of the same regional office.
 ALTER TABLE `branches`
@@ -2094,6 +2106,9 @@ SELECT COUNT(*) FROM `visit_reports` WHERE `occupation` = 'job';   -- 0
 SELECT COUNT(*) FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'visit_ckcc_details'
    AND COLUMN_NAME LIKE 'doc\\_%';             -- 0
+
+-- The masthead reads the agency, not the bank.
+SELECT `setting_value` FROM `settings` WHERE `setting_key` = 'report_org_name';
 ```
 
 Afterwards:
@@ -2101,6 +2116,22 @@ Afterwards:
 - **Fill in Regional office and Zone on each branch** (Branches → edit). They are blank
   after the migration, and they print at the top of every report. Nothing breaks without
   them; the header simply has two dashes in it.
+- **Check Settings → General → Organisation name on printed forms.** It seeds as
+  *D2 Recovery Solutions & Services* and is what the masthead prints. It is deliberately
+  separate from *Bank / institution name*: the form is the agency's document, filed with a
+  bank, so the bank's name belongs against the account and not over the whole page.
+- **Two signature boxes, not four.** The borrower's and the approver's are gone. A
+  borrower signature on a bank's internal verification report makes a document the
+  borrower had no say in look endorsed by them — where their consent genuinely matters it
+  is a separate instrument (an OTS consent letter, a renewal form), and sections 7 and 10
+  record that those exist. The approver signs in the panel, where their identity, time,
+  position and photograph are recorded against their account; a pen mark beside that adds
+  nothing and invites signing the paper while never recording the decision.
+- **The NPA date now reads "Probable NPA Date / NPA Date"** on the form, the door sheet and
+  every screen. It is one column with two readings — the day an account is expected to turn
+  NPA, and the day it did — and labelling it only "NPA Date" made a projection look like a
+  classification that had already happened. Spreadsheet column headers are unchanged: they
+  are keys another system reads back.
 - **Print one report.** It comes out as the paper form: a numbered band per section, every
   tick box shown whether or not it is ticked, the declaration in full, the closing note,
   and blank ruled boxes for the agent, the borrower, the supervisor and the approver.

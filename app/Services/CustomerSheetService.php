@@ -77,7 +77,9 @@ final class CustomerSheetService
             'Sanction Limit'    => self::money($lead['sanction_limit']),
             'Drawing Power'     => self::money($lead['drawing_power']),
             'Sanction Date'     => self::date($lead['sanction_date']),
-            'NPA Date'          => self::date($lead['npa_date']),
+            // Probable until the account is classified, actual afterwards - one column,
+            // two readings, so the label says both.
+            'Probable NPA Date / NPA Date' => self::date($lead['npa_date']),
             'NPA'               => ((int) $lead['is_npa']) === 1 ? 'Yes' : 'No',
             'CKCC Renewal Due'  => self::date($lead['ckcc_renewal_due_date']),
             'Assigned Agent'    => $lead['agent_name'],

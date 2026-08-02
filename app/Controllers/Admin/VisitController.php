@@ -330,9 +330,16 @@ final class VisitController extends Controller
         $photos = VisitReport::photos($id);
         $documents = VisitReport::documents($id);
 
-        $organisation = trim((string) Settings::get('bank_name', '')) !== ''
-            ? (string) Settings::get('bank_name')
-            : (string) Settings::get('app_name', 'D2 Recovery Solutions & Services');
+        // The agency's own name, not the bank's.
+        //
+        // This used to fall back to `bank_name`, which put the client bank at the top of a
+        // document the bank did not write - and on a form that carries a declaration and
+        // gets filed with that same bank, a masthead is a claim about who issued it. The
+        // bank's name still belongs on the report; it belongs against the account, not
+        // over the whole form.
+        $organisation = trim((string) Settings::get('report_org_name', '')) !== ''
+            ? (string) Settings::get('report_org_name')
+            : 'D2 Recovery Solutions & Services';
 
         $pdf = new Pdf(
             'Field Visit Verification Report',
@@ -454,7 +461,11 @@ final class VisitController extends Controller
             'Outstanding Amount' => rupees($report['outstanding_amount']),
             'Interest Overdue'   => self::pdfMoney($report['interest_overdue']),
             'Overdue Amount'     => rupees($report['overdue_amount']),
-            'NPA Date'           => $report['npa_date'] === null
+            // One label for both readings of the same column. Until an account is
+            // classified this date is the day it is EXPECTED to turn NPA; afterwards it is
+            // the day it did. Printing only "NPA Date" made a probable date look like a
+            // classification that had already happened.
+            'Probable NPA Date / NPA Date' => $report['npa_date'] === null
                 ? 'Not classified' : fmt_date((string) $report['npa_date']),
             'Current Status'     => ucfirst((string) $report['current_status']),
         ], 2);
@@ -815,17 +826,26 @@ final class VisitController extends Controller
 
         $pdf->paragraph('To be signed by hand on this printed copy. Sign above the line.', 8.4, '#4b5563');
 
-        $borrowerName = trim((string) $report['customer_name']);
-        $pdf->signatureBlock([
-            [
-                'label'   => 'BC Agent / DRA Signature',
-                'caption' => $agentIdentity . "\nDate:",
-            ],
-            [
-                'label'   => 'Borrower Signature / Thumb Impression',
-                'caption' => ($borrowerName !== '' ? $borrowerName : 'Borrower') . "\nDate:",
-            ],
-        ], 60.0);
+        // TWO signatures on this form, and only two: the agent who filed it and the
+        // supervisor who verified it. That is what section 12 of the paper form asks for.
+        //
+        // The borrower's box is deliberately gone. A borrower signature on a verification
+        // report is not a signature on anything the borrower agreed to - it is a bank's
+        // internal record of a visit - and a box inviting one turns a report the borrower
+        // has no say in into a document they appear to have endorsed. Where a borrower's
+        // consent genuinely matters, it is a separate instrument: an OTS consent letter or
+        // a renewal form, both of which this report merely records the existence of in
+        // sections 7 and 10.
+        //
+        // The approver's box is gone for a different reason: approval happens IN the
+        // panel, with the approver's identity, timestamp, position and photograph
+        // recorded against their user account. A hand signature beside all of that adds
+        // nothing and invites the opposite habit - signing the paper and never recording
+        // the decision, which leaves the approval nowhere a report can be listed by.
+        $pdf->signatureBlock([[
+            'label'   => 'BC Agent / DRA Signature',
+            'caption' => $agentIdentity . "\nDate:",
+        ]], 60.0, 16.0, 2);
 
         $pdf->groupLabel('Supervisor Verification');
         $pdf->formFields([
@@ -865,14 +885,8 @@ final class VisitController extends Controller
             }
         }
 
-        // The approving officer gets exactly what the agent gets: their photograph, and
-        // an empty box beneath it to sign by hand.
-        //
-        // PRINTED IN BOTH STATES, and that is the point of this block rather than an
-        // oversight in it. The copy somebody prints in order to sign it is precisely the
-        // one that has not been approved yet - so putting the box behind "approved"
-        // produced a form with nowhere for the manager to sign at the only moment they
-        // would want to. The box is empty either way; nothing fills it but a pen.
+        // The approver's photograph still prints when there is one: it is the evidence
+        // that a person looked at this report, taken at the moment they did.
         if (($report['approval_photo_path'] ?? null) !== null) {
             $pdf->imageStrip([[
                 'path'    => Uploader::absolutePath((string) $report['approval_photo_path']),
@@ -885,13 +899,10 @@ final class VisitController extends Controller
             $pdf->paragraph('No photograph of the approver was taken at the approval.', 8.4, '#8a5a00');
         }
 
-        $approverName = trim((string) ($report['approver_name'] ?? ''));
-        $pdf->signatureBlock([[
-            'label'   => 'Approver Signature',
-            // Named when known, and a role when not: a box labelled only "Signature" on
-            // an unapproved report tells whoever picks it up nothing about who signs it.
-            'caption' => ($approverName !== '' ? $approverName : 'Branch Manager / Admin') . "\nDate:",
-        ]], 60.0, 16.0, 2);
+        // No signature box for the approver. The approval is recorded in the panel against
+        // their user account - who, when, from where, with their photograph - and that is a
+        // stronger record than a pen mark. A box here would invite signing the paper and
+        // never recording the decision, which leaves the report unlistable as approved.
 
         // ---- 13. Final report status ------------------------------------------
         $pdf->sectionBand(13, 'Final Report Status');
