@@ -683,12 +683,12 @@ Everything in the repository is covered by runnable checks.
 | Command | What it proves |
 | --- | --- |
 | `php tools/selftest-core.php` | 249 checks — crypto, JWT, XLSX, PDF (including image embedding, the blank signature boxes and multi-line captions), geo wording, validator, paginator, key validation |
-| `sh tools/verify-schema.sh` | 24 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login |
+| `sh tools/verify-schema.sh` | 28 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login, dropdown settings that have choices |
 | `sh tools/integration-test.sh` | 744 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo |
-| `sh tools/verify-upgrade-sql.sh` | 17 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
+| `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 326 panel + 226 API checks over real HTTP |
+| `sh tools/smoke-panel.sh` | 344 panel + 226 API checks over real HTTP, including every dropdown on every page |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
@@ -1585,6 +1585,50 @@ Afterwards:
 - The visit report screen in the panel loses its Signatures card, and the approval form
   no longer asks the approver for an image. Everything else — photographs, documents,
   positions, the approval photograph — is untouched.
+
+### Fixing the two on/off settings that were dropdowns
+
+Two settings are yes/no questions but were defined as dropdowns whose choices were
+literally `1` and `0`. **Settings → Notifications → Remind agents to submit** and
+**Location & Maps → Resolve addresses from coordinates** both offered a menu containing
+"1" and "0" and left the operator to work out which one meant on.
+
+They are switches now. Nothing else about them changes — the stored value is still `1`
+or `0`, and every reader of them is unaffected.
+
+```sql
+UPDATE `settings`
+   SET `input_type` = 'toggle',
+       `options`    = NULL
+ WHERE `setting_key` IN ('daily_report_reminder_enabled', 'geocode_enabled');
+```
+
+Confirm it landed:
+
+```sql
+SELECT `setting_key`, `input_type`, `options` FROM `settings`
+ WHERE `setting_key` IN ('daily_report_reminder_enabled', 'geocode_enabled');
+-- both rows: input_type = toggle, options = NULL
+```
+
+Afterwards:
+
+- **The daily report deadline is unchanged** and stays a dropdown, because it has eleven
+  real choices (15:00 to 20:00 in half-hour steps). If your install shows that one as an
+  empty dropdown, its `options` column is blank — the panel now falls back to a text box
+  with an explanation rather than an unusable menu, and this fixes it properly:
+
+  ```sql
+  UPDATE `settings`
+     SET `options` = '15:00,15:30,16:00,16:30,17:00,17:30,18:00,18:30,19:00,19:30,20:00'
+   WHERE `setting_key` = 'daily_report_due_time';
+  ```
+
+- If a dropdown setting is storing a value that is not one of its choices — say the
+  deadline was set to `17:15` directly in the database — the panel now keeps it, marks it
+  "current, not in the list", and warns rather than silently rewriting it to the first
+  choice on the next Save.
+- No new APK. These are panel-side controls only.
 
 ### Renaming to D2 Recovery on an existing install
 

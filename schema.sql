@@ -1482,49 +1482,53 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 -- SEED: SETTINGS
 -- ============================================================================
 
-INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `is_secret`, `is_required`, `hint`, `sort_order`) VALUES
-  ('app_name',           'D2 Recovery',     'general', 'Application name',        'text',     0, 0, 'Shown in the header and on exports', 1),
-  ('bank_name',          '',                'general', 'Bank / institution name', 'text',     0, 1, 'Printed on report headers',          2),
-  ('app_version',        '1.0.0',           'general', 'Android app version',     'text',     0, 1, 'Latest published APK version',       3),
-  ('app_min_version',    '1.0.0',           'general', 'Minimum supported app version', 'text', 0, 0, 'Older apps are asked to update',  4),
-  ('records_per_page',   '25',              'general', 'Records per page',        'number',   0, 0, 'Default pagination size',            5),
-  ('timezone',           'Asia/Kolkata',    'general', 'Timezone',                'text',     0, 0, 'PHP timezone identifier',            6),
+INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `input_type`, `options`, `is_secret`, `is_required`, `hint`, `sort_order`) VALUES
+  ('app_name',           'D2 Recovery',     'general', 'Application name',        'text', NULL,     0, 0, 'Shown in the header and on exports', 1),
+  ('bank_name',          '',                'general', 'Bank / institution name', 'text', NULL,     0, 1, 'Printed on report headers',          2),
+  ('app_version',        '1.0.0',           'general', 'Android app version',     'text', NULL,     0, 1, 'Latest published APK version',       3),
+  ('app_min_version',    '1.0.0',           'general', 'Minimum supported app version', 'text', NULL, 0, 0, 'Older apps are asked to update',  4),
+  ('records_per_page',   '25',              'general', 'Records per page',        'number', NULL,   0, 0, 'Default pagination size',            5),
+  ('timezone',           'Asia/Kolkata',    'general', 'Timezone',                'text', NULL,     0, 0, 'PHP timezone identifier',            6),
 
-  ('smtp_host',          '',                'smtp',    'SMTP host',               'text',     0, 0, '', 1),
-  ('smtp_port',          '587',             'smtp',    'SMTP port',               'number',   0, 0, '', 2),
-  ('smtp_username',      '',                'smtp',    'SMTP username',           'text',     0, 0, '', 3),
-  ('smtp_password',      '',                'smtp',    'SMTP password',           'password', 1, 0, '', 4),
-  ('smtp_encryption',    'tls',             'smtp',    'SMTP encryption',         'select',   0, 0, '', 5),
-  ('smtp_from_email',    '',                'smtp',    'From email',              'text',     0, 0, '', 6),
-  ('smtp_from_name',     'D2 Recovery',     'smtp',    'From name',               'text',     0, 0, '', 7),
+  ('smtp_host',          '',                'smtp',    'SMTP host',               'text', NULL,     0, 0, '', 1),
+  ('smtp_port',          '587',             'smtp',    'SMTP port',               'number', NULL,   0, 0, '', 2),
+  ('smtp_username',      '',                'smtp',    'SMTP username',           'text', NULL,     0, 0, '', 3),
+  ('smtp_password',      '',                'smtp',    'SMTP password',           'password', NULL, 1, 0, '', 4),
+  ('smtp_encryption',    'tls',             'smtp',    'SMTP encryption',         'select', 'tls,ssl,none',   0, 0, '', 5),
+  ('smtp_from_email',    '',                'smtp',    'From email',              'text', NULL,     0, 0, '', 6),
+  ('smtp_from_name',     'D2 Recovery',     'smtp',    'From name',               'text', NULL,     0, 0, '', 7),
 
-  ('sms_provider',       '',                'sms',     'SMS provider',            'text',     0, 1, 'e.g. msg91, textlocal, custom', 1),
-  ('sms_api_url',        '',                'sms',     'SMS API URL',             'text',     0, 1, 'Placeholders: {mobile} {message}', 2),
-  ('sms_api_key',        '',                'sms',     'SMS API key',             'password', 1, 1, '', 3),
-  ('sms_sender_id',      '',                'sms',     'SMS sender ID',           'text',     0, 0, '', 4),
-  ('sms_otp_template',   'Your D2 Recovery OTP is {otp}. Valid for 10 minutes.', 'sms', 'OTP template', 'textarea', 0, 0, 'Use {otp}', 5),
+  ('sms_provider',       '',                'sms',     'SMS provider',            'text', NULL,     0, 1, 'e.g. msg91, textlocal, custom', 1),
+  ('sms_api_url',        '',                'sms',     'SMS API URL',             'text', NULL,     0, 1, 'Placeholders: {mobile} {message}', 2),
+  ('sms_api_key',        '',                'sms',     'SMS API key',             'password', NULL, 1, 1, '', 3),
+  ('sms_sender_id',      '',                'sms',     'SMS sender ID',           'text', NULL,     0, 0, '', 4),
+  ('sms_otp_template',   'Your D2 Recovery OTP is {otp}. Valid for 10 minutes.', 'sms', 'OTP template', 'textarea', NULL, 0, 0, 'Use {otp}', 5),
 
-  ('google_maps_key',    '',                'integrations', 'Google Maps API key', 'password', 1, 0, 'Static map previews only - no tracking', 1),
-  ('firebase_server_key','',                'integrations', 'Firebase server key', 'password', 1, 0, 'FCM push notifications', 2),
-  ('firebase_project_id','',                'integrations', 'Firebase project ID', 'text',     0, 0, '', 3),
+  ('google_maps_key',    '',                'integrations', 'Google Maps API key', 'password', NULL, 1, 0, 'Static map previews only - no tracking', 1),
+  ('firebase_server_key','',                'integrations', 'Firebase server key', 'password', NULL, 1, 0, 'FCM push notifications', 2),
+  ('firebase_project_id','',                'integrations', 'Firebase project ID', 'text', NULL,     0, 0, '', 3),
 
-  ('otp_expiry_minutes', '10',              'security', 'OTP expiry (minutes)',    'number', 0, 0, '', 1),
-  ('max_login_attempts', '5',               'security', 'Max failed login attempts','number', 0, 0, 'Then the account locks temporarily', 2),
-  ('lockout_minutes',    '15',              'security', 'Lockout duration (minutes)','number',0, 0, '', 3),
-  ('jwt_ttl_minutes',    '120',             'security', 'JWT access token TTL (minutes)','number',0, 0, '', 4),
-  ('refresh_ttl_days',   '30',              'security', 'Refresh token TTL (days)','number',  0, 0, 'Drives "remember login"', 5),
-  ('password_min_length','8',               'security', 'Minimum password length', 'number',  0, 0, '', 6),
+  ('otp_expiry_minutes', '10',              'security', 'OTP expiry (minutes)',    'number', NULL, 0, 0, '', 1),
+  ('max_login_attempts', '5',               'security', 'Max failed login attempts','number', NULL, 0, 0, 'Then the account locks temporarily', 2),
+  ('lockout_minutes',    '15',              'security', 'Lockout duration (minutes)','number', NULL,0, 0, '', 3),
+  ('jwt_ttl_minutes',    '120',             'security', 'JWT access token TTL (minutes)','number', NULL,0, 0, '', 4),
+  ('refresh_ttl_days',   '30',              'security', 'Refresh token TTL (days)','number', NULL,  0, 0, 'Drives "remember login"', 5),
+  ('password_min_length','8',               'security', 'Minimum password length', 'number', NULL,  0, 0, '', 6),
 
-  ('promise_reminder_days','1',             'notifications', 'Promise reminder lead time (days)', 'number', 0, 0, 'Notify this many days before the promise date', 1),
-  ('followup_reminder_days','7',            'notifications', 'Follow-up reminder after (days)',   'number', 0, 0, 'Nudge if a lead has had no visit for N days', 2),
+  ('promise_reminder_days','1',             'notifications', 'Promise reminder lead time (days)', 'number', NULL, 0, 0, 'Notify this many days before the promise date', 1),
+  ('followup_reminder_days','7',            'notifications', 'Follow-up reminder after (days)',   'number', NULL, 0, 0, 'Nudge if a lead has had no visit for N days', 2),
 
   -- The daily report deadline. The app schedules a local alarm from this, so it is
   -- the bank's policy in one place rather than a time typed into each phone.
   -- Stored as HH:MM in 24-hour form; anything unparseable falls back to 17:00 in
   -- code, because the settings screen has no per-type validation and a blank here
   -- must not mean "no deadline".
-  ('daily_report_due_time','17:00',         'notifications', 'Daily report due by',               'select', 0, 0, 'The app reminds agents at this time. Keep the sss-reminder --final cron entry on the same hour.', 3),
-  ('daily_report_reminder_enabled','1',     'notifications', 'Remind agents to submit',           'select', 0, 0, 'Turns the in-app daily alarm off for everyone. An agent cannot switch off their own.', 4),
+  --
+  -- A select with an explicit list rather than free text: a typo in a typed time
+  -- silently becomes the 17:00 fallback, and the operator has no way to tell their
+  -- change did nothing. Half-hour steps across the plausible range instead.
+  ('daily_report_due_time','17:00',         'notifications', 'Daily report due by',               'select', '15:00,15:30,16:00,16:30,17:00,17:30,18:00,18:30,19:00,19:30,20:00', 0, 0, 'The app reminds agents at this time. Keep the sss-reminder --final cron entry on the same hour.', 3),
+  ('daily_report_reminder_enabled','1',     'notifications', 'Remind agents to submit',           'toggle', NULL, 0, 0, 'Turns the in-app daily alarm off for everyone. An agent cannot switch off their own.', 4),
   -- The alarm repeats until the report is in, and both numbers are the bank's, not the
   -- agent's. A single notification at the deadline is dismissed in one swipe and then it
   -- is nobody's problem until tomorrow; repeating it makes the deadline mean something.
@@ -1533,28 +1537,19 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   -- alarm at 2 am is not a reminder, it is a reason to turn notifications off for the app
   -- entirely - which would take the useful reminders with it. It resumes at the deadline
   -- on the next working day, so an unfiled report is not forgotten either.
-  ('daily_report_reminder_repeat_minutes','15','notifications','Repeat the alarm every (minutes)','number', 0, 0, 'The alarm re-fires this often until the agent submits. 0 turns repeating off and leaves one reminder at the deadline.', 5),
-  ('daily_report_reminder_until_hour','22',  'notifications', 'Stop repeating at (hour, 0-23)',    'number', 0, 0, 'Repeats stop at this hour and resume at the deadline on the next working day. An alarm through the night gets the app silenced.', 6),
+  ('daily_report_reminder_repeat_minutes','15','notifications','Repeat the alarm every (minutes)','number', NULL, 0, 0, 'The alarm re-fires this often until the agent submits. 0 turns repeating off and leaves one reminder at the deadline.', 5),
+  ('daily_report_reminder_until_hour','22',  'notifications', 'Stop repeating at (hour, 0-23)',    'number', NULL, 0, 0, 'Repeats stop at this hour and resume at the deadline on the next working day. An alarm through the night gets the app silenced.', 6),
 
-  ('backup_retention_days','14',            'backup',  'Backup retention (days)', 'number', 0, 0, 'Older .sql files are pruned', 1),
-  ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text',   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2),
+  ('backup_retention_days','14',            'backup',  'Backup retention (days)', 'number', NULL, 0, 0, 'Older .sql files are pruned', 1),
+  ('mysqldump_path',     'mysqldump',       'backup',  'mysqldump binary path',   'text', NULL,   0, 0, 'Falls back to a pure-PHP dump if unavailable', 2),
 
   -- Location. These were read from code with hard-coded fallbacks before they had
   -- rows here, which meant the retention window could not actually be changed by
   -- the operator who is accountable for it.
-  ('location_retention_days','90',          'location','Location retention (days)','number', 0, 0, 'Location points older than this are deleted by the purge cron', 1),
-  ('geocode_enabled',    '1',               'location','Resolve addresses from coordinates','select', 0, 0, 'Uses the free OpenStreetMap service. Turn off to store coordinates only.', 2),
-  ('geocode_contact_email','',              'location','Contact email for the map service','text', 0, 0, 'OpenStreetMap asks who is calling. Without it, lookups are skipped rather than sent anonymously.', 3),
-  ('ckcc_renewal_alert_days','30',          'location','CKCC renewal alert window (days)','number', 0, 0, 'Agents are alerted as a renewal crosses this many days, then 15, 7 and overdue', 4);
-
-UPDATE `settings` SET `options` = 'tls,ssl,none' WHERE `setting_key` = 'smtp_encryption';
-UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'geocode_enabled';
-UPDATE `settings` SET `options` = '1,0' WHERE `setting_key` = 'daily_report_reminder_enabled';
--- A select rather than free text: a typo in a free-text time silently becomes the
--- 17:00 fallback, and the operator would have no way to tell that their change did
--- nothing. Half-hour steps across the plausible range instead.
-UPDATE `settings` SET `options` = '15:00,15:30,16:00,16:30,17:00,17:30,18:00,18:30,19:00,19:30,20:00'
- WHERE `setting_key` = 'daily_report_due_time';
+  ('location_retention_days','90',          'location','Location retention (days)','number', NULL, 0, 0, 'Location points older than this are deleted by the purge cron', 1),
+  ('geocode_enabled',    '1',               'location','Resolve addresses from coordinates','toggle', NULL, 0, 0, 'Uses the free OpenStreetMap service. Turn off to store coordinates only.', 2),
+  ('geocode_contact_email','',              'location','Contact email for the map service','text', NULL, 0, 0, 'OpenStreetMap asks who is calling. Without it, lookups are skipped rather than sent anonymously.', 3),
+  ('ckcc_renewal_alert_days','30',          'location','CKCC renewal alert window (days)','number', NULL, 0, 0, 'Agents are alerted as a renewal crosses this many days, then 15, 7 and overdue', 4);
 
 -- ============================================================================
 -- SEED: bootstrap super admin + demo branch

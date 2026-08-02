@@ -151,17 +151,68 @@ $activeGroup = array_key_first($orderedGroups);
                                                   <?= $canUpdate ? '' : 'disabled' ?>><?= e($value) ?></textarea>
 
                                     <?php elseif ($inputType === 'select'): ?>
-                                        <select class="form-select<?= $isMissing ? ' is-invalid' : '' ?>"
-                                                id="set-<?= e($key) ?>" name="<?= e($key) ?>"
-                                                <?= $canUpdate ? '' : 'disabled' ?>>
-                                            <?php foreach (explode(',', (string) ($row['options'] ?? '')) as $option): ?>
-                                                <?php $option = trim($option); ?>
-                                                <?php if ($option === '') { continue; } ?>
-                                                <option value="<?= e($option) ?>" <?= $value === $option ? 'selected' : '' ?>>
-                                                    <?= e($option) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
+                                        <?php
+                                        $choices = [];
+                                        foreach (explode(',', (string) ($row['options'] ?? '')) as $option) {
+                                            $option = trim($option);
+                                            if ($option !== '') {
+                                                $choices[] = $option;
+                                            }
+                                        }
+                                        // Two ways a dropdown here can betray the operator, both handled
+                                        // rather than assumed away.
+                                        $unlisted = $value !== '' && !in_array($value, $choices, true);
+                                        ?>
+                                        <?php if ($choices === []): ?>
+                                            <?php
+                                            /*
+                                             * A select with no options is a control that cannot be used: it
+                                             * shows nothing, submits nothing, and looks like a rendering
+                                             * fault. A text box at least lets the operator set the value,
+                                             * and the note says what is wrong so somebody can fix the row.
+                                             */
+                                            ?>
+                                            <input type="text" class="form-control is-invalid"
+                                                   id="set-<?= e($key) ?>" name="<?= e($key) ?>"
+                                                   value="<?= e($value) ?>"
+                                                   <?= $canUpdate ? '' : 'disabled' ?>>
+                                            <div class="form-text text-danger">
+                                                This setting is defined as a dropdown but has no choices listed,
+                                                so it is shown as a text box. Set <code>options</code> on the
+                                                <code><?= e($key) ?></code> row to a comma-separated list.
+                                            </div>
+                                        <?php else: ?>
+                                            <select class="form-select<?= $isMissing || $unlisted ? ' is-invalid' : '' ?>"
+                                                    id="set-<?= e($key) ?>" name="<?= e($key) ?>"
+                                                    <?= $canUpdate ? '' : 'disabled' ?>>
+                                                <?php if ($unlisted): ?>
+                                                    <?php
+                                                    /*
+                                                     * The stored value is not one of the choices - set by an
+                                                     * older release, a migration or phpMyAdmin. Without this
+                                                     * option the browser shows the FIRST choice as though it
+                                                     * were the current value, and the next Save writes it:
+                                                     * a setting changed by opening a page and pressing a
+                                                     * button nobody thought was destructive.
+                                                     */
+                                                    ?>
+                                                    <option value="<?= e($value) ?>" selected>
+                                                        <?= e($value) ?> (current, not in the list)
+                                                    </option>
+                                                <?php endif; ?>
+                                                <?php foreach ($choices as $option): ?>
+                                                    <option value="<?= e($option) ?>" <?= $value === $option ? 'selected' : '' ?>>
+                                                        <?= e($option) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <?php if ($unlisted): ?>
+                                                <div class="form-text text-danger">
+                                                    The stored value is not one of the listed choices. It has been
+                                                    kept as-is; picking another will replace it.
+                                                </div>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
 
                                     <?php elseif ($inputType === 'toggle'): ?>
                                         <div class="form-check form-switch">
