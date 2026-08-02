@@ -1,6 +1,6 @@
 name: Build Android APK
 
-# Builds the D2 Recovery Solutions & Services agent app on every push to main or a feature branch, on pull
+# Builds the D2 Recovery agent app on every push to main or a feature branch, on pull
 # requests, and on manual dispatch. Produces the test report plus an APK you can
 # actually install:
 #
@@ -312,11 +312,11 @@ jobs:
           # A rolling prerelease, created on first use and moved to this commit after.
           if gh release view latest-apk > /dev/null 2>&1; then
             gh release edit latest-apk --target "$GITHUB_SHA" \
-              --title "D2 Recovery Solutions & Services ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
+              --title "D2 Recovery ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
               --notes "$NOTES"
           else
             gh release create latest-apk --prerelease --target "$GITHUB_SHA" \
-              --title "D2 Recovery Solutions & Services ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
+              --title "D2 Recovery ${{ steps.version.outputs.name }} (build #${{ github.run_number }})" \
               --notes "$NOTES"
           fi
 
@@ -340,7 +340,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### D2 Recovery Solutions & Services Android build"
+            echo "### D2 Recovery Android build"
             echo ""
             echo "| Item | Value |"
             echo "| --- | --- |"
