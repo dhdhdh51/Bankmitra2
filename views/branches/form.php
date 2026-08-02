@@ -79,6 +79,23 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $branch)
                         </div>
 
                         <div class="col-md-6">
+                            <label class="form-label" for="regional_office">Regional office</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'regional_office') ?>"
+                                   id="regional_office" name="regional_office"
+                                   value="<?= $value('regional_office') ?>" maxlength="150">
+                            <?= field_error($errors, 'regional_office') ?>
+                            <div class="form-text">Printed at the top of every field visit report.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="zone">Zone</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'zone') ?>"
+                                   id="zone" name="zone" value="<?= $value('zone') ?>" maxlength="150">
+                            <?= field_error($errors, 'zone') ?>
+                            <div class="form-text">Filled in on the report for you, so nobody retypes it at a doorstep.</div>
+                        </div>
+
+                        <div class="col-md-6">
                             <label class="form-label" for="status">Status <span class="req">*</span></label>
                             <?php $currentStatus = $value('status', 'active'); ?>
                             <select class="form-select<?= has_error($errors, 'status') ?>" id="status" name="status" required>

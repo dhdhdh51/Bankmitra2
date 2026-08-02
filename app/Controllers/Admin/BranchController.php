@@ -127,10 +127,13 @@ final class BranchController extends Controller
             'district'    => 'nullable|max:100',
             'state'       => 'nullable|max:100',
             'pincode'     => 'nullable|regex:/^\d{6}$/',
+            'regional_office' => 'nullable|max:150',
+            'zone'            => 'nullable|max:150',
             'status'      => 'required|in:active,inactive',
         ], [
-            'branch_code' => 'Branch code',
-            'pincode'     => 'PIN code',
+            'branch_code'     => 'Branch code',
+            'pincode'         => 'PIN code',
+            'regional_office' => 'Regional office',
         ]);
     }
 
@@ -143,6 +146,10 @@ final class BranchController extends Controller
             'district'    => $request->nullableStr('district'),
             'state'       => $request->nullableStr('state'),
             'pincode'     => $request->nullableStr('pincode'),
+            // Printed at the top of every field visit report. Held once here so an
+            // agent does not spell the same regional office four different ways.
+            'regional_office' => $request->nullableStr('regional_office'),
+            'zone'            => $request->nullableStr('zone'),
             'status'      => $request->str('status') === 'inactive' ? 'inactive' : 'active',
         ];
     }

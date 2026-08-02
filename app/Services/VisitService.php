@@ -47,8 +47,14 @@ final class VisitService
         'agent_photo'        => 'agent',
     ];
 
-    /** The three kinds of field report an agent can file. */
-    public const REPORT_TYPES = ['recovery', 'ots', 'ckcc_renewal'];
+    /**
+     * The case types an agent can file, matching the printed form's Case Type row.
+     *
+     * 'pre_npa' and 'post_npa' are ordinary doorstep verification, not settlement or
+     * renewal work - and before they existed here they were filed as plain recovery
+     * calls, which made the pre-NPA worklist unbuildable from the reports themselves.
+     */
+    public const REPORT_TYPES = ['recovery', 'ots', 'ckcc_renewal', 'pre_npa', 'post_npa', 'other'];
 
     /**
      * @param array<string,mixed> $input Validated form/API payload.
@@ -86,6 +92,7 @@ final class VisitService
         $customer = $db->first(
             'SELECT id, name, father_husband_name, address, village,
                     mobile_enc, mobile_hash, mobile_masked,
+                    alt_mobile_enc, alt_mobile_hash, alt_mobile_masked,
                     aadhaar_enc, aadhaar_hash, aadhaar_masked
                FROM customers WHERE id = ? LIMIT 1',
             [(int) $lead['customer_id']]
@@ -93,6 +100,22 @@ final class VisitService
         if ($customer === null) {
             throw new \RuntimeException('The borrower record could not be found.');
         }
+
+        // The branch's own place in the hierarchy, for the header of the printed form.
+        // Read here rather than added to LoanAccount's projection, which is shared by
+        // every list screen in the panel and does not need four more columns per row.
+        $branch = $db->first(
+            'SELECT name, branch_code, district, state, regional_office, zone
+               FROM branches WHERE id = ? LIMIT 1',
+            [(int) $lead['branch_id']]
+        ) ?? [];
+
+        // The agent's own contact number, printed in the certification block so the
+        // branch can ring back whoever filed the report. Their own staff number, not
+        // the borrower's - and it is on their user record already, so asking for it
+        // again at every doorstep would only be a chance to mistype it.
+        $agentRow = $db->first('SELECT mobile_enc FROM users WHERE id = ? LIMIT 1', [(int) $agent['id']]);
+        $agentMobile = Crypto::decrypt($agentRow['mobile_enc'] ?? null);
 
         $visitDate = (string) ($input['visit_date'] ?? date('Y-m-d'));
         $visitTime = (string) ($input['visit_time'] ?? date('H:i:s'));
@@ -114,6 +137,8 @@ final class VisitService
             $agent,
             $lead,
             $customer,
+            $branch,
+            $agentMobile,
             $loanAccountId,
             $visitDate,
             $visitTime,
@@ -133,40 +158,75 @@ final class VisitService
                 'agent_id'        => (int) $agent['id'],
                 'branch_id'       => (int) $lead['branch_id'],
 
+                // ---- 1. General information -------------------------------
                 'visit_date'  => $visitDate,
                 'visit_time'  => $visitTime,
                 'bc_code'     => $agent['bc_code'] ?? $lead['bc_code'] ?? null,
                 'agent_name'  => (string) $agent['name'],
                 'branch_name' => (string) ($lead['branch_name'] ?? ''),
                 'village'     => self::str($input['village'] ?? $customer['village'], 150),
-                'report_type' => self::reportType($input['report_type'] ?? null),
 
-                // Declaration block, printed at the foot of the report.
-                'sp_cbc_name'     => self::str($input['sp_cbc_name'] ?? null, 150),
-                'supervisor_name' => self::str($input['supervisor_name'] ?? null, 150),
-                'supervisor_verified_at' => self::nullableDate($input['supervisor_verified_at'] ?? null),
+                // Defaulted from the branch master and overridable from the form, in
+                // that order: the branch is right about its own code and zone, and the
+                // agent is the one standing in the district they are standing in.
+                'branch_code'     => self::str($input['branch_code'] ?? $branch['branch_code'] ?? null, 40),
+                'regional_office' => self::str($input['regional_office'] ?? $branch['regional_office'] ?? null, 150),
+                'zone'            => self::str($input['zone'] ?? $branch['zone'] ?? null, 150),
+                'linked_branch'   => self::str($input['linked_branch'] ?? $branch['name'] ?? null, 150),
+                'district'        => self::str($input['district'] ?? $branch['district'] ?? null, 150),
 
-                // Borrower snapshot - copied so the signed report never changes
-                // even if the customer master is later corrected.
+                'report_type'            => self::reportType($input['report_type'] ?? null),
+                'report_type_other_text' => self::str($input['report_type_other_text'] ?? null, 150),
+                'sp_cbc_name'            => self::str($input['sp_cbc_name'] ?? null, 150),
+
+                // ---- 2. Borrower information ------------------------------
+                // Snapshot - copied so the signed report never changes even if the
+                // customer master is later corrected.
                 'customer_name'       => (string) $customer['name'],
                 'father_husband_name' => $customer['father_husband_name'],
+                'gender'              => self::enum($input['gender'] ?? null, ['male', 'female', 'other']),
+                'date_of_birth'       => self::nullableDate($input['date_of_birth'] ?? null),
                 'address'             => self::str($input['address'] ?? $customer['address'], 500),
                 'mobile_enc'          => $customer['mobile_enc'],
                 'mobile_hash'         => $customer['mobile_hash'],
                 'mobile_masked'       => $customer['mobile_masked'],
+                // The second number, taken from the borrower record where the previous
+                // release put it. Snapshotted like the first one, so a report still shows
+                // the number that was current on the day somebody rang it.
+                'alt_mobile_enc'      => $customer['alt_mobile_enc'],
+                'alt_mobile_hash'     => $customer['alt_mobile_hash'],
+                'alt_mobile_masked'   => $customer['alt_mobile_masked'],
                 'aadhaar_enc'         => $customer['aadhaar_enc'],
                 'aadhaar_hash'        => $customer['aadhaar_hash'],
                 'aadhaar_masked'      => $customer['aadhaar_masked'],
+                // Optional on the form and encrypted like the other two identifiers.
+                ...self::panColumns($input['pan_number'] ?? null),
 
-                // Loan snapshot
+                'addr_village'   => self::str($input['addr_village'] ?? null, 150),
+                'gram_panchayat' => self::str($input['gram_panchayat'] ?? null, 150),
+                'tehsil'         => self::str($input['tehsil'] ?? null, 150),
+                'addr_district'  => self::str($input['addr_district'] ?? null, 150),
+                'state'          => self::str($input['state'] ?? $branch['state'] ?? null, 100),
+                'pin_code'       => self::str($input['pin_code'] ?? null, 10),
+
+                // ---- 3. Loan account details ------------------------------
                 'loan_account_number' => (string) $lead['loan_account_number'],
-                'loan_type'           => $lead['loan_type'],
+                'cif_number'          => self::str($input['cif_number'] ?? $lead['cif_number'] ?? null, 40),
+                'loan_type'           => self::str($input['loan_type'] ?? $lead['loan_type'] ?? null, 80),
+                'loan_type_other_text' => self::str($input['loan_type_other_text'] ?? null, 150),
+                'sanction_date'       => self::nullableDate($input['sanction_date'] ?? $lead['sanction_date'] ?? null),
+                'sanction_limit'      => self::nullableAmount($input['sanction_limit'] ?? $lead['sanction_limit'] ?? null),
+                'drawing_power'       => self::nullableAmount($input['drawing_power'] ?? $lead['drawing_power'] ?? null),
                 'outstanding_amount'  => (float) $lead['outstanding_amount'],
+                'interest_overdue'    => self::nullableAmount($input['interest_overdue'] ?? $lead['interest_overdue'] ?? null),
                 'overdue_amount'      => (float) $lead['overdue_amount'],
                 'npa_date'            => $lead['npa_date'],
+                'asset_classification' => self::assetClassification(
+                    $input['asset_classification'] ?? $lead['asset_classification'] ?? null
+                ),
                 'current_status'      => (string) $lead['current_status'],
 
-                // Customer contact
+                // ---- 6. Physical verification: who was met ----------------
                 'customer_met'               => self::flag($input['customer_met'] ?? null),
                 'family_member_met'          => self::flag($input['family_member_met'] ?? null),
                 'house_locked'               => self::flag($input['house_locked'] ?? null),
@@ -175,12 +235,36 @@ final class VisitService
                 'family_member_name'         => self::str($input['family_member_name'] ?? null, 150),
                 'family_member_relationship' => self::str($input['family_member_relationship'] ?? null, 80),
 
-                // Physical verification
+                // ---- 6. Physical verification: what was seen --------------
                 'borrower_alive'        => self::flag($input['borrower_alive'] ?? 1),
                 'same_address'          => self::flag($input['same_address'] ?? 1),
                 'shifted'               => self::flag($input['shifted'] ?? null),
+                // Left null when the form did not answer. "Not confirmed" is an
+                // assertion about a check that was run; silence is not.
+                'residence_verified'     => self::enum(
+                    $input['residence_verified'] ?? null,
+                    ['confirmed', 'not_confirmed']
+                ),
+                'neighbour_verification' => self::enum(
+                    $input['neighbour_verification'] ?? null,
+                    ['conducted', 'not_conducted']
+                ),
                 'occupation'            => self::occupation($input['occupation'] ?? null),
                 'occupation_other_text' => self::str($input['occupation_other_text'] ?? null, 150),
+
+                // ---- 7. Documents verified --------------------------------
+                'doc_aadhaar'            => self::flag($input['doc_aadhaar'] ?? null),
+                'doc_pan'                => self::flag($input['doc_pan'] ?? null),
+                'doc_passbook'           => self::flag($input['doc_passbook'] ?? null),
+                'doc_land_record'        => self::flag($input['doc_land_record'] ?? null),
+                'doc_khatauni'           => self::flag($input['doc_khatauni'] ?? null),
+                'doc_electricity_bill'   => self::flag($input['doc_electricity_bill'] ?? null),
+                'doc_photograph'         => self::flag($input['doc_photograph'] ?? null),
+                'doc_mobile_verified'    => self::flag($input['doc_mobile_verified'] ?? null),
+                'doc_renewal_form'       => self::flag($input['doc_renewal_form'] ?? null),
+                'doc_ots_consent_letter' => self::flag($input['doc_ots_consent_letter'] ?? null),
+                'doc_others'             => self::flag($input['doc_others'] ?? null),
+                'doc_other_text'         => self::str($input['doc_other_text'] ?? null, 255),
 
                 // Recovery possibility
                 'ready_to_pay'     => self::flag($input['ready_to_pay'] ?? null),
@@ -201,7 +285,7 @@ final class VisitService
                 'reason_others'            => self::flag($input['reason_others'] ?? null),
                 'reason_other_text'        => self::str($input['reason_other_text'] ?? null, 255),
 
-                // Agent recommendation
+                // ---- 9. Recommendation ------------------------------------
                 'rec_recovery_possible' => self::flag($input['rec_recovery_possible'] ?? null),
                 'rec_regular_followup'  => self::flag($input['rec_regular_followup'] ?? null),
                 'rec_legal_action'      => self::flag($input['rec_legal_action'] ?? null),
@@ -209,8 +293,32 @@ final class VisitService
                 'rec_ots'               => self::flag($input['rec_ots'] ?? null),
                 'rec_others'            => self::flag($input['rec_others'] ?? null),
                 'rec_other_text'        => self::str($input['rec_other_text'] ?? null, 255),
+                'general_recommendation' => self::text($input['general_recommendation'] ?? null),
 
+                // ---- 10. Evidence attached --------------------------------
+                'ev_borrower_photo' => self::flag($input['ev_borrower_photo'] ?? null),
+                'ev_house_photo'    => self::flag($input['ev_house_photo'] ?? null),
+                'ev_land_photo'     => self::flag($input['ev_land_photo'] ?? null),
+                'ev_aadhaar_copy'   => self::flag($input['ev_aadhaar_copy'] ?? null),
+                'ev_passbook_copy'  => self::flag($input['ev_passbook_copy'] ?? null),
+                'ev_gps_location'   => self::flag($input['ev_gps_location'] ?? null),
+                'ev_renewal_form'   => self::flag($input['ev_renewal_form'] ?? null),
+                'ev_ots_consent'    => self::flag($input['ev_ots_consent'] ?? null),
+                'ev_others'         => self::flag($input['ev_others'] ?? null),
+                'ev_other_text'     => self::str($input['ev_other_text'] ?? null, 255),
+
+                // ---- 8. BC agent / DRA observations -----------------------
                 'remarks'     => self::text($input['remarks'] ?? null),
+
+                // ---- 11. Declaration --------------------------------------
+                'declaration_accepted' => self::flag($input['declaration_accepted'] ?? null),
+
+                // ---- 12. Certification ------------------------------------
+                'agent_mobile'           => self::str($input['agent_mobile'] ?? $agentMobile, 20),
+                'supervisor_name'        => self::str($input['supervisor_name'] ?? null, 150),
+                'supervisor_designation' => self::str($input['supervisor_designation'] ?? null, 100),
+                'supervisor_employee_id' => self::str($input['supervisor_employee_id'] ?? null, 40),
+                'supervisor_verified_at' => self::nullableDate($input['supervisor_verified_at'] ?? null),
 
                 // Where the agent was standing, when the app reports it and the
                 // agent has consented. See geo() - a report is never rejected over
@@ -778,7 +886,8 @@ final class VisitService
             'loan_account_id' => $loanAccountId,
 
             'eligible_for_ots' => self::flag($section['eligible_for_ots'] ?? null),
-            'scheme'           => self::enum($section['scheme'] ?? null, ['krm_ots', 'general_ots']),
+            'scheme'           => self::enum($section['scheme'] ?? null, ['krm_ots', 'general_ots', 'other']),
+            'scheme_other_text' => self::str($section['scheme_other_text'] ?? null, 150),
 
             // Bank data, taken from the account rather than from the form. The
             // agent cannot mistype the classification date of the very account the
@@ -813,7 +922,27 @@ final class VisitService
             'expected_closure_date' => self::nullableDate($section['expected_closure_date'] ?? null),
 
             'borrower_accepted' => self::flag($section['borrower_accepted'] ?? null),
+            // Why, not just whether. "Asked for time" and "refused outright" both leave
+            // borrower_accepted at 0 and lead to completely different next actions.
+            'customer_response' => self::enum($section['customer_response'] ?? null, [
+                'agreed', 'requested_time', 'financial_difficulty', 'refused', 'not_eligible',
+            ]),
             'rejection_reason'  => self::str($section['rejection_reason'] ?? null, 500),
+            // When they say they will pay, as against deposit_date, when they did.
+            'expected_deposit_date' => self::nullableDate($section['expected_deposit_date'] ?? null),
+
+            'rec_proposal_recommended' => self::flag($section['rec_proposal_recommended'] ?? null),
+            'rec_followup_required'    => self::flag($section['rec_followup_required'] ?? null),
+            'rec_customer_refused'     => self::flag($section['rec_customer_refused'] ?? null),
+            'rec_not_eligible'         => self::flag($section['rec_not_eligible'] ?? null),
+
+            'st_customer_contacted'       => self::flag($section['st_customer_contacted'] ?? null),
+            'st_customer_verified'        => self::flag($section['st_customer_verified'] ?? null),
+            'st_ots_accepted'             => self::flag($section['st_ots_accepted'] ?? null),
+            'st_ots_rejected'             => self::flag($section['st_ots_rejected'] ?? null),
+            'st_initial_deposit_received' => self::flag($section['st_initial_deposit_received'] ?? null),
+            'st_ots_closed'               => self::flag($section['st_ots_closed'] ?? null),
+            'st_followup_required'        => self::flag($section['st_followup_required'] ?? null),
         ]);
     }
 
@@ -886,15 +1015,10 @@ final class VisitService
             'mobile_linked'          => self::flag($section['mobile_linked'] ?? null),
             'aadhaar_auth_completed' => self::flag($section['aadhaar_auth_completed'] ?? null),
 
-            'doc_aadhaar'          => self::flag($section['doc_aadhaar'] ?? null),
-            'doc_pan'              => self::flag($section['doc_pan'] ?? null),
-            'doc_passbook'         => self::flag($section['doc_passbook'] ?? null),
-            'doc_land_record'      => self::flag($section['doc_land_record'] ?? null),
-            'doc_khasra_khatauni'  => self::flag($section['doc_khasra_khatauni'] ?? null),
-            'doc_photograph'       => self::flag($section['doc_photograph'] ?? null),
-            'doc_mobile_available' => self::flag($section['doc_mobile_available'] ?? null),
-            'doc_others'           => self::flag($section['doc_others'] ?? null),
-            'doc_other_text'       => self::str($section['doc_other_text'] ?? null, 255),
+            // The document checklist is NOT written here any more: it moved up to
+            // visit_reports, where the printed form has it (section 7, asked on every
+            // case type). Two copies meant a renewal report carried the same eleven
+            // boxes twice and could disagree with itself.
 
             'willing_to_renew'      => self::flag($section['willing_to_renew'] ?? null),
             'documents_handed_over' => self::flag($section['documents_handed_over'] ?? null),
@@ -905,6 +1029,7 @@ final class VisitService
             'agent_observation'         => self::text($section['agent_observation'] ?? null),
             'rec_renew_immediately'     => self::flag($section['rec_renew_immediately'] ?? null),
             'rec_documents_submitted'   => self::flag($section['rec_documents_submitted'] ?? null),
+            'rec_pending_documents'     => self::flag($section['rec_pending_documents'] ?? null),
             'rec_followup_required'     => self::flag($section['rec_followup_required'] ?? null),
             'rec_not_interested'        => self::flag($section['rec_not_interested'] ?? null),
             'rec_branch_contact_urgent' => self::flag($section['rec_branch_contact_urgent'] ?? null),
@@ -1050,6 +1175,68 @@ final class VisitService
             return null;
         }
         $normalised = strtolower(trim((string) $value));
+
+        // An app built before the printed form's wording was adopted still sends 'job'.
+        // Translated rather than dropped: the two words mean the same thing here, and
+        // silently storing NULL would lose an occupation somebody recorded at a door.
+        if ($normalised === 'job') {
+            $normalised = 'service';
+        }
+
         return in_array($normalised, VisitReport::OCCUPATIONS, true) ? $normalised : null;
+    }
+
+    /**
+     * The encrypted / hashed / masked triplet for an optional PAN.
+     *
+     * Hashed with panHash() and not searchHash(): the latter normalises to digits only,
+     * so every PAN would reduce to its four-digit block and two unrelated borrowers
+     * could collide on it. That bug would only ever show up as a lookup returning the
+     * wrong person.
+     *
+     * Returns all three columns as NULL when nothing was entered, rather than omitting
+     * them - the form marks the field optional, and a report filed without one must
+     * clear any value a retried submit might otherwise leave behind.
+     *
+     * @return array<string,string|null>
+     */
+    private static function panColumns(mixed $value): array
+    {
+        $pan = Crypto::normalisePan(self::str($value, 20));
+
+        return [
+            'pan_enc'    => Crypto::encrypt($pan),
+            'pan_hash'   => Crypto::panHash($pan),
+            'pan_masked' => Crypto::maskPan($pan),
+        ];
+    }
+
+    /**
+     * Maps an asset classification onto the five boxes the printed form offers.
+     *
+     * loan_accounts.asset_classification is free text on purpose - it holds whatever
+     * the bank's export wrote, which is anything from "SMA-1" to "Doubtful 2". The
+     * form is a closed list, so anything outside it becomes NULL rather than being
+     * forced into the nearest box: a report that claimed "Standard" because nothing
+     * else matched would be worse than one that leaves the row blank.
+     */
+    private static function assetClassification(mixed $value): ?string
+    {
+        $raw = strtolower(trim((string) ($value ?? '')));
+        if ($raw === '') {
+            return null;
+        }
+
+        // Collapses "SMA-0", "SMA 0" and "sma0" onto one key.
+        $key = preg_replace('/[^a-z0-9]+/', '', $raw) ?? '';
+
+        return match ($key) {
+            'standard'         => 'standard',
+            'sma0'             => 'sma_0',
+            'sma1'             => 'sma_1',
+            'sma2'             => 'sma_2',
+            'npa'              => 'npa',
+            default            => null,
+        };
     }
 }

@@ -10,6 +10,7 @@ use App\Core\Pdf;
 use App\Core\Request;
 use App\Core\Response;
 use App\Core\Logger;
+use App\Core\Settings;
 use App\Core\Uploader;
 use App\Models\Timeline;
 use App\Services\TrackingService;
@@ -304,17 +305,37 @@ final class VisitController extends Controller
     }
 
     /**
-     * Renders the Digital BC Field Visit Report as a PDF, using the snapshot
-     * stored on the report rather than current customer data.
+     * Renders the Field Visit Verification Report as a PDF.
+     *
+     * LAID OUT AS THE PRINTED FORM IS, section 1 to 13, using the snapshot stored on
+     * the report rather than current customer data. The previous version printed the
+     * same facts in its own order under its own headings, which made the printed copy
+     * and the paper form two different documents that had to be reconciled by hand
+     * before anything could be filed with a branch.
+     *
+     * Every tick box prints, ticked or not. That is a reversal of the earlier decision
+     * to print only what was true, and the reason is that an unticked box and a
+     * question the form never asked looked identical - so a reader could not tell
+     * "neighbours were not asked" from "this report has no such field".
      */
     public function pdf(Request $request): void
     {
         $this->guard($request, 'visits.view');
 
         $report = $this->load($request);
+        $id = (int) $report['id'];
+
+        $ots = VisitReport::otsDetails($id);
+        $ckcc = VisitReport::ckccDetails($id);
+        $photos = VisitReport::photos($id);
+        $documents = VisitReport::documents($id);
+
+        $organisation = trim((string) Settings::get('bank_name', '')) !== ''
+            ? (string) Settings::get('bank_name')
+            : (string) Settings::get('app_name', 'D2 Recovery Solutions & Services');
 
         $pdf = new Pdf(
-            'Digital BC Field Visit Report',
+            'Field Visit Verification Report',
             sprintf(
                 '%s · %s · %s',
                 (string) $report['loan_account_number'],
@@ -325,122 +346,182 @@ final class VisitController extends Controller
             'D2 Recovery confidential - field verification record'
         );
 
-        $pdf->heading('General');
-        $pdf->keyValueBlock([
+        // The paper form carries one grey line at the top of every page and its masthead
+        // beneath it. The standard branded band is three lines tall and would push the
+        // masthead a third of the way down page one.
+        $pdf->useRunningHeader($organisation . '  |  Field Visit Verification Report');
+
+        // The masthead, with the two strap lines under the title. They say what the
+        // document is for and which rules it was collected under, and a printed copy
+        // handed to a branch without them is a page of fields rather than the form.
+        $pdf->titleBlock($organisation, 'Field Visit Verification Report', [
+            '(KRM OTS / CKCC OD-2 Renewal / Recovery Verification Report)',
+            "RBI Guidelines & Bank's Code of Conduct Compliant Format",
+        ]);
+
+        // ---- 1. General information -----------------------------------------
+        $pdf->sectionBand(1, 'General Information');
+        $pdf->formFields([
             'Visit Date' => fmt_date((string) $report['visit_date']),
             'Visit Time' => fmt_time((string) $report['visit_time']),
-            'BC Code'    => $report['bc_code'],
-            'Branch'     => $report['branch_name'] ?: $report['branch_display_name'],
-            'Agent Name' => $report['agent_name'],
-            'Village'    => $report['village'],
-        ], 3);
-
-        $pdf->heading('Borrower Details');
-        $pdf->keyValueBlock([
-            'Customer Name'        => $report['customer_name'],
-            'Father/Husband Name'  => $report['father_husband_name'],
-            'Mobile'               => $report['mobile_masked'],
-            'Aadhaar'              => $report['aadhaar_masked'],
-            'Address'              => $report['address'],
         ], 2);
 
-        $pdf->heading('Loan Details');
-        $pdf->keyValueBlock([
-            'Loan Account Number' => $report['loan_account_number'],
-            'Loan Type'           => $report['loan_type'],
-            'Outstanding Amount'  => money($report['outstanding_amount']),
-            'Overdue Amount'      => money($report['overdue_amount']),
-            'NPA Date'            => $report['npa_date'] === null ? 'Not classified' : fmt_date((string) $report['npa_date']),
-            'Current Status'      => ucfirst((string) $report['current_status']),
+        $pdf->groupLabel('Case Type');
+        $pdf->checkboxGrid(
+            self::pdfOptions(VisitReport::REPORT_TYPES, $report['report_type'] ?? null),
+            3
+        );
+        if (($report['report_type_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other: ' . (string) $report['report_type_other_text'], 8.2, '#1c2128');
+        }
+
+        $pdf->formFields([
+            'Branch Name'         => $report['branch_name'] ?: $report['branch_display_name'],
+            'Branch Code'         => $report['branch_code'],
+            'Regional Office'     => $report['regional_office'],
+            'Zone'                => $report['zone'],
+            'SP / CBC Name'       => $report['sp_cbc_name'],
+            'BC Agent / DRA Name' => $report['agent_name'],
+            'BC Code / DRA ID'    => $report['bc_code'],
+            'Linked Branch'       => $report['linked_branch'],
+            'District'            => $report['district'],
+            'Village / Location'  => $report['village'],
+            'GPS Latitude'        => $report['gps_latitude'],
+            'GPS Longitude'       => $report['gps_longitude'],
+        ], 2);
+
+        // ---- 2. Borrower information ----------------------------------------
+        $pdf->sectionBand(2, 'Borrower Information');
+        $pdf->formFields([
+            "Borrower Name"            => $report['customer_name'],
+            "Father's / Husband's Name" => $report['father_husband_name'],
+        ], 2);
+
+        $pdf->groupLabel('Gender');
+        $pdf->checkboxGrid(self::pdfOptions(VisitReport::GENDERS, $report['gender'] ?? null), 3);
+
+        $pdf->formFields([
+            'Date of Birth'          => $report['date_of_birth'] === null
+                ? '-' : fmt_date((string) $report['date_of_birth']),
+            'Mobile Number'          => $report['mobile_masked'],
+            'Alternate Mobile'       => $report['alt_mobile_masked'],
+            'Aadhaar (Last 4 Digits)' => $report['aadhaar_masked'],
+            'PAN Number (Optional)'  => $report['pan_masked'],
+        ], 2);
+
+        $pdf->groupLabel('Address');
+        $pdf->formFields([
+            'Village'        => $report['addr_village'],
+            'Gram Panchayat' => $report['gram_panchayat'],
+            'Tehsil'         => $report['tehsil'],
+            'District'       => $report['addr_district'],
+            'State'          => $report['state'],
+            'PIN Code'       => $report['pin_code'],
         ], 3);
 
-        $pdf->heading('Customer Contact');
-        $contact = VisitReport::tickedLabels($report, 'contact');
-        $pdf->paragraph($contact === [] ? 'None recorded.' : implode(', ', $contact), 9.0, '#1c2128');
-        if ((int) $report['family_member_met'] === 1) {
-            $pdf->keyValueBlock([
-                'Family Member Name' => $report['family_member_name'],
-                'Relationship'       => $report['family_member_relationship'],
-            ], 2);
+        $pdf->groupLabel('Complete Residential Address');
+        $pdf->paragraph(
+            ($report['address'] ?? '') === '' ? 'Not recorded.' : (string) $report['address'],
+            9.0,
+            '#1c2128'
+        );
+
+        // ---- 3. Loan account details ----------------------------------------
+        $pdf->sectionBand(3, 'Loan Account Details');
+        $pdf->formFields([
+            'Loan Account Number' => $report['loan_account_number'],
+            'CIF Number'          => $report['cif_number'],
+        ], 2);
+
+        $pdf->groupLabel('Loan Type');
+        $pdf->checkboxGrid(self::pdfLoanTypes($report['loan_type'] ?? null), 3);
+        // A loan type the bank's own export wrote and the form has no box for. Printed in
+        // words rather than dropped: it is the classification the account actually
+        // carries, and a form with no box ticked would read as a missing answer.
+        if (self::loanTypeKey($report['loan_type'] ?? null) === null
+            && ($report['loan_type'] ?? '') !== '') {
+            $pdf->paragraph('As recorded on the account: ' . (string) $report['loan_type'], 8.2, '#1c2128');
+        }
+        if (($report['loan_type_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other: ' . (string) $report['loan_type_other_text'], 8.2, '#1c2128');
         }
 
-        $pdf->heading('Physical Verification');
-        $pdf->keyValueBlock([
-            'Borrower Alive' => (int) $report['borrower_alive'] === 1 ? 'Yes' : 'No',
-            'Same Address'   => (int) $report['same_address'] === 1 ? 'Yes' : 'No',
-            'Shifted'        => (int) $report['shifted'] === 1 ? 'Yes' : 'No',
-            'Occupation'     => occupation_label($report['occupation']),
-        ], 4);
+        $pdf->formFields([
+            'Sanction Date'      => $report['sanction_date'] === null
+                ? '-' : fmt_date((string) $report['sanction_date']),
+            'Sanction Limit'     => self::pdfMoney($report['sanction_limit']),
+            'Drawing Power'      => self::pdfMoney($report['drawing_power']),
+            'Outstanding Amount' => rupees($report['outstanding_amount']),
+            'Interest Overdue'   => self::pdfMoney($report['interest_overdue']),
+            'Overdue Amount'     => rupees($report['overdue_amount']),
+            'NPA Date'           => $report['npa_date'] === null
+                ? 'Not classified' : fmt_date((string) $report['npa_date']),
+            'Current Status'     => ucfirst((string) $report['current_status']),
+        ], 2);
 
-        $pdf->heading('Recovery Possibility');
-        $recovery = VisitReport::tickedLabels($report, 'recovery');
-        $pdf->paragraph($recovery === [] ? 'None recorded.' : implode(', ', $recovery), 9.0, '#1c2128');
-        if ((float) ($report['promise_amount'] ?? 0) > 0) {
-            $pdf->keyValueBlock([
-                'Promise Amount' => money($report['promise_amount']),
-                'Promise Date'   => $report['promise_date'] === null ? '-' : fmt_date((string) $report['promise_date']),
-            ], 2);
-        }
+        $pdf->groupLabel('Asset Classification');
+        $pdf->checkboxGrid(
+            self::pdfOptions(VisitReport::ASSET_CLASSIFICATIONS, $report['asset_classification'] ?? null),
+            3
+        );
 
-        $pdf->heading('Non-Payment Reason');
-        $reasons = VisitReport::tickedLabels($report, 'reason');
-        if (!empty($report['reason_other_text'])) {
-            $reasons[] = 'Other: ' . (string) $report['reason_other_text'];
-        }
-        $pdf->paragraph($reasons === [] ? 'None recorded.' : implode(', ', $reasons), 9.0, '#1c2128');
-
-        $pdf->heading('Agent Recommendation');
-        $recommendations = VisitReport::tickedLabels($report, 'recommendation');
-        if (!empty($report['rec_other_text'])) {
-            $recommendations[] = 'Other: ' . (string) $report['rec_other_text'];
-        }
-        $pdf->paragraph($recommendations === [] ? 'None recorded.' : implode(', ', $recommendations), 9.0, '#1c2128');
-
-        // ---- The section that makes this report the type it is ---------------
+        // ---- 4. KRM OTS details ---------------------------------------------
         //
-        // These were missing from the printout entirely, which quietly made the printed
-        // copy of a settlement or a renewal a lie by omission: it carried the recovery-visit
-        // fields every report has and dropped the settlement arithmetic or the renewal
-        // paperwork the visit actually existed to collect. The screen had them all along, so
-        // the gap was invisible to anybody who checked the report before printing it.
-        $ots = VisitReport::otsDetails((int) $report['id']);
-        if ($ots !== null) {
-            $pdf->heading('KRM / OTS Settlement');
+        // The band prints whether or not the section was filled in, and says so when it
+        // was not. A missing section reads as an answer on a numbered form: skipping it
+        // silently would leave the reader unsure whether section 4 was not applicable or
+        // simply lost.
+        $pdf->sectionBand(4, 'KRM OTS Details (If Applicable)');
+        if ($ots === null) {
+            $pdf->paragraph('Not applicable to this visit - no settlement section was filled in.', 8.6, '#6b7280');
+        } else {
+            $pdf->groupLabel('OTS Eligibility - Eligible for KRM OTS');
+            $pdf->checkboxGrid(self::pdfYesNo((int) $ots['eligible_for_ots'] === 1), 3);
 
-            $pdf->keyValueBlock([
-                'Eligible for KRM / OTS' => ((int) $ots['eligible_for_ots'] === 1) ? 'Yes' : 'No',
-                'Scheme'          => VisitReport::OTS_SCHEMES[$ots['scheme'] ?? ''] ?? '-',
-                'Approval status' => VisitReport::OTS_APPROVAL_STATUSES[$ots['approval_status'] ?? ''] ?? '-',
-                'Borrower'        => $ots['borrower_name'] ?? $report['customer_name'],
-                'NPA date'        => $ots['npa_date'] === null ? 'Not classified' : fmt_date((string) $ots['npa_date']),
-                'Outstanding at visit' => self::pdfMoney($ots['outstanding_amount']),
+            $pdf->groupLabel('Applicable Scheme');
+            $pdf->checkboxGrid(self::pdfOptions(VisitReport::OTS_SCHEMES, $ots['scheme'] ?? null), 3);
+            if (($ots['scheme_other_text'] ?? '') !== '') {
+                $pdf->paragraph('Other scheme: ' . (string) $ots['scheme_other_text'], 8.2, '#1c2128');
+            }
+
+            $pdf->formFields([
+                'Outstanding Amount'       => self::pdfMoney($ots['outstanding_amount']),
+                'Proposed Settlement'      => self::pdfMoney($ots['total_settlement_amount']),
+                "Borrower's Share"         => self::pdfMoney($ots['borrower_payable_amount']),
+                'Initial Deposit Required' => self::pdfMoney($ots['required_deposit_amount']),
             ], 2);
 
-            // The arithmetic, in the order the sanction letter reads. Percentages travel
-            // with the amounts they produced: a settlement figure without the percentage it
-            // came from cannot be checked by whoever approves it.
-            $pdf->keyValueBlock([
-                'Relief / waiver'      => self::pdfPercent($ots['relief_waiver_percent']),
-                'Residual loan balance' => self::pdfMoney($ots['rlb_amount']),
-                'Payable percent'      => self::pdfPercent($ots['payable_percent']),
-                'Borrower payable'     => self::pdfMoney($ots['borrower_payable_amount']),
-                'Total settlement'     => self::pdfMoney($ots['total_settlement_amount']),
-                'Balance payable'      => self::pdfMoney($ots['balance_payable']),
-            ], 3);
+            // How those two figures were arrived at. A settlement amount without the
+            // percentage it came from cannot be checked by whoever approves it.
+            $pdf->formFields([
+                'Relief / Waiver'        => self::pdfPercent($ots['relief_waiver_percent']),
+                'Residual Loan Balance'  => self::pdfMoney($ots['rlb_amount']),
+                'Payable Percent'        => self::pdfPercent($ots['payable_percent']),
+                'Initial Deposit Percent' => self::pdfPercent($ots['initial_deposit_percent']),
+                'Balance Payable'        => self::pdfMoney($ots['balance_payable']),
+                'Borrower'               => $ots['borrower_name'] ?? $report['customer_name'],
+            ], 2);
 
-            // The deposit is the part an auditor looks for, and the one place this system
-            // touches money at all - so it prints with the bank's own receipt reference and
-            // says plainly that the agent never handled it.
-            $pdf->keyValueBlock([
-                'Initial deposit required' => self::pdfMoney($ots['required_deposit_amount'])
-                    . ' ' . self::pdfPercent($ots['initial_deposit_percent'], true),
-                'Deposit received'   => ((int) $ots['deposit_received'] === 1) ? 'Yes' : 'No',
-                'Deposit paid'       => self::pdfMoney($ots['deposit_amount']),
-                'Deposit date'       => $ots['deposit_date'] === null ? '-' : fmt_date((string) $ots['deposit_date']),
-                "Bank's receipt / txn" => $ots['deposit_reference'] ?? '-',
-                'Proposed final payment' => $ots['proposed_final_payment_date'] === null
+            $pdf->groupLabel('Customer Response');
+            $pdf->checkboxGrid(
+                self::pdfOptions(VisitReport::OTS_CUSTOMER_RESPONSES, $ots['customer_response'] ?? null),
+                3
+            );
+
+            $pdf->formFields([
+                'Expected Deposit Date' => $ots['expected_deposit_date'] === null
+                    ? '-' : fmt_date((string) $ots['expected_deposit_date']),
+                'Deposit Received'      => ((int) $ots['deposit_received'] === 1) ? 'Yes' : 'No',
+                'Deposit Paid'          => self::pdfMoney($ots['deposit_amount']),
+                'Deposit Date'          => $ots['deposit_date'] === null
+                    ? '-' : fmt_date((string) $ots['deposit_date']),
+                "Bank's Receipt / Txn"  => $ots['deposit_reference'] ?? '-',
+                'Proposed Final Payment' => $ots['proposed_final_payment_date'] === null
                     ? '-' : fmt_date((string) $ots['proposed_final_payment_date']),
-            ], 3);
+            ], 2);
+
+            // The one place this system comes near money at all, so it says plainly that
+            // the agent did not handle any of it.
             $pdf->paragraph(
                 'Any deposit shown here was paid by the borrower at the bank. The agent does '
                 . 'not collect money and this system records no cash handled by an agent.',
@@ -448,115 +529,216 @@ final class VisitController extends Controller
                 '#6b7280'
             );
 
-            $pdf->keyValueBlock([
-                'Validity'              => ($ots['validity_from'] === null ? '-' : fmt_date((string) $ots['validity_from']))
+            $pdf->formFields([
+                'Approval Status'   => VisitReport::OTS_APPROVAL_STATUSES[$ots['approval_status'] ?? ''] ?? '-',
+                'Validity'          => ($ots['validity_from'] === null ? '-' : fmt_date((string) $ots['validity_from']))
                     . ' to ' . ($ots['validity_to'] === null ? '-' : fmt_date((string) $ots['validity_to'])),
-                'Expected closure'      => $ots['expected_closure_date'] === null
+                'Expected Closure'  => $ots['expected_closure_date'] === null
                     ? '-' : fmt_date((string) $ots['expected_closure_date']),
-                'Borrower accepted'     => ((int) $ots['borrower_accepted'] === 1) ? 'Yes' : 'No',
-            ], 3);
+                'Borrower Accepted' => ((int) $ots['borrower_accepted'] === 1) ? 'Yes' : 'No',
+            ], 2);
 
             if (($ots['rejection_reason'] ?? '') !== '') {
                 $pdf->paragraph('Why the borrower declined: ' . (string) $ots['rejection_reason'], 8.6, '#8a5a00');
             }
         }
 
-        $ckcc = VisitReport::ckccDetails((int) $report['id']);
-        if ($ckcc !== null) {
-            $pdf->heading('CKCC OD-2 Renewal');
+        // ---- 5. CKCC OD-2 renewal details -----------------------------------
+        $pdf->sectionBand(5, 'CKCC OD-2 Renewal Details (If Applicable)');
+        if ($ckcc === null) {
+            $pdf->paragraph('Not applicable to this visit - no renewal section was filled in.', 8.6, '#6b7280');
+        } else {
+            $pdf->groupLabel('Eligible for Renewal');
+            $pdf->checkboxGrid(self::pdfYesNo((int) $ckcc['eligible_for_renewal'] === 1), 3);
 
-            // The deadline and what happens if it is missed, together and first. That pair
-            // is the entire reason this report type exists.
-            $pdf->keyValueBlock([
-                'Renewal due'      => $ckcc['renewal_due_date'] === null
+            $pdf->groupLabel('Renewal Due');
+            $pdf->checkboxGrid(
+                self::pdfOptions(VisitReport::CKCC_DUE_BUCKETS, $ckcc['renewal_due_bucket'] ?? null),
+                3
+            );
+
+            // The deadline and what happens if it is missed, side by side. That pair is
+            // the entire reason this report type exists.
+            $pdf->formFields([
+                'Renewal Due Date'  => $ckcc['renewal_due_date'] === null
                     ? '-' : fmt_date((string) $ckcc['renewal_due_date']),
-                'Due window'       => VisitReport::CKCC_DUE_BUCKETS[$ckcc['renewal_due_bucket'] ?? ''] ?? '-',
-                'Days remaining'   => $ckcc['days_remaining'] === null
+                'Expected NPA Date' => $ckcc['expected_npa_date'] === null
+                    ? '-' : fmt_date((string) $ckcc['expected_npa_date']),
+                'Days Remaining'    => $ckcc['days_remaining'] === null
                     ? '-'
                     : ((int) $ckcc['days_remaining'] < 0
                         ? abs((int) $ckcc['days_remaining']) . ' day(s) overdue'
                         : (int) $ckcc['days_remaining'] . ' day(s)'),
-                'Expected NPA date if not renewed' => $ckcc['expected_npa_date'] === null
-                    ? '-' : fmt_date((string) $ckcc['expected_npa_date']),
             ], 2);
 
-            $pdf->keyValueBlock([
-                'CIF number'       => $ckcc['cif_number'] ?? '-',
-                'Sanction date'    => $ckcc['sanction_date'] === null ? '-' : fmt_date((string) $ckcc['sanction_date']),
-                'Sanction limit'   => self::pdfMoney($ckcc['sanction_limit']),
-                'Drawing power'    => self::pdfMoney($ckcc['drawing_power']),
-                'Outstanding at visit' => self::pdfMoney($ckcc['outstanding_amount']),
-                'Interest overdue' => self::pdfMoney($ckcc['interest_overdue']),
-                'KYC status'       => VisitReport::CKCC_KYC_STATUSES[$ckcc['kyc_status'] ?? ''] ?? '-',
-            ], 3);
+            $pdf->groupLabel('KYC Status');
+            $pdf->checkboxGrid(
+                self::pdfOptions(VisitReport::CKCC_KYC_STATUSES, $ckcc['kyc_status'] ?? null),
+                3
+            );
 
-            // The tick lists print as the ones that are TRUE, named. A printed grid of empty
-            // boxes takes half a page to say nothing, and a reader cannot tell an unticked
-            // box from a question nobody asked.
-            foreach ([
-                'Renewal readiness'  => VisitReport::CKCC_ELIGIBILITY_FLAGS,
-                'Documents the borrower had in hand' => VisitReport::CKCC_DOCUMENT_FLAGS,
-                'Renewal consent'    => VisitReport::CKCC_CONSENT_FLAGS,
-                'Agent recommendation' => VisitReport::CKCC_RECOMMENDATION_FLAGS,
-                'Report status'      => VisitReport::CKCC_STATUS_FLAGS,
-            ] as $label => $flags) {
-                $ticked = [];
-                foreach ($flags as $column => $flagLabel) {
-                    if ((int) ($ckcc[$column] ?? 0) === 1) {
-                        $ticked[] = $flagLabel;
-                    }
-                }
+            $pdf->groupLabel('Renewal Readiness');
+            $pdf->checkboxGrid(self::pdfFlags(VisitReport::CKCC_ELIGIBILITY_FLAGS, $ckcc), 2);
 
-                $extra = '';
-                if ($label === 'Documents the borrower had in hand' && ($ckcc['doc_other_text'] ?? '') !== '') {
-                    $extra = ' (' . (string) $ckcc['doc_other_text'] . ')';
-                }
-                if ($label === 'Agent recommendation' && ($ckcc['rec_other_text'] ?? '') !== '') {
-                    $extra = ' (' . (string) $ckcc['rec_other_text'] . ')';
-                }
+            $pdf->groupLabel('Renewal Consent');
+            $pdf->checkboxGrid(self::pdfFlags(VisitReport::CKCC_CONSENT_FLAGS, $ckcc), 2);
 
-                $pdf->paragraph(
-                    $label . ': ' . ($ticked === [] ? 'none recorded' : implode('; ', $ticked) . $extra),
-                    8.6,
-                    $ticked === [] ? '#8a5a00' : '#1c2128'
-                );
-            }
+            $pdf->formFields([
+                'CIF Number'         => $ckcc['cif_number'] ?? '-',
+                'Sanction Date'      => $ckcc['sanction_date'] === null
+                    ? '-' : fmt_date((string) $ckcc['sanction_date']),
+                'Sanction Limit'     => self::pdfMoney($ckcc['sanction_limit']),
+                'Drawing Power'      => self::pdfMoney($ckcc['drawing_power']),
+                'Outstanding Amount' => self::pdfMoney($ckcc['outstanding_amount']),
+                'Interest Overdue'   => self::pdfMoney($ckcc['interest_overdue']),
+            ], 2);
 
             if (($ckcc['agent_observation'] ?? '') !== '') {
-                $pdf->paragraph('Agent observation: ' . (string) $ckcc['agent_observation'], 8.6, '#1c2128');
+                $pdf->paragraph('Agent observation on the renewal: ' . (string) $ckcc['agent_observation'], 8.6, '#1c2128');
             }
         }
 
-        $pdf->heading('Remarks');
-        $pdf->paragraph(($report['remarks'] ?? '') === '' ? 'No remarks recorded.' : (string) $report['remarks'], 9.0, '#1c2128');
+        // ---- 6. Physical verification ---------------------------------------
+        $pdf->sectionBand(6, 'Physical Verification');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::CONTACT_FLAGS, $report), 3);
 
-        $photos = VisitReport::photos((int) $report['id']);
-        $documents = VisitReport::documents((int) $report['id']);
+        if ((int) $report['family_member_met'] === 1) {
+            $pdf->formFields([
+                'Family Member Met' => $report['family_member_name'],
+                'Relationship'      => $report['family_member_relationship'],
+            ], 2);
+        }
 
-        // ---- Where the report was filed ------------------------------------
-        $pdf->heading('Location Recorded');
+        $pdf->groupLabel('Borrower Alive');
+        $pdf->checkboxGrid(self::pdfYesNo((int) $report['borrower_alive'] === 1), 3);
+
+        $pdf->groupLabel('Current Address');
+        $pdf->checkboxGrid([
+            ['label' => 'Same', 'checked' => (int) $report['same_address'] === 1],
+            ['label' => 'Shifted', 'checked' => (int) $report['shifted'] === 1],
+        ], 3);
+
+        $pdf->groupLabel('Residence Verification');
+        $pdf->checkboxGrid(
+            self::pdfOptions(VisitReport::RESIDENCE_VERIFICATION, $report['residence_verified'] ?? null),
+            3
+        );
+
+        $pdf->groupLabel('Neighbour Verification');
+        $pdf->checkboxGrid(
+            self::pdfOptions(VisitReport::NEIGHBOUR_VERIFICATION, $report['neighbour_verification'] ?? null),
+            3
+        );
+
+        $pdf->groupLabel('Current Occupation');
+        $pdf->checkboxGrid(self::pdfOccupations($report['occupation'] ?? null), 3);
+        if (($report['occupation_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other occupation: ' . (string) $report['occupation_other_text'], 8.2, '#1c2128');
+        }
+
+        // ---- 7. Documents verified ------------------------------------------
+        $pdf->sectionBand(7, 'Documents Verified');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::DOCUMENT_FLAGS, $report), 3);
+        if (($report['doc_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other document: ' . (string) $report['doc_other_text'], 8.2, '#1c2128');
+        }
+
+        // ---- 8. BC agent / DRA observations ---------------------------------
+        //
+        // What the agent found out about payment sits here rather than under its own
+        // numbered band. The form has thirteen sections and this system has to print
+        // those thirteen if the paper copy is to match, so the recovery findings go where
+        // a reader looks for what the agent learned - which is what they are.
+        $pdf->sectionBand(8, 'BC Agent / DRA Observations');
+
+        $pdf->groupLabel('Recovery Possibility');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::RECOVERY_FLAGS, $report), 4);
+
+        if ((float) ($report['promise_amount'] ?? 0) > 0) {
+            $pdf->formFields([
+                'Promise Amount' => rupees($report['promise_amount']),
+                'Promise Date'   => $report['promise_date'] === null
+                    ? '-' : fmt_date((string) $report['promise_date']),
+            ], 2);
+        }
+
+        $pdf->groupLabel('Reason for Non-Payment');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::REASON_FLAGS, $report), 3);
+        if (($report['reason_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other reason: ' . (string) $report['reason_other_text'], 8.2, '#1c2128');
+        }
+
+        $pdf->groupLabel('Observations');
+        $pdf->paragraph(
+            ($report['remarks'] ?? '') === '' ? 'No observations recorded.' : (string) $report['remarks'],
+            9.0,
+            '#1c2128'
+        );
+
+        // ---- 9. Recommendation ----------------------------------------------
+        $pdf->sectionBand(9, 'Recommendation');
+
+        $pdf->groupLabel('KRM OTS');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::OTS_RECOMMENDATION_FLAGS, $ots ?? []), 3);
+
+        $pdf->groupLabel('CKCC Renewal');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::CKCC_RECOMMENDATION_FLAGS, $ckcc ?? []), 3);
+        if (($ckcc['rec_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other renewal recommendation: ' . (string) $ckcc['rec_other_text'], 8.2, '#1c2128');
+        }
+
+        $pdf->groupLabel('Recovery');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::RECOMMENDATION_FLAGS, $report), 3);
+        if (($report['rec_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other recommendation: ' . (string) $report['rec_other_text'], 8.2, '#1c2128');
+        }
+
+        $pdf->groupLabel('General Recommendation');
+        $pdf->paragraph(
+            ($report['general_recommendation'] ?? '') === ''
+                ? 'None recorded.'
+                : (string) $report['general_recommendation'],
+            9.0,
+            '#1c2128'
+        );
+
+        // ---- 10. Evidence attached ------------------------------------------
+        $pdf->sectionBand(10, 'Evidence Attached');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::EVIDENCE_FLAGS, $report), 3);
+        if (($report['ev_other_text'] ?? '') !== '') {
+            $pdf->paragraph('Other evidence: ' . (string) $report['ev_other_text'], 8.2, '#1c2128');
+        }
+
+        // What actually arrived, next to what was claimed above. The gap between the two
+        // is the thing worth printing: a report that ticks "Passbook Copy" and carries no
+        // file is exactly what a reviewer needs to see without opening the record.
+        $pdf->formFields([
+            'Photographs Attached' => (string) count($photos),
+            'Documents Attached'   => (string) count($documents),
+        ], 2);
+
+        $pdf->groupLabel('GPS Location');
         if ((string) $report['gps_source'] === 'device' && $report['gps_latitude'] !== null) {
-            $pdf->keyValueBlock([
+            $pdf->formFields([
                 'Coordinates' => Geo::coordinates($report['gps_latitude'], $report['gps_longitude']),
                 'Accuracy'    => $report['gps_accuracy_m'] === null
                     ? 'not reported'
                     : ((int) $report['gps_accuracy_m'] . ' m'
                         . (Geo::isPrecise($report['gps_accuracy_m']) ? '' : ' - too coarse to place a doorstep')),
-                'Captured At' => $report['gps_captured_at'] === null ? '-' : fmt_datetime((string) $report['gps_captured_at']),
+                'Captured At' => $report['gps_captured_at'] === null
+                    ? '-' : fmt_datetime((string) $report['gps_captured_at']),
                 'Address'     => $report['gps_address'] ?? 'not resolved',
             ], 2);
         } else {
-            // "Refused" and "no signal" are different conversations with a
-            // supervisor, so the report says which it was rather than leaving a gap.
-            // Worded by Geo so the panel and the print cannot disagree about it.
+            // "Refused" and "no signal" are different conversations with a supervisor, so
+            // the report says which it was rather than leaving a gap. Worded by Geo so the
+            // panel and the print cannot disagree about it.
             $pdf->paragraph(Geo::visit($report), 9.0, '#1c2128');
         }
 
-        // ---- Field photographs, each with the position it was taken at -----
-        //
-        // The agent's own photograph is pulled out of this set and printed directly
-        // above the signature boxes, where a reader looking for "who stood at this
-        // door" will actually look for it - and where whoever signs can see it.
+        // The agent's own photograph is held back out of this set and printed in the
+        // certification block, above the line they sign - which is where a reader looking
+        // for "who stood at this door" will look for it.
         $agentPhoto = null;
         $fieldPhotos = [];
         foreach ($photos as $photo) {
@@ -568,10 +750,10 @@ final class VisitController extends Controller
         }
 
         if ($fieldPhotos !== []) {
-            $pdf->heading('Field Photographs');
+            $pdf->groupLabel('Field Photographs');
 
-            // Three to a row: any more and a printed photograph is too small to show
-            // what it was taken to show.
+            // Three to a row: any more and a printed photograph is too small to show what
+            // it was taken to show.
             foreach (array_chunk($fieldPhotos, 3) as $chunk) {
                 $pdf->imageStrip(array_map(
                     fn (array $photo): array => [
@@ -584,24 +766,43 @@ final class VisitController extends Controller
             }
         }
 
-        // ---- The agent at the door, and the space to sign -------------------
+        // ---- 11. Declaration -------------------------------------------------
         //
-        // Signatures are no longer captured on the phone. They are signed by hand on
-        // this printed page, so what goes here is the photograph of who was standing
-        // there, and directly beneath it the empty boxes to sign in.
-        //
-        // ONLY a photograph taken at this visit is printed. There is deliberately no
-        // fallback to a portrait held on the agent's record: on a document that
-        // geo-captions every other photograph, an uncaptioned one reads as more field
-        // evidence, and an office portrait is not evidence of anything except that the
-        // agent has a face. An absence is stated in words instead, which is a weaker
-        // claim and a true one.
-        $pdf->heading('Signatures');
+        // In its own tinted box, as the form has it. This is the one paragraph on the
+        // page somebody is agreeing to; running it in the same grey as a helper line
+        // would make a certification look like guidance.
+        $pdf->sectionBand(11, 'Declaration');
+        $pdf->calloutBox(VisitReport::DECLARATION);
+        // Whether the agent actually accepted it, stated rather than assumed. A printed
+        // certification nobody agreed to is worth nothing, and a report filed by an older
+        // app that never showed the tick box must not be printed as though it had.
+        $pdf->paragraph(
+            (int) ($report['declaration_accepted'] ?? 0) === 1
+                ? 'The BC agent / DRA accepted this declaration when submitting the report.'
+                : 'This report was submitted without the declaration being accepted in the app.',
+            8.2,
+            (int) ($report['declaration_accepted'] ?? 0) === 1 ? '#0f766e' : '#8a5a00'
+        );
+
+        // ---- 12. Certification -----------------------------------------------
+        $pdf->sectionBand(12, 'Certification');
 
         $agent = User::find((int) $report['agent_id']);
         $agentIdentity = (string) $report['agent_name']
             . "\n" . (string) ($report['bc_code'] ?? $agent['employee_code'] ?? '');
 
+        $pdf->groupLabel('BC Agent / DRA');
+        $pdf->formFields([
+            'Name'             => $report['agent_name'],
+            'BC Code / DRA ID' => $report['bc_code'] ?? ($agent['employee_code'] ?? null),
+            'Mobile Number'    => $report['agent_mobile'],
+        ], 3);
+
+        // ONLY a photograph taken at this visit is printed. There is deliberately no
+        // fallback to the portrait on the agent's record: on a document that geo-captions
+        // every other photograph, an uncaptioned one reads as more field evidence, and an
+        // office portrait is evidence of nothing except that the agent has a face. An
+        // absence is stated in words instead, which is a weaker claim and a true one.
         if ($agentPhoto !== null) {
             $pdf->imageStrip([[
                 'path'    => Uploader::absolutePath((string) $agentPhoto['file_path']),
@@ -612,35 +813,50 @@ final class VisitController extends Controller
             $pdf->paragraph('No photograph of the agent was taken at this visit.', 8.4, '#8a5a00');
         }
 
-        $pdf->paragraph(
-            'To be signed by hand on this printed copy. Sign above the line.',
-            8.4,
-            '#4b5563'
-        );
+        $pdf->paragraph('To be signed by hand on this printed copy. Sign above the line.', 8.4, '#4b5563');
 
         $borrowerName = trim((string) $report['customer_name']);
         $pdf->signatureBlock([
             [
+                'label'   => 'BC Agent / DRA Signature',
+                'caption' => $agentIdentity . "\nDate:",
+            ],
+            [
                 'label'   => 'Borrower Signature / Thumb Impression',
                 'caption' => ($borrowerName !== '' ? $borrowerName : 'Borrower') . "\nDate:",
             ],
-            [
-                'label'   => 'BC / DC Agent Signature',
-                'caption' => $agentIdentity . "\nDate:",
-            ],
         ], 60.0);
 
-        // ---- Approval -------------------------------------------------------
-        $pdf->heading('Approval');
+        $pdf->groupLabel('Supervisor Verification');
+        $pdf->formFields([
+            'Name'                  => $report['supervisor_name'],
+            'Designation'           => $report['supervisor_designation'],
+            'Employee ID / DRA ID'  => $report['supervisor_employee_id'],
+        ], 3);
+        $pdf->ruledFields([
+            'Verified On' => $report['supervisor_verified_at'] === null
+                ? '' : fmt_date((string) $report['supervisor_verified_at']),
+            'Date'        => '',
+        ], 2);
+
+        $supervisorName = trim((string) ($report['supervisor_name'] ?? ''));
+        $pdf->signatureBlock([[
+            'label'   => 'Supervisor Signature',
+            'caption' => ($supervisorName !== '' ? $supervisorName : 'Supervisor') . "\nDate:",
+        ]], 60.0, 16.0, 2);
+
+        // ---- Approval, which is this system's own step -----------------------
+        $pdf->groupLabel('Approval');
         $status = (string) ($report['approval_status'] ?? 'pending');
 
         if ($status === 'pending') {
             $pdf->paragraph('This report has not yet been reviewed.', 9.0, '#8a5a00');
         } else {
-            $pdf->keyValueBlock([
+            $pdf->formFields([
                 'Status'      => ucfirst($status),
                 'Approved By' => $report['approver_name'] ?? '-',
-                'Approved At' => $report['approved_at'] === null ? '-' : fmt_datetime((string) $report['approved_at']),
+                'Approved At' => $report['approved_at'] === null
+                    ? '-' : fmt_datetime((string) $report['approved_at']),
                 'Position'    => Geo::approval($report),
             ], 2);
 
@@ -677,7 +893,16 @@ final class VisitController extends Controller
             'caption' => ($approverName !== '' ? $approverName : 'Branch Manager / Admin') . "\nDate:",
         ]], 60.0, 16.0, 2);
 
-        // ---- Operator-defined fields ----------------------------------------
+        // ---- 13. Final report status ------------------------------------------
+        $pdf->sectionBand(13, 'Final Report Status');
+
+        $pdf->groupLabel('KRM OTS');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::OTS_STATUS_FLAGS, $ots ?? []), 3);
+
+        $pdf->groupLabel('CKCC OD-2 Renewal');
+        $pdf->checkboxGrid(self::pdfFlags(VisitReport::CKCC_STATUS_FLAGS, $ckcc ?? []), 3);
+
+        // ---- Operator-defined fields -------------------------------------------
         // Only those marked "print on the visit report". Off by default, because a
         // field somebody added to track an internal note should not silently start
         // appearing on a document handed to a borrower.
@@ -685,7 +910,7 @@ final class VisitController extends Controller
         foreach ([
             ['customer', (int) $report['customer_id']],
             ['loan_account', (int) $report['loan_account_id']],
-            ['visit_report', (int) $report['id']],
+            ['visit_report', $id],
         ] as [$entity, $entityId]) {
             foreach (CustomField::withValues($entity, $entityId) as $definition) {
                 if ((int) $definition['show_in_report'] !== 1) {
@@ -698,26 +923,28 @@ final class VisitController extends Controller
         }
 
         if ($extra !== []) {
-            $pdf->heading('Additional Details');
-            $pdf->keyValueBlock($extra, 2);
+            $pdf->groupLabel('Additional Details');
+            $pdf->formFields($extra, 2);
         }
 
-        $pdf->heading('Attachments');
-        $pdf->keyValueBlock([
-            'Photos'    => (string) count($photos),
-            'Documents' => (string) count($documents),
-        ], 4);
+        // ---- The closing note the form carries ---------------------------------
+        $pdf->spacer(4);
+        $pdf->calloutBox(
+            [VisitReport::IMPORTANT_NOTE],
+            '#eef4fb',
+            '#12325e',
+            '#3f3f46',
+            'Important Note'
+        );
 
-        $pdf->spacer(8);
-
-        // Revision history, if there is any. A report that has been corrected must say
-        // so on its face - the alternative is a printed document that looks pristine
-        // while differing from what the agent actually submitted.
+        // Provenance. A report that has been corrected must say so on its face - the
+        // alternative is a printed document that looks pristine while differing from what
+        // the agent actually submitted.
         $revisions = (int) ($report['revision_count'] ?? 0);
 
         $pdf->paragraph(sprintf(
             'Report #%d submitted from %s%s on %s. %s',
-            (int) $report['id'],
+            $id,
             (string) $report['source'],
             $report['app_version'] === null ? '' : ' v' . (string) $report['app_version'],
             fmt_datetime((string) $report['created_at']),
@@ -730,7 +957,7 @@ final class VisitController extends Controller
                 )
         ), 8.0);
 
-        $this->logExport('Visits', sprintf('Exported visit report #%d to PDF', (int) $report['id']));
+        $this->logExport('Visits', sprintf('Exported visit report #%d to PDF', $id));
 
         Response::download(
             $pdf->output(),
@@ -771,6 +998,123 @@ final class VisitController extends Controller
     private static function pdfMoney(mixed $amount): string
     {
         return $amount === null || $amount === '' ? '-' : rupees($amount);
+    }
+
+    /**
+     * A one-of-many row of tick boxes: every option, with the stored one ticked.
+     *
+     * @param  array<string,string> $map
+     * @return list<array{label:string,checked:bool}>
+     */
+    private static function pdfOptions(array $map, mixed $current): array
+    {
+        $value = $current === null ? '' : trim((string) $current);
+
+        $items = [];
+        foreach ($map as $key => $label) {
+            $items[] = ['label' => $label, 'checked' => $key === $value];
+        }
+        return $items;
+    }
+
+    /**
+     * A row of independent tick boxes, one per flag column.
+     *
+     * Takes an empty array happily, which is what section 9 and section 13 hand it when
+     * a report has no settlement or renewal row: the boxes still print, all unticked,
+     * because the form asks the questions whether or not this visit answered them.
+     *
+     * @param  array<string,string> $map  column => label
+     * @param  array<string,mixed>  $row
+     * @return list<array{label:string,checked:bool}>
+     */
+    private static function pdfFlags(array $map, array $row): array
+    {
+        $items = [];
+        foreach ($map as $column => $label) {
+            $items[] = ['label' => $label, 'checked' => (int) ($row[$column] ?? 0) === 1];
+        }
+        return $items;
+    }
+
+    /**
+     * The Yes / No pair the form uses for a single boolean.
+     *
+     * @return list<array{label:string,checked:bool}>
+     */
+    private static function pdfYesNo(bool $value): array
+    {
+        return [
+            ['label' => 'Yes', 'checked' => $value],
+            ['label' => 'No', 'checked' => !$value],
+        ];
+    }
+
+    /**
+     * The Loan Type row, ticked from a value the bank's own export may have written.
+     *
+     * `loan_type` is a snapshot, not a form field: it usually arrives from a core-banking
+     * file as "CKCC" or "Crop Loan", and only sometimes as one of the form's own keys.
+     * Matched case-insensitively and against the printed label as well, because the
+     * commonest value on the commonest report type is "CKCC" and it ticking nothing
+     * would make the form look unanswered on almost every renewal.
+     *
+     * @return list<array{label:string,checked:bool}>
+     */
+    private static function pdfLoanTypes(mixed $current): array
+    {
+        $matched = self::loanTypeKey($current);
+
+        $items = [];
+        foreach (VisitReport::LOAN_TYPES as $key => $label) {
+            $items[] = ['label' => $label, 'checked' => $key === $matched];
+        }
+        return $items;
+    }
+
+    /**
+     * Which Loan Type box a stored value belongs in, or null for one the form has no box
+     * for - a "Doubtful 2" or a "Crop Loan", which prints in words instead.
+     */
+    private static function loanTypeKey(mixed $value): ?string
+    {
+        $raw = strtolower(trim((string) ($value ?? '')));
+        if ($raw === '') {
+            return null;
+        }
+
+        // Collapses "Agriculture Term Loan", "agri_term" and "AGRI-TERM" onto one key.
+        $squash = static fn (string $text): string => preg_replace('/[^a-z0-9]+/', '', strtolower($text)) ?? '';
+        $needle = $squash($raw);
+
+        foreach (VisitReport::LOAN_TYPES as $key => $label) {
+            if ($needle === $squash($key) || $needle === $squash($label)) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The occupation row, built from the enum so it cannot fall out of step with it.
+     *
+     * @return list<array{label:string,checked:bool}>
+     */
+    private static function pdfOccupations(mixed $current): array
+    {
+        $value = $current === null ? '' : trim((string) $current);
+        // A report filed by an older app still carries 'job'; the box it belongs in is
+        // Service. Without this the printed form would show no occupation at all.
+        if ($value === 'job') {
+            $value = 'service';
+        }
+
+        $items = [];
+        foreach (VisitReport::OCCUPATIONS as $key) {
+            $items[] = ['label' => occupation_label($key), 'checked' => $key === $value];
+        }
+        return $items;
     }
 
     /** A percentage with its trailing zeros trimmed, or a dash. */
