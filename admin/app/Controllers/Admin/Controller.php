@@ -26,7 +26,7 @@ abstract class Controller
 {
     /**
      * @param string|null $permission Required permission, or null for any signed-in user.
-     * @param bool        $allowAgent Whether a BC/DC agent may reach this action.
+     * @param bool        $allowAgent Whether a BC agent may reach this action.
      *                                Defaults to false: a new screen is closed to
      *                                agents until somebody says otherwise, because
      *                                forgetting the flag hides a page while forgetting

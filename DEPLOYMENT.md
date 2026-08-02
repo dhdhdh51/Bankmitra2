@@ -234,7 +234,7 @@ Visit `https://your-domain.com/` and sign in. Then:
    *Missing Configuration* banner until they are set)
 2. **Branches** → create your branches — the branch **code** is what the Excel
    importer matches against
-3. **Managers & Agents** → create branch managers and BC/DC agent accounts
+3. **Managers & Agents** → create branch managers and BC agent accounts
 4. **Excel Import** → upload your first lead file
 
 ---
@@ -1437,7 +1437,7 @@ ALTER TABLE `users`
   DROP COLUMN `photo_path`,
   DROP COLUMN `signature_path`;
 
--- 4. BC/DC agents can now correct their own borrowers in the panel and add fields to
+-- 4. BC agents can now correct their own borrowers in the panel and add fields to
 --    them. The panel restricts them to leads assigned to them - branch scope is not
 --    enough, because a branch holds several agents - and every figure they change is
 --    stamped into loan_accounts.manual_overrides, so the correction is attributed and
@@ -1613,9 +1613,9 @@ SELECT COUNT(*) FROM information_schema.columns
 Afterwards:
 
 - **Print a visit report and look at it.** Under "Signatures" you should see the agent's
-  photograph from the visit, then two bordered boxes — "Borrower Signature / Thumb
-  Impression" and "BC / DC Agent Signature" — each with a rule to sign above and a name
-  and date line beneath. The approval section carries a third box.
+  photograph from the visit, then two bordered boxes — "BC Agent / DRA Signature" and
+  "Supervisor Signature" — each with a rule to sign above and a name and date line
+  beneath.
 - **A new APK is required.** The signature pad is gone from the app, and an older APK
   will keep offering it: the agent can still draw one, the upload will be accepted as a
   field the server now ignores, and nothing will appear on the report. Roll the new APK
@@ -1687,7 +1687,7 @@ are two accounts and one person.
 INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
   ('customers.create', 'Customers', 'Add a borrower and loan account by hand');
 
--- 2. Branch managers and BC/DC agents. The agent grant is the point of the release:
+-- 2. Branch managers and BC agents. The agent grant is the point of the release:
 --    they are the ones standing in front of the borrower.
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 2, `id` FROM `permissions` WHERE `code` = 'customers.create';
@@ -2145,6 +2145,51 @@ Afterwards:
 - The document checklist an agent fills in on a renewal now appears **once**, in section 7,
   for every case type. If your staff were trained to look for it inside the renewal block,
   tell them where it went.
+
+### Adding BC Basic Details to an existing install
+
+New BC agent accounts now capture the bank's own reporting hierarchy and the
+agent's registration numbers, not just a name and an internal employee code:
+SP/CBC Name, BC Name, BCBF Code, SSA, Link Branch, District, Region (RO), IIBF
+No., Mobile No. (already existed), Aadhaar and PAN. Every field is optional at
+the database level - only the Add/Edit user form asks for them, and only for
+the BC agent role - so this is additive and safe to run on a populated table.
+
+```sql
+ALTER TABLE `users`
+  ADD COLUMN `sp_cbc_name`    VARCHAR(150)   DEFAULT NULL COMMENT 'SP / CBC the BC reports to' AFTER `designation`,
+  ADD COLUMN `bc_name`        VARCHAR(150)   DEFAULT NULL COMMENT 'the BC point''s registered name; may differ from the login name' AFTER `sp_cbc_name`,
+  ADD COLUMN `bcbf_code`      VARCHAR(40)    DEFAULT NULL COMMENT 'BC/BF code issued by the bank, distinct from bc_code (the internal field-report code)' AFTER `bc_name`,
+  ADD COLUMN `ssa`            VARCHAR(150)   DEFAULT NULL COMMENT 'Sub Service Area covered' AFTER `bcbf_code`,
+  ADD COLUMN `link_branch`    VARCHAR(150)   DEFAULT NULL COMMENT 'the branch this BC is linked to for banking transactions' AFTER `ssa`,
+  ADD COLUMN `district`       VARCHAR(100)   DEFAULT NULL AFTER `link_branch`,
+  ADD COLUMN `region_ro`      VARCHAR(100)   DEFAULT NULL COMMENT 'Region / Regional Office' AFTER `district`,
+  ADD COLUMN `iibf_number`    VARCHAR(40)    DEFAULT NULL COMMENT 'IIBF certification number' AFTER `region_ro`,
+  ADD COLUMN `dra_name_id`    VARCHAR(150)   DEFAULT NULL COMMENT 'the Direct Recovery Agent''s own name/ID, when the BC works through one' AFTER `iibf_number`,
+  ADD COLUMN `aadhaar_enc`    VARBINARY(255) DEFAULT NULL AFTER `dra_name_id`,
+  ADD COLUMN `aadhaar_hash`   CHAR(64)       DEFAULT NULL AFTER `aadhaar_enc`,
+  ADD COLUMN `aadhaar_masked` VARCHAR(20)    DEFAULT NULL AFTER `aadhaar_hash`,
+  ADD COLUMN `pan_enc`        VARBINARY(255) DEFAULT NULL AFTER `aadhaar_masked`,
+  ADD COLUMN `pan_hash`       CHAR(64)       DEFAULT NULL AFTER `pan_enc`,
+  ADD COLUMN `pan_masked`     VARCHAR(20)    DEFAULT NULL AFTER `pan_hash`,
+  ADD KEY `idx_users_bcbf_code` (`bcbf_code`),
+  ADD KEY `idx_users_aadhaar_hash` (`aadhaar_hash`);
+```
+
+Confirm it landed:
+
+```sql
+SELECT COLUMN_NAME FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+   AND COLUMN_NAME IN ('sp_cbc_name','bc_name','bcbf_code','ssa','link_branch',
+                        'district','region_ro','iibf_number','dra_name_id',
+                        'aadhaar_enc','pan_enc');
+```
+
+Aadhaar and PAN are encrypted at rest with the same AES-256-GCM scheme already
+used for a borrower's Aadhaar, so no new crypto key is needed - `data_key` in
+`config.php` already covers it. Existing BC accounts simply show these fields
+blank until somebody edits them in; nothing is backfilled or guessed.
 
 ### Renaming to D2 Recovery Solutions & Services on an existing install
 

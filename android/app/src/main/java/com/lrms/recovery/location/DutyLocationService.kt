@@ -152,39 +152,79 @@ class DutyLocationService : Service() {
             @Deprecated("Required for API < 29")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
 
-            override fun onProviderEnabled(provider: String) = Unit
-            override fun onProviderDisabled(provider: String) = Unit
+            // GPS coming on mid-session (an agent who was indoors on network fixes
+            // walks out to the field) is the moment to switch away from the network
+            // provider - not wait for the session to restart. Turning GPS off again
+            // is handled the same way, so a device with GPS knocked out mid-day still
+            // falls back to network rather than going silent. If neither provider is
+            // left enabled there is nothing to fall back to, and the session ends
+            // rather than sitting foreground with no source.
+            override fun onProviderEnabled(provider: String) {
+                if (!switchToBestProvider()) stopSelf()
+            }
+
+            override fun onProviderDisabled(provider: String) {
+                if (!switchToBestProvider()) stopSelf()
+            }
         }
         listener = callback
 
-        // GPS where available, network as a fallback: indoors and in a bank branch
-        // a GPS fix often never arrives, and a coarse fix is better than none.
-        val providers = listOfNotNull(
-            LocationManager.GPS_PROVIDER.takeIf { manager.isProviderEnabled(it) },
-            LocationManager.NETWORK_PROVIDER.takeIf { manager.isProviderEnabled(it) },
-        )
-
-        if (providers.isEmpty()) {
-            stopSelf()
-            return
-        }
-
-        try {
-            providers.forEach { provider ->
-                manager.requestLocationUpdates(
-                    provider,
-                    INTERVAL_MS,
-                    MIN_DISTANCE_METRES,
-                    callback,
-                )
-            }
-        } catch (_: SecurityException) {
-            // Permission revoked between the check and the call.
+        if (!switchToBestProvider()) {
             stopSelf()
         }
     }
 
+    /**
+     * Registers for GPS if it is available, or the network provider if it is not -
+     * never both at once.
+     *
+     * This used to request both providers together, which is not "GPS with a
+     * fallback" at all: a coarse network fix could arrive and get recorded seconds
+     * after a good GPS one, diluting an agent's actual position with a cell-tower
+     * estimate that can be wrong by kilometres. What is wanted is the agent's real
+     * GPS location, with the network provider used only while GPS is genuinely
+     * unavailable - so this re-registers whenever a provider is switched on or off
+     * (see the listener's onProviderEnabled/onProviderDisabled above), rather than
+     * being decided once at session start and left to drift from reality for the
+     * rest of the day.
+     *
+     * @return false when neither provider is available, so the caller can stop the
+     *         session rather than run with no location source at all.
+     */
+    private fun switchToBestProvider(): Boolean {
+        val manager = locationManager ?: return false
+        val callback = listener ?: return false
+
+        // Clear whatever was registered before switching - requesting GPS while a
+        // network registration is still live would be back to "both at once".
+        manager.removeUpdates(callback)
+
+        val provider = when {
+            manager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            else -> return false
+        }
+
+        return try {
+            manager.requestLocationUpdates(provider, INTERVAL_MS, MIN_DISTANCE_METRES, callback)
+            true
+        } catch (_: SecurityException) {
+            // Permission revoked between the check and the call - the session ends
+            // here rather than leaving a foreground service running with no source
+            // and no way for the agent to have caused it.
+            stopSelf()
+            false
+        }
+    }
+
     private fun enqueue(location: Location) {
+        // A fix this poor is a cell-tower estimate, not a location - recording it
+        // would put a wrong point on the agent's trail that is worse than gap in it.
+        // The same threshold GeoStamp uses for a photo's one-shot fix.
+        if (location.hasAccuracy() && location.accuracy >= IMPLAUSIBLE_ACCURACY_M) {
+            return
+        }
+
         // The server drops fixes closer than a minute apart, so there is no point
         // sending them. Filtering here also saves the radio.
         val last = queue.lastOrNull()
@@ -330,6 +370,9 @@ class DutyLocationService : Service() {
         /** Four minutes: enough to show a route, cheap enough on a small battery. */
         private const val INTERVAL_MS = 4L * 60L * 1000L
         private const val MIN_DISTANCE_METRES = 50f
+
+        /** Fixes worse than this are a cell-tower estimate, not a position worth keeping. */
+        private const val IMPLAUSIBLE_ACCURACY_M = 5_000f
 
         private const val BATCH_SIZE = 5
         private const val MAX_BATCH = 200

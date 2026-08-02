@@ -743,7 +743,7 @@ $sigPdf->heading('Signatures');
 $yBefore = $sigPdf->cursorY();
 $sigPdf->signatureBlock([
     ['label' => 'Borrower Signature / Thumb Impression', 'caption' => "Ram Lal\nDate:"],
-    ['label' => 'BC / DC Agent Signature', 'caption' => "Suresh Yadav\nBC0007\nDate:"],
+    ['label' => 'BC Agent Signature', 'caption' => "Suresh Yadav\nBC0007\nDate:"],
 ], 60.0);
 $yAfter = $sigPdf->cursorY();
 $sigBytes = $sigPdf->output();
@@ -1125,11 +1125,13 @@ check('has() is false for a half-recorded position',
     !Geo::has(['gps_latitude' => 26.9124, 'gps_longitude' => null]));
 check('has() is true only with both', Geo::has(['gps_latitude' => 1.0, 'gps_longitude' => 2.0]));
 
-// The map link is a plain search URL: nothing about a borrower's location reaches a
-// third party until a human clicks it.
+// The map link is a plain OpenStreetMap link: nothing about a borrower's location
+// reaches a third party until a human clicks it, and no Google account or API key
+// is needed to open it.
 $mapUrl = Geo::mapUrl(26.9124, 75.7873);
-check('the map link carries the coordinates', str_contains($mapUrl, '26.912400%2C75.787300'), $mapUrl);
+check('the map link carries the coordinates', str_contains($mapUrl, 'mlat=26.912400&mlon=75.787300'), $mapUrl);
 check('and needs no API key', !str_contains($mapUrl, 'key='));
+check('and is OpenStreetMap, not Google Maps', str_contains($mapUrl, 'openstreetmap.org') && !str_contains($mapUrl, 'google'));
 
 // Distance is what answers "was this photograph taken anywhere near the village it
 // claims", so it has to be right rather than approximately right.

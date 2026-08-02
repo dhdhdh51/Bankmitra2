@@ -113,7 +113,7 @@ CREATE TABLE `branches` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- 3. USERS  (super admins + branch managers + BC/DC agents)
+-- 3. USERS  (super admins + branch managers + BC agents)
 -- ============================================================================
 
 DROP TABLE IF EXISTS `users`;
@@ -128,8 +128,37 @@ CREATE TABLE `users` (
   `password_hash`        VARCHAR(255) NOT NULL COMMENT 'bcrypt (PASSWORD_BCRYPT)',
   `role_id`              INT UNSIGNED NOT NULL,
   `branch_id`            INT UNSIGNED DEFAULT NULL COMMENT 'NULL for super admin',
-  `bc_code`              VARCHAR(40)  DEFAULT NULL COMMENT 'BC/DC code for agents',
+  `bc_code`              VARCHAR(40)  DEFAULT NULL COMMENT 'BC code for agents',
   `designation`          VARCHAR(100) DEFAULT NULL,
+
+  -- BC Basic Details. Asked for on every BC agent account so the panel and the
+  -- printed field visit report can carry the bank's own reporting hierarchy
+  -- (SP/CBC, SSA, link branch, region) and the agent's own registration numbers,
+  -- rather than only a name and an internal employee code. All are optional here
+  -- because a super admin or branch manager account has none of them - they exist
+  -- for the agent role only, enforced by the form, not by the column.
+  `sp_cbc_name`          VARCHAR(150) DEFAULT NULL COMMENT 'SP / CBC the BC reports to',
+  `bc_name`              VARCHAR(150) DEFAULT NULL COMMENT 'the BC point''s registered name; may differ from the login name',
+  `bcbf_code`            VARCHAR(40)  DEFAULT NULL COMMENT 'BC/BF code issued by the bank, distinct from bc_code (the internal field-report code)',
+  `ssa`                  VARCHAR(150) DEFAULT NULL COMMENT 'Sub Service Area covered',
+  `link_branch`          VARCHAR(150) DEFAULT NULL COMMENT 'the branch this BC is linked to for banking transactions',
+  `district`             VARCHAR(100) DEFAULT NULL,
+  `region_ro`            VARCHAR(100) DEFAULT NULL COMMENT 'Region / Regional Office',
+  `iibf_number`          VARCHAR(40)  DEFAULT NULL COMMENT 'IIBF certification number',
+  `dra_name_id`          VARCHAR(150) DEFAULT NULL COMMENT 'the Direct Recovery Agent''s own name/ID, when the BC works through one',
+
+  -- Aadhaar and PAN follow the same encrypted-at-rest pattern already used for
+  -- customers.aadhaar and visit_reports.pan_number: the plaintext is never
+  -- stored, only an AES-256-GCM ciphertext, a keyed HMAC for exact-match lookup,
+  -- and a masked value for display. mobile_enc/mobile_hash/mobile_masked above
+  -- already cover the Mobile No. field.
+  `aadhaar_enc`          VARBINARY(255) DEFAULT NULL,
+  `aadhaar_hash`         CHAR(64)     DEFAULT NULL,
+  `aadhaar_masked`       VARCHAR(20)  DEFAULT NULL,
+  `pan_enc`              VARBINARY(255) DEFAULT NULL,
+  `pan_hash`             CHAR(64)     DEFAULT NULL,
+  `pan_masked`           VARCHAR(20)  DEFAULT NULL,
+
   `status`               ENUM('active','suspended','inactive') NOT NULL DEFAULT 'active',
   `must_change_password` TINYINT(1)   NOT NULL DEFAULT 1 COMMENT 'force change on first login',
   `last_login_at`        DATETIME     DEFAULT NULL,
@@ -169,6 +198,8 @@ CREATE TABLE `users` (
   KEY `idx_users_role` (`role_id`),
   KEY `idx_users_branch_status` (`branch_id`, `status`),
   KEY `idx_users_bc_code` (`bc_code`),
+  KEY `idx_users_bcbf_code` (`bcbf_code`),
+  KEY `idx_users_aadhaar_hash` (`aadhaar_hash`),
   CONSTRAINT `fk_users_role`   FOREIGN KEY (`role_id`)   REFERENCES `roles` (`id`),
   CONSTRAINT `fk_users_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1543,7 +1574,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 INSERT INTO `roles` (`id`, `slug`, `display_name`, `description`, `is_system`) VALUES
   (1, 'super_admin',    'Super Admin',    'Full system access across all branches',        1),
   (2, 'branch_manager', 'Branch Manager', 'Scoped to the assigned branch only',            1),
-  (3, 'agent',          'BC/DC Agent',    'Android app only - assigned leads and visits',  1),
+  (3, 'agent',          'BC Agent',       'Android app only - assigned leads and visits',  1),
   (4, 'auditor',        'Auditor',        'Read-only access to reports and logs',          1);
 
 -- ============================================================================
@@ -1632,7 +1663,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
     'bc_targets.view','bc_targets.manage','sss.view','sss.manage','scorecard.view'
   );
 
--- BC/DC Agent -> Android app surface only.
+-- BC Agent -> Android app surface only.
 -- dashboard.view is granted because the app has an agent home screen with the
 -- agent's own counters (assigned / pending / visits / promises). It is scoped to
 -- that agent in code; it does not expose branch or all-branch figures.
@@ -1707,7 +1738,6 @@ INSERT INTO `settings` (`setting_key`, `setting_value`, `group_name`, `label`, `
   ('sms_sender_id',      '',                'sms',     'SMS sender ID',           'text', NULL,     0, 0, '', 4),
   ('sms_otp_template',   'Your D2 Recovery Solutions & Services OTP is {otp}. Valid for 10 minutes.', 'sms', 'OTP template', 'textarea', NULL, 0, 0, 'Use {otp}', 5),
 
-  ('google_maps_key',    '',                'integrations', 'Google Maps API key', 'password', NULL, 1, 0, 'Static map previews only - no tracking', 1),
   ('firebase_server_key','',                'integrations', 'Firebase server key', 'password', NULL, 1, 0, 'FCM push notifications', 2),
   ('firebase_project_id','',                'integrations', 'Firebase project ID', 'text', NULL,     0, 0, '', 3),
 

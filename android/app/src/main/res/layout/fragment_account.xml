@@ -76,7 +76,7 @@
                                 android:textColor="?attr/colorPrimary"
                                 android:textSize="12sp"
                                 android:textStyle="bold"
-                                tools:text="BC/DC Agent" />
+                                tools:text="BC Agent" />
 
                             <TextView
                                 android:id="@+id/textEmployeeCode"

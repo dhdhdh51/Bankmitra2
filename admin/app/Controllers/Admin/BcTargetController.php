@@ -13,7 +13,7 @@ use App\Models\Branch;
 use App\Models\User;
 
 /**
- * Monthly targets for BC/DC agents.
+ * Monthly targets for BC agents.
  *
  * These numbers are not decoration: `cron/bc-warning-check.php` measures each
  * agent's day against them and raises L1/L2/L3 warnings that escalate to a

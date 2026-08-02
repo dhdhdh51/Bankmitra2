@@ -78,6 +78,7 @@ HEADINGS = [
     '### Recording what the agent finds out at the door',
     '### Seeing the location trail on a map',
     '### Making the field visit report match the printed form',
+    '### Adding BC Basic Details to an existing install',
 ]
 
 chunks = []
@@ -136,6 +137,26 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- BC Basic Details: the new user columns did not exist before this release.
+ALTER TABLE `users`
+  DROP KEY `idx_users_bcbf_code`,
+  DROP KEY `idx_users_aadhaar_hash`,
+  DROP COLUMN `sp_cbc_name`,
+  DROP COLUMN `bc_name`,
+  DROP COLUMN `bcbf_code`,
+  DROP COLUMN `ssa`,
+  DROP COLUMN `link_branch`,
+  DROP COLUMN `district`,
+  DROP COLUMN `region_ro`,
+  DROP COLUMN `iibf_number`,
+  DROP COLUMN `dra_name_id`,
+  DROP COLUMN `aadhaar_enc`,
+  DROP COLUMN `aadhaar_hash`,
+  DROP COLUMN `aadhaar_masked`,
+  DROP COLUMN `pan_enc`,
+  DROP COLUMN `pan_hash`,
+  DROP COLUMN `pan_masked`;
+
 -- The visit report did not match the printed form: thirteen sections' worth of boxes had
 -- nowhere to go. Reversed in the opposite order to the migration - the renewal row's
 -- duplicated document checklist comes BACK first, because the report's copy of it is

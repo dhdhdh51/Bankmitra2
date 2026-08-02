@@ -113,7 +113,7 @@ class PhotoUploadActivity : BaseActivity() {
         // Belt and braces. chooseSource() never offers the picker for the agent's own
         // photograph, but that is one screen away from being changed by somebody adding
         // a menu item, and the failure would be silent: a gallery image sitting in the
-        // slot the printed report labels "BC / DC Agent (at the visit)".
+        // slot the printed report labels "BC Agent (at the visit)".
         if (pendingSlot == Slot.AGENT) {
             imported.delete()
             showMessage(R.string.photo_agent_camera_only, binding.root)

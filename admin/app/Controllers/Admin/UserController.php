@@ -96,7 +96,7 @@ final class UserController extends Controller
             // New accounts must change the password given to them at first login.
             'must_change_password' => 1,
             'created_by'          => Auth::id(),
-        ];
+        ] + $this->bcBasicDetails($request);
 
         $id = User::create($data, $password, $request->nullableStr('mobile'));
 
@@ -156,7 +156,7 @@ final class UserController extends Controller
             'bc_code'       => $request->nullableStr('bc_code'),
             'designation'   => $request->nullableStr('designation'),
             'status'        => $request->str('status') === 'suspended' ? 'suspended' : 'active',
-        ];
+        ] + $this->bcBasicDetails($request);
 
         User::update($id, $data, $request->nullableStr('mobile'), true);
 
@@ -276,6 +276,27 @@ final class UserController extends Controller
             'bc_code'       => 'nullable|max:40',
             'designation'   => 'nullable|max:100',
             'status'        => 'required|in:active,suspended,inactive',
+
+            // BC Basic Details. Nullable everywhere - a super admin or branch manager
+            // account has none of these, and the form only shows them for the agent
+            // role - so the rule set has to accept a blank submission for those roles
+            // rather than making every account type answer questions that are only
+            // meaningful for one of them.
+            'sp_cbc_name'   => 'nullable|max:150',
+            'bc_name'       => 'nullable|max:150',
+            'bcbf_code'     => 'nullable|max:40',
+            'ssa'           => 'nullable|max:150',
+            'link_branch'   => 'nullable|max:150',
+            'district'      => 'nullable|max:100',
+            'region_ro'     => 'nullable|max:100',
+            'iibf_number'   => 'nullable|max:40',
+            'dra_name_id'   => 'nullable|max:150',
+            'aadhaar'       => 'nullable|aadhaar',
+            // Length only, same reasoning as VisitController's pan_number rule: a PAN
+            // typed by an administrator arrives with spaces and mixed case and is
+            // normalised on the way in by Crypto::normalisePan(), so a shape-checking
+            // regex here would reject a real card over formatting.
+            'pan'           => 'nullable|max:20',
         ];
 
         // Password is optional on create (auto-generated) and on edit (unchanged).
@@ -286,8 +307,46 @@ final class UserController extends Controller
         return Validator::make($request->all(), $rules, [
             'employee_code' => 'Employee code',
             'role_id'       => 'Role',
-            'bc_code'       => 'BC/DC code',
+            'bc_code'       => 'BC code',
+            'sp_cbc_name'   => 'SP / CBC Name',
+            'bc_name'       => 'BC Name',
+            'bcbf_code'     => 'BCBF Code',
+            'ssa'           => 'SSA',
+            'link_branch'   => 'Link Branch',
+            'region_ro'     => 'Region (RO)',
+            'iibf_number'   => 'IIBF No.',
+            'dra_name_id'   => 'DRA Name / ID',
+            'aadhaar'       => 'Aadhaar Card No.',
+            'pan'           => 'PAN Card No.',
         ]);
+    }
+
+    /**
+     * The BC Basic Details block: everything about a BC agent's registered identity
+     * that is not their login (employee code) or their field-report code (bc_code).
+     *
+     * Aadhaar and PAN are returned under their plain keys ('aadhaar', 'pan') rather
+     * than encrypted here - User::create()/User::update() do the encryption via
+     * User::piiColumns(), the same place mobile encryption already happens, so this
+     * controller never has to know the storage format.
+     *
+     * @return array<string,mixed>
+     */
+    private function bcBasicDetails(Request $request): array
+    {
+        return [
+            'sp_cbc_name' => $request->nullableStr('sp_cbc_name'),
+            'bc_name'     => $request->nullableStr('bc_name'),
+            'bcbf_code'   => $request->nullableStr('bcbf_code'),
+            'ssa'         => $request->nullableStr('ssa'),
+            'link_branch' => $request->nullableStr('link_branch'),
+            'district'    => $request->nullableStr('district'),
+            'region_ro'   => $request->nullableStr('region_ro'),
+            'iibf_number' => $request->nullableStr('iibf_number'),
+            'dra_name_id' => $request->nullableStr('dra_name_id'),
+            'aadhaar'     => $request->nullableStr('aadhaar'),
+            'pan'         => $request->nullableStr('pan'),
+        ];
     }
 
     /**

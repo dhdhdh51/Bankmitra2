@@ -181,7 +181,7 @@ foreach ([
 ] as $index => [$code, $name, $bcCode, $branchCode]) {
     $agents[$code] = User::create([
         'employee_code' => $code, 'name' => $name, 'bc_code' => $bcCode,
-        'designation' => 'BC/DC Agent', 'role_id' => 3, 'branch_id' => $branchIds[$branchCode],
+        'designation' => 'BC Agent', 'role_id' => 3, 'branch_id' => $branchIds[$branchCode],
         'status' => 'active', 'must_change_password' => 0,
     ], 'Agent@123', '982220000' . ($index + 1));
 
@@ -518,7 +518,7 @@ $toClose = array_slice(array_column($assigned, 'id'), 0, 4);
 
 \App\Models\Notification::broadcast(
     'Recovery drive this Saturday',
-    'All BC/DC agents please cover the pending NPA accounts in your village allocation.',
+    'All BC agents please cover the pending NPA accounts in your village allocation.',
     null,
     1
 );

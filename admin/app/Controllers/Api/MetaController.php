@@ -84,7 +84,6 @@ final class MetaController extends Controller
             'promise_statuses' => Promise::STATUSES,
             'app_version'      => Settings::get('app_version', '1.0.0'),
             'min_version'      => Settings::get('app_min_version', '1.0.0'),
-            'maps_key'         => Settings::get('google_maps_key'),
 
             // The daily report deadline. The app schedules a local alarm from this,
             // so the bank sets it in one place instead of it being a time typed into

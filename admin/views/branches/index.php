@@ -59,7 +59,7 @@
     <?php if ($branches->isEmpty()): ?>
         <?= \App\Core\View::partial('partials/empty', [
             'heading'     => 'No branches',
-            'message'     => 'Create the branches your BC/DC agents work under before importing leads.',
+            'message'     => 'Create the branches your BC agents work under before importing leads.',
             'iconName'    => 'branch',
             'actionLabel' => can('branches.create') ? 'Add branch' : null,
             'actionUrl'   => can('branches.create') ? url('/branches/create') : null,

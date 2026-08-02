@@ -151,7 +151,7 @@ $totalLeads = max(1, (int) $cards['total_leads']);
         <div class="lrms-stat h-100">
             <div class="lrms-stat-label"><?= icon('users') ?> Active agents</div>
             <div class="lrms-stat-value sm"><?= e(number_format((int) $cards['active_agents'])) ?></div>
-            <div class="lrms-stat-sub">BC/DC field agents</div>
+            <div class="lrms-stat-sub">BC field agents</div>
         </div>
     </div>
 </div>
@@ -250,7 +250,7 @@ $totalLeads = max(1, (int) $cards['total_leads']);
             <?php if ($data['top_agents'] === []): ?>
                 <?= \App\Core\View::partial('partials/empty', [
                     'heading'  => 'No agents yet',
-                    'message'  => 'Create BC/DC agent accounts to start assigning leads.',
+                    'message'  => 'Create BC agent accounts to start assigning leads.',
                     'iconName' => 'users',
                 ]) ?>
             <?php else: ?>

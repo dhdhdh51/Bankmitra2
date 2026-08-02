@@ -817,7 +817,7 @@ final class VisitController extends Controller
         if ($agentPhoto !== null) {
             $pdf->imageStrip([[
                 'path'    => Uploader::absolutePath((string) $agentPhoto['file_path']),
-                'label'   => 'BC / DC Agent (at the visit)',
+                'label'   => 'BC Agent (at the visit)',
                 'caption' => $agentIdentity . "\n" . Geo::photo($agentPhoto),
             ]], 96.0);
         } else {
@@ -1156,7 +1156,7 @@ final class VisitController extends Controller
             'aadhaar'      => 'Aadhaar',
             'passbook'     => 'Passbook',
             'renewal_form' => 'Renewal Form',
-            'agent'        => 'BC / DC Agent',
+            'agent'        => 'BC Agent',
             'other'        => 'Other',
         ][$photoType] ?? ucwords(str_replace('_', ' ', $photoType));
     }

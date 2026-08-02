@@ -37,7 +37,7 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
         <p>
             <?= $isEdit
                 ? e((string) $user['name']) . ' · ' . e((string) $user['employee_code'])
-                : 'Create a branch manager or BC/DC agent account' ?>
+                : 'Create a branch manager or BC agent account' ?>
         </p>
     </div>
 </div>
@@ -103,7 +103,7 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
                                 <?php endforeach; ?>
                             </select>
                             <?= field_error($errors, 'role_id') ?>
-                            <div class="form-text">BC/DC Agents sign in through the Android app only.</div>
+                            <div class="form-text">BC Agents sign in through the Android app only.</div>
                         </div>
 
                         <?php if (count($branches) > 1): ?>
@@ -125,7 +125,7 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
                         <?php endif; ?>
 
                         <div class="col-md-6">
-                            <label class="form-label" for="bc_code">BC / DC code</label>
+                            <label class="form-label" for="bc_code">BC code</label>
                             <input type="text" class="form-control<?= has_error($errors, 'bc_code') ?>"
                                    id="bc_code" name="bc_code" value="<?= $value('bc_code') ?>" maxlength="40">
                             <?= field_error($errors, 'bc_code') ?>
@@ -146,6 +146,105 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
                                 <option value="suspended" <?= $currentStatus === 'suspended' ? 'selected' : '' ?>>Suspended</option>
                                 <option value="inactive" <?= $currentStatus === 'inactive' ? 'selected' : '' ?>>Inactive</option>
                             </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <div>
+                        <h2>BC Basic Details</h2>
+                        <p>The bank's reporting hierarchy and the agent's registration numbers</p>
+                    </div>
+                </div>
+                <div class="lrms-card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="sp_cbc_name">SP / CBC Name</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'sp_cbc_name') ?>"
+                                   id="sp_cbc_name" name="sp_cbc_name" value="<?= $value('sp_cbc_name') ?>" maxlength="150">
+                            <?= field_error($errors, 'sp_cbc_name') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="bc_name">BC Name</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'bc_name') ?>"
+                                   id="bc_name" name="bc_name" value="<?= $value('bc_name') ?>" maxlength="150">
+                            <?= field_error($errors, 'bc_name') ?>
+                            <div class="form-text">The BC point's registered name, if different from the login name above.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="bcbf_code">BCBF Code</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'bcbf_code') ?>"
+                                   id="bcbf_code" name="bcbf_code" value="<?= $value('bcbf_code') ?>" maxlength="40">
+                            <?= field_error($errors, 'bcbf_code') ?>
+                            <div class="form-text">Issued by the bank; separate from the BC code above.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="ssa">SSA</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'ssa') ?>"
+                                   id="ssa" name="ssa" value="<?= $value('ssa') ?>" maxlength="150">
+                            <?= field_error($errors, 'ssa') ?>
+                            <div class="form-text">Sub Service Area covered.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="link_branch">Link Branch</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'link_branch') ?>"
+                                   id="link_branch" name="link_branch" value="<?= $value('link_branch') ?>" maxlength="150">
+                            <?= field_error($errors, 'link_branch') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="district">District</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'district') ?>"
+                                   id="district" name="district" value="<?= $value('district') ?>" maxlength="100">
+                            <?= field_error($errors, 'district') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="region_ro">Region (RO)</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'region_ro') ?>"
+                                   id="region_ro" name="region_ro" value="<?= $value('region_ro') ?>" maxlength="100">
+                            <?= field_error($errors, 'region_ro') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="iibf_number">IIBF No.</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'iibf_number') ?>"
+                                   id="iibf_number" name="iibf_number" value="<?= $value('iibf_number') ?>" maxlength="40">
+                            <?= field_error($errors, 'iibf_number') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="dra_name_id">DRA Name / ID</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'dra_name_id') ?>"
+                                   id="dra_name_id" name="dra_name_id" value="<?= $value('dra_name_id') ?>" maxlength="150">
+                            <?= field_error($errors, 'dra_name_id') ?>
+                            <div class="form-text">If this BC works through a Direct Recovery Agent, their name or ID.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="aadhaar">Aadhaar Card No.</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'aadhaar') ?>"
+                                   id="aadhaar" name="aadhaar"
+                                   value="<?= array_key_exists('aadhaar', $old) ? e($old['aadhaar']) : e($user['aadhaar'] ?? '') ?>"
+                                   maxlength="14" inputmode="numeric" placeholder="12-digit number" autocomplete="off">
+                            <?= field_error($errors, 'aadhaar') ?>
+                            <div class="form-text">Stored encrypted, same as a borrower's Aadhaar.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="pan">PAN Card No.</label>
+                            <input type="text" class="form-control text-uppercase<?= has_error($errors, 'pan') ?>"
+                                   id="pan" name="pan"
+                                   value="<?= array_key_exists('pan', $old) ? e($old['pan']) : e($user['pan'] ?? '') ?>"
+                                   maxlength="20" spellcheck="false" autocomplete="off">
+                            <?= field_error($errors, 'pan') ?>
+                            <div class="form-text">Stored encrypted.</div>
                         </div>
                     </div>
                 </div>

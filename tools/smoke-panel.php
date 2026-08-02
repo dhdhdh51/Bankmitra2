@@ -553,7 +553,7 @@ if ($panelWithMedia !== null) {
     check('the panel shows a photograph\'s coordinates',
         preg_match('/\d{2}\.\d{6}, \d{2}\.\d{6}/', $panelWithMedia) === 1);
     check('the coordinates link out to a map',
-        str_contains($panelWithMedia, 'google.com/maps/search/'));
+        str_contains($panelWithMedia, 'openstreetmap.org/?mlat='));
     check('a camera capture is marked as one', str_contains($panelWithMedia, '>Camera<'));
     check('a gallery pick is marked differently, not left to look identical',
         str_contains($panelWithMedia, '>Gallery<'));
@@ -562,7 +562,7 @@ if ($panelWithMedia !== null) {
     check('the accuracy is shown, not just the coordinates',
         preg_match('/\+\/-\d+ m/', $panelWithMedia) === 1);
     check('the agent photograph appears in the panel too',
-        str_contains($panelWithMedia, 'BC / DC Agent'));
+        str_contains($panelWithMedia, 'BC Agent'));
     // The signature card is gone from the panel, and its absence is asserted: a card
     // reading "Not captured" twice on every report would be worse than no card, and
     // an upload form that still posts to a deleted route is a 404 with a lost file.
@@ -1122,7 +1122,7 @@ check('the loan panel shows a closure amount', str_contains($profile2['body'], '
 // The user asked for the closure figure in place of the BC code, which belongs to the
 // agent rather than the loan and is still snapshotted on the visit report.
 check('the BC code no longer clutters the loan panel',
-    !str_contains($profile2['body'], 'BC / DC code'));
+    !str_contains($profile2['body'], 'BC code'));
 
 $editPage = page('GET /customers/{id}/edit', '/customers/' . $leadId . '/edit', 200, 'Edit borrower');
 check('loan figures are editable now', str_contains($editPage, 'name="outstanding_amount"'));

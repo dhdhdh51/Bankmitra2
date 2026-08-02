@@ -91,7 +91,7 @@
     <?php if ($users->isEmpty()): ?>
         <?= \App\Core\View::partial('partials/empty', [
             'heading'     => 'No users found',
-            'message'     => 'Create branch managers and BC/DC agent accounts to start assigning leads.',
+            'message'     => 'Create branch managers and BC agent accounts to start assigning leads.',
             'iconName'    => 'users',
             'actionLabel' => can('users.create') ? 'Add user' : null,
             'actionUrl'   => can('users.create') ? url('/users/create') : null,

@@ -1,6 +1,6 @@
 # D2 Recovery Solutions & Services — Loan Recovery Management System
 
-Field verification and recovery follow-up for **BC/DC agents** working on behalf of banks.
+Field verification and recovery follow-up for **BC agents** working on behalf of banks.
 
 Agents visit borrowers, record what they found, capture a photo and the borrower's
 photograph, and log a promise-to-pay date. **Agents never collect cash and the system
@@ -993,7 +993,7 @@ Kept here because they are the reason the tests exist:
     the value: "an integer in the Excel epoch window is a date". Every whole-rupee
     figure between 32,874 and 65,380 therefore became a date — and `parseAmount()`
     then read that date's *year* as the amount, so **a ₹45,000 outstanding balance
-    was imported as ₹2,023**. That band is the bread and butter of BC/DC lending.
+    was imported as ₹2,023**. That band is the bread and butter of BC lending.
     Reproduced end to end before the fix. The reader now parses `xl/styles.xml` and
     converts only cells whose format actually says date, which also fixed dates
     outside the guessed band and dates carrying a time fraction. The file's own
@@ -1173,7 +1173,7 @@ Kept here because they are the reason the tests exist:
 64. **A printed report showed an office portrait where a reader would assume a doorstep
     photograph.** The agent's photograph on a visit report was *always*
     `users.photo_path` — a portrait uploaded once in a branch office — printed next to
-    the borrower's signature under the label "BC / DC Agent" with no indication of when
+    the borrower's signature under the label "BC Agent" with no indication of when
     or where it was taken. Nothing was technically false, and that is the problem: on a
     document that geo-captions every other photograph, an uncaptioned photograph of the
     agent reads as one more piece of field evidence. There is now a camera-only slot for

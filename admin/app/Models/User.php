@@ -14,7 +14,7 @@ final class User
 
     public static function find(int $id): ?array
     {
-        return Database::instance()->first(
+        $row = Database::instance()->first(
             'SELECT u.*, r.slug AS role_slug, r.display_name AS role_name,
                     b.name AS branch_name, b.branch_code
                FROM users u
@@ -23,6 +23,26 @@ final class User
               WHERE u.id = ? LIMIT 1',
             [$id]
         );
+
+        return $row === null ? null : self::withDecryptedPii($row);
+    }
+
+    /**
+     * Decrypts a BC's Aadhaar/PAN for the edit form, and drops the ciphertext columns
+     * from the array so they are never handed to a view or an audit log by accident -
+     * the same discipline Customer::withDecryptedPii() and VisitReport apply to the
+     * same two fields elsewhere in this codebase.
+     *
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private static function withDecryptedPii(array $row): array
+    {
+        $row['aadhaar'] = Crypto::decrypt($row['aadhaar_enc'] ?? null);
+        $row['pan'] = Crypto::decrypt($row['pan_enc'] ?? null);
+        unset($row['aadhaar_enc'], $row['pan_enc']);
+
+        return $row;
     }
 
     /**
@@ -118,12 +138,18 @@ final class User
     }
 
     /**
-     * @param array<string,mixed> $data Plain values; mobile/password are encoded here.
+     * @param array<string,mixed> $data Plain values; mobile/password/Aadhaar/PAN are
+     *                                   encoded here. $data may still carry
+     *                                   'aadhaar'/'pan' plain keys, which are consumed
+     *                                   and removed rather than inserted as columns
+     *                                   that do not exist.
      */
     public static function create(array $data, string $plainPassword, ?string $plainMobile): int
     {
         $data['password_hash'] = password_hash($plainPassword, PASSWORD_BCRYPT);
         $data += self::mobileColumns($plainMobile);
+        $data += self::piiColumns($data);
+        unset($data['aadhaar'], $data['pan']);
 
         return Database::instance()->insert('users', $data);
     }
@@ -134,6 +160,9 @@ final class User
         if ($touchMobile) {
             $data += self::mobileColumns($plainMobile);
         }
+        $data += self::piiColumns($data);
+        unset($data['aadhaar'], $data['pan']);
+
         Database::instance()->update('users', $data, ['id' => $id]);
     }
 
@@ -204,6 +233,50 @@ final class User
             'mobile_hash'   => Crypto::searchHash($plainMobile),
             'mobile_masked' => Crypto::maskMobile($plainMobile),
         ];
+    }
+
+    /**
+     * Aadhaar/PAN, encrypted at rest the same way as the mobile number above and as
+     * a borrower's own Aadhaar (Customer::piiColumns()) - plaintext never reaches the
+     * `users` table, only a ciphertext, a keyed HMAC for exact-match lookup, and a
+     * masked value the form and the user list can show without decrypting anything.
+     *
+     * Reads 'aadhaar'/'pan' out of $data (the plain values the controller collected
+     * from the request) rather than taking them as separate parameters: create() and
+     * update() both already assemble one $data array for every other field, and a
+     * third pair of parameters here would be two more places for the caller to get
+     * the argument order wrong.
+     *
+     * @param array<string,mixed> $data
+     * @return array<string,string|null>
+     */
+    private static function piiColumns(array $data): array
+    {
+        $columns = [];
+
+        if (array_key_exists('aadhaar', $data)) {
+            $aadhaar = $data['aadhaar'] === null ? null : trim((string) $data['aadhaar']);
+            $columns += $aadhaar === null || $aadhaar === ''
+                ? ['aadhaar_enc' => null, 'aadhaar_hash' => null, 'aadhaar_masked' => null]
+                : [
+                    'aadhaar_enc'    => Crypto::encrypt($aadhaar),
+                    'aadhaar_hash'   => Crypto::searchHash($aadhaar),
+                    'aadhaar_masked' => Crypto::maskAadhaar($aadhaar),
+                ];
+        }
+
+        if (array_key_exists('pan', $data)) {
+            $pan = $data['pan'] === null ? null : trim((string) $data['pan']);
+            $columns += $pan === null || $pan === ''
+                ? ['pan_enc' => null, 'pan_hash' => null, 'pan_masked' => null]
+                : [
+                    'pan_enc'    => Crypto::encrypt($pan),
+                    'pan_hash'   => Crypto::searchHash($pan),
+                    'pan_masked' => Crypto::maskPan($pan),
+                ];
+        }
+
+        return $columns;
     }
 
     public static function countByRole(string $roleSlug, ?int $branchId = null): int

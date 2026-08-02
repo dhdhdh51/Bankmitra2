@@ -891,7 +891,7 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                         Account <span class="font-mono"><?= e($lead['loan_account_number']) ?></span>
                         &mdash; <?= e($lead['customer_name']) ?>
                     </p>
-                    <label class="form-label" for="assign-agent">BC/DC agent <span class="req">*</span></label>
+                    <label class="form-label" for="assign-agent">BC agent <span class="req">*</span></label>
                     <select class="form-select" id="assign-agent" name="agent_id_action" required>
                         <option value="">Select agent…</option>
                         <?php foreach ($agents as $agent): ?>

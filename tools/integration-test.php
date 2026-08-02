@@ -3229,7 +3229,7 @@ check('a lead in an agentless branch still imports',
 check('but is left unassigned rather than given to another branch\'s agent',
     LoanAccount::findByNumber('ORPH0001')['assigned_agent_id'] === null);
 check('and the file says why',
-    str_contains(implode(' ', array_column($orphanResult['errors'], 'message')), 'no active BC/DC agent'),
+    str_contains(implode(' ', array_column($orphanResult['errors'], 'message')), 'no active BC agent'),
     json_encode($orphanResult['errors']));
 
 // ---------------------------------------------------------------------------

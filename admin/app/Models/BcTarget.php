@@ -8,7 +8,7 @@ use App\Core\Database;
 use App\Core\Paginator;
 
 /**
- * Monthly targets for a BC/DC agent.
+ * Monthly targets for a BC agent.
  *
  * One row per agent per month, enforced by a unique key. That matters more than it
  * looks: `BcPerformanceService` measures every warning against the target row for
