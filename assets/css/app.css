@@ -470,20 +470,47 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 }
 .form-label .req { color: var(--lrms-danger); }
 
+/* background-COLOR, never the `background` shorthand.
+   ---------------------------------------------------------------------------
+   A `<select>` is painted by Bootstrap with its caret as a background IMAGE, plus a
+   background-repeat, -position and -size to place it once at the right-hand edge. The
+   shorthand resets all three of those to their initial values - `repeat`, `0% 0%`,
+   `auto` - and drops the image entirely.
+   So `background: <colour>` here did two different damages at once: in light mode the
+   dropdown arrow vanished, and in dark mode, where the rule below puts a recoloured
+   caret back, the arrow tiled across the whole control - seven chevrons in a row, the
+   first one sitting on top of the selected text.
+   Nothing on the page looked broken enough to notice in a desktop screenshot; it was a
+   phone screenshot of the borrower edit form that showed it. Keep these as
+   background-color, and if a caret is ever restated, restate its placement with it. */
 .form-control, .form-select {
-    background: var(--lrms-surface);
+    background-color: var(--lrms-surface);
     border: 1px solid var(--lrms-border-strong);
     border-radius: var(--lrms-radius-sm);
     color: var(--lrms-ink);
     font-size: .875rem;
     padding: .5rem .7rem;
 }
-.form-control:disabled, .form-control[readonly] { background: var(--lrms-bg); }
+.form-control:disabled, .form-control[readonly] { background-color: var(--lrms-bg); }
 .form-control::placeholder { color: var(--lrms-muted); opacity: .75; }
-[data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background: var(--lrms-surface-2); }
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select { background-color: var(--lrms-surface-2); }
 [data-theme="dark"] .form-select {
-    /* Bootstrap's inline SVG caret is dark; recolour it for dark mode. */
+    /* Bootstrap's inline SVG caret is dark; recolour it for dark mode. The three
+       placement properties are restated deliberately - see the note above. Without them
+       the caret repeats across the field. */
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23a6b1c0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right .7rem center;
+    background-size: 15px 11px;
+}
+/* And the same placement for light mode, because the padding above differs from
+   Bootstrap's and the caret should sit at our edge inset, not theirs. */
+.form-select {
+    background-repeat: no-repeat;
+    background-position: right .7rem center;
+    background-size: 15px 11px;
+    padding-right: 2rem;
 }
 
 .form-text { font-size: .75rem; color: var(--lrms-muted); }
@@ -841,9 +868,18 @@ a.lrms-stat:hover { border-color: var(--lrms-border-strong); box-shadow: var(--l
 }
 .lrms-bulkbar.show { display: flex; }
 .lrms-bulkbar .count { font-weight: 650; font-size: .875rem; }
+/* background-color, not the shorthand - the shorthand would drop the select's caret
+   and reset its placement. See the note on .form-select. The bar sits on navy, so the
+   caret is recoloured white here too. */
 .lrms-bulkbar .form-select, .lrms-bulkbar .form-control {
-    background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.3);
-    color: #fff; font-size: .8125rem; padding: .3rem .55rem; width: auto;
+    background-color: rgba(255,255,255,.12); border-color: rgba(255,255,255,.3);
+    color: #fff; font-size: .8125rem; padding: .3rem 1.7rem .3rem .55rem; width: auto;
+}
+.lrms-bulkbar .form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right .55rem center;
+    background-size: 13px 10px;
 }
 .lrms-bulkbar .form-select option { color: var(--lrms-ink); }
 .lrms-bulkbar .btn-light { background: #fff; color: var(--lrms-primary-dark); border-color: #fff; font-weight: 650; }
