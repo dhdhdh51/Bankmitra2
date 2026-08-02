@@ -250,6 +250,68 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
                 </div>
             </div>
 
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <div>
+                        <h2>Address Details</h2>
+                        <p>The agent's own residential address</p>
+                    </div>
+                </div>
+                <div class="lrms-card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="addr_line">Address</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_line') ?>"
+                                   id="addr_line" name="addr_line" value="<?= $value('addr_line') ?>" maxlength="500">
+                            <?= field_error($errors, 'addr_line') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_village">Village</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_village') ?>"
+                                   id="addr_village" name="addr_village" value="<?= $value('addr_village') ?>" maxlength="150">
+                            <?= field_error($errors, 'addr_village') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_block">Block</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_block') ?>"
+                                   id="addr_block" name="addr_block" value="<?= $value('addr_block') ?>" maxlength="150">
+                            <?= field_error($errors, 'addr_block') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_tehsil">Tehsil</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_tehsil') ?>"
+                                   id="addr_tehsil" name="addr_tehsil" value="<?= $value('addr_tehsil') ?>" maxlength="150">
+                            <?= field_error($errors, 'addr_tehsil') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_district">District</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_district') ?>"
+                                   id="addr_district" name="addr_district" value="<?= $value('addr_district') ?>" maxlength="100">
+                            <?= field_error($errors, 'addr_district') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_state">State</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_state') ?>"
+                                   id="addr_state" name="addr_state" value="<?= $value('addr_state') ?>" maxlength="100">
+                            <?= field_error($errors, 'addr_state') ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="addr_pin_code">Pincode</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'addr_pin_code') ?>"
+                                   id="addr_pin_code" name="addr_pin_code" value="<?= $value('addr_pin_code') ?>"
+                                   maxlength="6" inputmode="numeric" placeholder="6-digit PIN">
+                            <?= field_error($errors, 'addr_pin_code') ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <?php if (!$isEdit): ?>
                 <div class="lrms-card mb-3">
                     <div class="lrms-card-head">

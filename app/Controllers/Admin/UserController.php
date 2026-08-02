@@ -96,7 +96,7 @@ final class UserController extends Controller
             // New accounts must change the password given to them at first login.
             'must_change_password' => 1,
             'created_by'          => Auth::id(),
-        ] + $this->bcBasicDetails($request);
+        ] + $this->bcExtraDetails($request);
 
         $id = User::create($data, $password, $request->nullableStr('mobile'));
 
@@ -156,7 +156,7 @@ final class UserController extends Controller
             'bc_code'       => $request->nullableStr('bc_code'),
             'designation'   => $request->nullableStr('designation'),
             'status'        => $request->str('status') === 'suspended' ? 'suspended' : 'active',
-        ] + $this->bcBasicDetails($request);
+        ] + $this->bcExtraDetails($request);
 
         User::update($id, $data, $request->nullableStr('mobile'), true);
 
@@ -297,6 +297,16 @@ final class UserController extends Controller
             // normalised on the way in by Crypto::normalisePan(), so a shape-checking
             // regex here would reject a real card over formatting.
             'pan'           => 'nullable|max:20',
+
+            // Address Details: the BC's own residential address, separate from the
+            // reporting `district` above in BC Basic Details.
+            'addr_line'     => 'nullable|max:500',
+            'addr_village'  => 'nullable|max:150',
+            'addr_block'    => 'nullable|max:150',
+            'addr_tehsil'   => 'nullable|max:150',
+            'addr_district' => 'nullable|max:100',
+            'addr_state'    => 'nullable|max:100',
+            'addr_pin_code' => 'nullable|regex:/^\d{6}$/',
         ];
 
         // Password is optional on create (auto-generated) and on edit (unchanged).
@@ -318,12 +328,20 @@ final class UserController extends Controller
             'dra_name_id'   => 'DRA Name / ID',
             'aadhaar'       => 'Aadhaar Card No.',
             'pan'           => 'PAN Card No.',
+            'addr_line'     => 'Address',
+            'addr_village'  => 'Village',
+            'addr_block'    => 'Block',
+            'addr_tehsil'   => 'Tehsil',
+            'addr_district' => 'District',
+            'addr_state'    => 'State',
+            'addr_pin_code' => 'Pincode',
         ]);
     }
 
     /**
-     * The BC Basic Details block: everything about a BC agent's registered identity
-     * that is not their login (employee code) or their field-report code (bc_code).
+     * BC Basic Details and Address Details: everything about a BC agent's registered
+     * identity and home address that is not their login (employee code) or their
+     * field-report code (bc_code).
      *
      * Aadhaar and PAN are returned under their plain keys ('aadhaar', 'pan') rather
      * than encrypted here - User::create()/User::update() do the encryption via
@@ -332,7 +350,7 @@ final class UserController extends Controller
      *
      * @return array<string,mixed>
      */
-    private function bcBasicDetails(Request $request): array
+    private function bcExtraDetails(Request $request): array
     {
         return [
             'sp_cbc_name' => $request->nullableStr('sp_cbc_name'),
@@ -346,6 +364,16 @@ final class UserController extends Controller
             'dra_name_id' => $request->nullableStr('dra_name_id'),
             'aadhaar'     => $request->nullableStr('aadhaar'),
             'pan'         => $request->nullableStr('pan'),
+
+            // Address Details: the BC's own home address, asked for the same way -
+            // optional, and only shown by the form for the agent role.
+            'addr_line'     => $request->nullableStr('addr_line'),
+            'addr_village'  => $request->nullableStr('addr_village'),
+            'addr_block'    => $request->nullableStr('addr_block'),
+            'addr_tehsil'   => $request->nullableStr('addr_tehsil'),
+            'addr_district' => $request->nullableStr('addr_district'),
+            'addr_state'    => $request->nullableStr('addr_state'),
+            'addr_pin_code' => $request->nullableStr('addr_pin_code'),
         ];
     }
 
