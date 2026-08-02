@@ -1716,6 +1716,72 @@ check('and so are the settings tabs',
 check('the shared dialog is also hidden inline, for no stylesheet at all',
     str_contains($usersPage, 'id="resetModal"') && str_contains($usersPage, 'style="display:none"'));
 
+// ---------------------------------------------------------------------------
+// The `background` shorthand versus a control Bootstrap paints with an image.
+//
+// A <select> gets its dropdown caret from Bootstrap as a background IMAGE, placed once
+// at the right-hand edge by background-repeat / -position / -size. The `background`
+// shorthand resets all three to their initial values - `repeat`, `0% 0%`, `auto` - and
+// drops the image with them.
+//
+// `background: <colour>` on `.form-select` therefore did two different damages at once:
+// the arrow disappeared in light mode, and in dark mode - where a recoloured caret was
+// put back with background-image alone - it TILED, seven chevrons across the field with
+// the first one over the selected text. On a phone that is what the borrower edit form
+// actually looked like, and nothing in the HTML was wrong, so no amount of markup
+// checking would ever have caught it.
+//
+// Checked as an invariant on the stylesheet rather than as a screenshot, because it is
+// an invariant: these controls are image-painted, so they are background-color only.
+preg_match_all('/([^{}]+)\{([^}]*)\}/', $ownCss, $cssRules, PREG_SET_ORDER);
+
+$shorthandOnImagePainted = [];
+$caretWithoutPlacement = [];
+
+foreach ($cssRules as $rule) {
+    $selector = trim(preg_replace('/\s+/', ' ', $rule[1]) ?? '');
+    $body = $rule[2];
+
+    // Comments are matched by the crude rule regex above; they are not selectors.
+    if ($selector === '' || str_starts_with($selector, '/*')) {
+        continue;
+    }
+    if (preg_match('/form-select|form-check-input|form-switch/', $selector) !== 1) {
+        continue;
+    }
+
+    // `background:` but not `background-color:` / `background-image:` etc.
+    if (preg_match('/(?<![-\w])background\s*:/', $body) === 1) {
+        $shorthandOnImagePainted[] = $selector;
+    }
+
+    // A restated caret has to bring its placement with it, or it repeats.
+    if (str_contains($body, 'background-image')
+        && (!str_contains($body, 'background-repeat')
+            || !str_contains($body, 'background-position')
+            || !str_contains($body, 'background-size'))) {
+        $caretWithoutPlacement[] = $selector;
+    }
+}
+
+check(
+    'no rule uses the background shorthand on a control Bootstrap paints with an image',
+    $shorthandOnImagePainted === [],
+    implode(' | ', $shorthandOnImagePainted)
+);
+check(
+    'and any restated caret restates where it goes, so it cannot repeat',
+    $caretWithoutPlacement === [],
+    implode(' | ', $caretWithoutPlacement)
+);
+// Positive side: the panel places the caret itself rather than inheriting a placement
+// from a stylesheet it does not control, and leaves room for it.
+check('the select caret is placed once, at the right edge, with room for it',
+    preg_match('/\.form-select\s*\{[^}]*background-repeat:\s*no-repeat[^}]*background-position:\s*right[^}]*padding-right/s', $ownCss) === 1);
+// Dark mode needs its own caret because Bootstrap's is near-black on a near-black field.
+check('dark mode recolours the caret and keeps it in one place',
+    preg_match('/\[data-theme="dark"\]\s*\.form-select\s*\{[^}]*background-image[^}]*background-repeat:\s*no-repeat[^}]*background-position:\s*right/s', $ownCss) === 1);
+
 // And it still resets a password. One shared form that posts to the wrong person would be a
 // far worse bug than the one being fixed, so the action the row hands over is followed.
 preg_match('#data-reset-action="([^"]*/users/(\d+)/reset-password)"#', $usersPage, $resetTarget);
