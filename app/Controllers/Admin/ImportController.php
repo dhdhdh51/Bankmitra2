@@ -296,7 +296,7 @@ final class ImportController extends Controller
                     'Lead Template',
                     $headings,
                     $sample,
-                    'D2 Recovery Lead Import Template',
+                    'D2 Recovery Solutions & Services Lead Import Template',
                     'Only Loan Account Number and Customer Name are required. '
                     . 'You do not have to use this layout: upload your bank\'s own export and '
                     . 'the columns are detected. Branch is read from the file.'

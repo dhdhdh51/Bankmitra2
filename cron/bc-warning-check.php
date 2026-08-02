@@ -247,7 +247,7 @@ foreach ($agents as $agent) {
         date('d/m/Y', strtotime($date)),
         $levelLabels[$worst],
         implode("\n\n", $lines),
-        $bank !== '' ? $bank . ' · D2 Recovery' : 'D2 Recovery'
+        $bank !== '' ? $bank . ' · D2 Recovery Solutions & Services' : 'D2 Recovery Solutions & Services'
     );
 
     $sent = false;

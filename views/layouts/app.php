@@ -12,7 +12,7 @@
 use App\Core\Settings;
 use App\Core\Url;
 
-$appName = Settings::get('app_name', 'D2 Recovery') ?? 'D2 Recovery';
+$appName = Settings::get('app_name', 'D2 Recovery Solutions & Services') ?? 'D2 Recovery Solutions & Services';
 $bankName = Settings::get('bank_name', '');
 $currentPath = $currentPath ?? '/';
 $pageTitle = ($title ?? 'Dashboard') . ' · ' . $appName;

@@ -1284,7 +1284,7 @@ final class ReportService
         $columns = $report['columns'];
 
         $bank = (string) Settings::get('bank_name', '');
-        $footer = ($bank !== '' ? $bank . ' · ' : '') . 'D2 Recovery confidential - for internal recovery use only';
+        $footer = ($bank !== '' ? $bank . ' · ' : '') . 'D2 Recovery Solutions & Services confidential - for internal recovery use only';
 
         $pdf = new \App\Core\Pdf(
             (string) $report['title'],
@@ -1292,6 +1292,18 @@ final class ReportService
             (bool) ($report['landscape'] ?? false),
             $footer
         );
+
+        // Same masthead the field visit report uses, not the generic header band - every
+        // report this system exports is recognised by the same head, and the agency's
+        // own name belongs across the top of it rather than the bank's.
+        $organisation = trim((string) Settings::get('report_org_name', '')) !== ''
+            ? (string) Settings::get('report_org_name')
+            : 'D2 Recovery Solutions & Services';
+
+        $pdf->useRunningHeader($organisation . '  |  ' . (string) $report['title']);
+        $pdf->titleBlock($organisation, (string) $report['title'], array_filter([
+            (string) $report['subtitle'],
+        ]));
 
         // Summary strip above the table.
         if (!empty($report['summary'])) {

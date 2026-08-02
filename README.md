@@ -1,4 +1,4 @@
-# D2 Recovery — hosting package
+# D2 Recovery Solutions & Services — hosting package
 
 **Upload-ready build.** Everything in this branch goes directly into your web
 root. There is no build step, no Composer, and nothing to compile.
@@ -118,9 +118,9 @@ change it. Set it in **Settings → General → Application name**, or run once 
 phpMyAdmin:
 
 ```sql
-UPDATE `settings` SET `setting_value` = 'D2 Recovery'
+UPDATE `settings` SET `setting_value` = 'D2 Recovery Solutions & Services'
  WHERE `setting_key` IN ('app_name', 'smtp_from_name') AND `setting_value` = 'LRMS';
-UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery')
+UPDATE `settings` SET `setting_value` = REPLACE(`setting_value`, 'LRMS', 'D2 Recovery Solutions & Services')
  WHERE `setting_key` = 'sms_otp_template' AND `setting_value` LIKE '%LRMS%';
 ```
 

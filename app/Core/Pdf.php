@@ -1210,7 +1210,7 @@ final class Pdf
         }
 
         $bank = self::text((string) Settings::get('bank_name', ''));
-        $appName = self::text((string) Settings::get('app_name', 'D2 Recovery'));
+        $appName = self::text((string) Settings::get('app_name', 'D2 Recovery Solutions & Services'));
 
         // Thin brand rule across the top.
         $this->rect($this->marginX, $this->pageHeight - 26.0, $this->contentWidth(), 2.5, '#0b2a5b', true);
@@ -1280,7 +1280,7 @@ final class Pdf
 
         $left = $this->footerNote !== ''
             ? $this->footerNote
-            : 'D2 Recovery - Loan Recovery Management System';
+            : 'D2 Recovery Solutions & Services - Loan Recovery Management System';
 
         $this->textAt($left, $this->marginX, $footerY, 7.6, false, '#6b7280');
 
