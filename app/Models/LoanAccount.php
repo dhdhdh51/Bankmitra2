@@ -279,6 +279,15 @@ final class LoanAccount
             $params[] = $loanType;
         }
 
+        // Validated against the enum's own keys rather than passed straight through:
+        // an unrecognised value here must be ignored, not turned into a WHERE clause
+        // that matches nothing and makes a filtered list look like an empty one.
+        $facilityType = trim((string) ($filters['facility_type'] ?? ''));
+        if ($facilityType !== '' && array_key_exists($facilityType, self::FACILITIES)) {
+            $where[] = 'la.facility_type = ?';
+            $params[] = $facilityType;
+        }
+
         if (!empty($filters['npa_only'])) {
             $where[] = 'la.is_npa = 1';
         }
