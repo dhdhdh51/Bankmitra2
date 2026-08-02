@@ -269,6 +269,93 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- The agent's own photograph. Camera only: its whole job is to
+                 record that this agent stood at this door, and a gallery image
+                 cannot do that. -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <ImageView
+                        android:id="@+id/imageAgent"
+                        android:layout_width="@dimen/photo_thumb_size"
+                        android:layout_height="@dimen/photo_thumb_size"
+                        android:background="@drawable/bg_photo_slot"
+                        android:contentDescription="@string/visit_agent_photo"
+                        android:padding="24dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_image"
+                        app:tint="@color/lrms_muted" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/visit_agent_photo"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/visit_agent_photo_hint"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:id="@+id/textAgentSize"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="11sp"
+                            android:visibility="gone"
+                            tools:text="180 KB" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonAgentPhoto"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_take"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_camera" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonRemoveAgent"
+                                style="@style/Widget.Material3.Button.TextButton.Icon"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/photo_remove"
+                                android:textColor="@color/lrms_danger"
+                                android:textSize="12sp"
+                                android:visibility="gone"
+                                app:icon="@drawable/ic_delete"
+                                app:iconTint="@color/lrms_danger" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Other documents -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

@@ -80,6 +80,14 @@ data class VisitFormData(
     var customerPhoto: File? = null,
     var housePhoto: File? = null,
     var aadhaarPhoto: File? = null,
+    /**
+     * The agent's own photograph, taken at the door.
+     *
+     * Not the portrait on their user record: that one was uploaded once in a branch
+     * office and proves only that they have a face. This one carries the fix that says
+     * where they were standing, which is what a disputed visit actually turns on.
+     */
+    var agentPhoto: File? = null,
     var otherDocuments: MutableList<File> = mutableListOf(),
 
     // ---- Signatures --------------------------------------------------------
@@ -87,6 +95,27 @@ data class VisitFormData(
     var agentSignature: File? = null,
     var customerSignatureName: String = "",
     var agentSignatureName: String = "",
+
+    /**
+     * Where each pad was signed, packed as "lat,lng,accuracyOrBlank,capturedAt".
+     *
+     * A signature is the borrower agreeing to what the report says and the agent
+     * asserting they were there to collect it. "Signed at these coordinates" is what
+     * makes it more than a squiggle, and it is a different fact from where the report
+     * was later submitted - an agent can walk back to the road before pressing send.
+     */
+    var customerSignatureFix: String = "",
+    var agentSignatureFix: String = "",
+
+    /**
+     * Mirrors the server's `gps_source`: device, denied or unavailable.
+     *
+     * Sent even when there is no fix, because "the agent refused location recording"
+     * and "there was no signal in the courtyard" are different answers to a supervisor
+     * asking why a signed report has no position on it.
+     */
+    var customerSignatureGpsSource: String = "unavailable",
+    var agentSignatureGpsSource: String = "unavailable",
 
     // ---- KRM / OTS settlement (report_type = ots) ---------------------------
     var otsEligible: Boolean = false,
@@ -604,20 +633,66 @@ data class VisitFormData(
         }
 
         photoStamps.forEach { (slot, packed) ->
-            val parts = packed.split(',')
-            if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) {
-                return@forEach
-            }
+            val fix = unpackFix(packed) ?: return@forEach
 
             fields["${slot}_photo_gps_source"] = "camera"
-            fields["${slot}_photo_latitude"] = parts[0]
-            fields["${slot}_photo_longitude"] = parts[1]
-            if (parts.size > 2 && parts[2].isNotBlank()) {
-                fields["${slot}_photo_accuracy_m"] = parts[2]
-            }
+            fields["${slot}_photo_latitude"] = fix.latitude
+            fields["${slot}_photo_longitude"] = fix.longitude
+            fix.accuracyMetres?.let { fields["${slot}_photo_accuracy_m"] = it }
+            // The server records this in photos.captured_at, which held NULL for every
+            // photograph ever filed until it was sent. A printed report said where a
+            // photograph was taken but never when, so two photographs of the same door
+            // an hour apart were indistinguishable.
+            fix.capturedAt?.let { fields["${slot}_photo_captured_at"] = it }
+        }
+
+        // Signatures carry their own position, sent under their own names so the
+        // server never has to guess that a signature was signed wherever the report
+        // was submitted from.
+        listOf(
+            Triple("customer", customerSignatureFix, customerSignatureGpsSource),
+            Triple("agent", agentSignatureFix, agentSignatureGpsSource),
+        ).forEach { (type, packed, source) ->
+            fields["${type}_signature_gps_source"] = source
+
+            val fix = unpackFix(packed) ?: return@forEach
+            fields["${type}_signature_latitude"] = fix.latitude
+            fields["${type}_signature_longitude"] = fix.longitude
+            fix.accuracyMetres?.let { fields["${type}_signature_accuracy_m"] = it }
+            fix.capturedAt?.let { fields["${type}_signature_captured_at"] = it }
         }
 
         return fields
+    }
+
+    /** A fix unpacked from its wire string. */
+    private data class UnpackedFix(
+        val latitude: String,
+        val longitude: String,
+        val accuracyMetres: String?,
+        val capturedAt: String?,
+    )
+
+    /**
+     * Reads "lat,lng,accuracyOrBlank,capturedAt" back apart.
+     *
+     * Returns null unless both coordinates are present, so a half-filled stamp is
+     * dropped rather than sent as a position with a missing half. Tolerates a
+     * three-part string because that is what earlier builds packed, and a stamp
+     * without a capture time is still a usable position.
+     */
+    private fun unpackFix(packed: String): UnpackedFix? {
+        if (packed.isBlank()) return null
+
+        val parts = packed.split(',')
+        if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) return null
+
+        return UnpackedFix(
+            latitude = parts[0],
+            longitude = parts[1],
+            accuracyMetres = parts.getOrNull(2)?.takeIf { it.isNotBlank() },
+            capturedAt = parts.drop(3).joinToString(",").takeIf { it.isNotBlank() },
+        )
     }
 
     /** Typed photo files keyed by their API multipart field name. */
@@ -625,6 +700,7 @@ data class VisitFormData(
         customerPhoto?.let { put("customer_photo", it) }
         housePhoto?.let { put("house_photo", it) }
         aadhaarPhoto?.let { put("aadhaar_photo", it) }
+        agentPhoto?.let { put("agent_photo", it) }
         landPhoto?.let { put("land_photo", it) }
         passbookPhoto?.let { put("passbook_photo", it) }
         renewalFormPhoto?.let { put("renewal_form_photo", it) }

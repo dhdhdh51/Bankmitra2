@@ -369,16 +369,42 @@ foreach ($assigned as $index => $lead) {
         $payload['customer_photo_latitude'] = $payload['gps_latitude'];
         $payload['customer_photo_longitude'] = $payload['gps_longitude'];
         $payload['customer_photo_accuracy_m'] = $payload['gps_accuracy_m'];
+        $payload['customer_photo_captured_at'] = $payload['gps_captured_at'];
 
         // And a gallery-picked one, which must print as having no location rather
         // than quietly inheriting the visit's.
         $payload['house_photo_base64'] = demo_photo_base64($index + 100);
         $payload['house_photo_source'] = 'gallery';
 
+        // The agent's own photograph, taken at the door. This is the one that makes
+        // "the agent was standing here" a recorded fact rather than an assertion, so
+        // it has to exist in the demo data or the whole point of it goes unrendered.
+        $payload['agent_photo_base64'] = demo_photo_base64($index + 200);
+        $payload['agent_photo_source'] = 'camera';
+        $payload['agent_photo_gps_source'] = 'camera';
+        $payload['agent_photo_latitude'] = $payload['gps_latitude'];
+        $payload['agent_photo_longitude'] = $payload['gps_longitude'];
+        $payload['agent_photo_accuracy_m'] = $payload['gps_accuracy_m'];
+        $payload['agent_photo_captured_at'] = $payload['gps_captured_at'];
+
         $payload['customer_signature_base64'] = demo_signature_base64();
         $payload['customer_signature_name'] = (string) $lead['customer_name'];
         $payload['agent_signature_base64'] = demo_signature_base64();
         $payload['agent_signature_name'] = (string) $agentCtx['name'];
+
+        // Both signatures record where the pad was signed. Every fourth stamped visit
+        // deliberately leaves the agent's signature without a fix, so the "signed
+        // indoors, no signal" wording is exercised too rather than only the happy path.
+        foreach (['customer', 'agent'] as $signatureType) {
+            if ($signatureType === 'agent' && $index % 4 === 0) {
+                $payload['agent_signature_gps_source'] = 'unavailable';
+                continue;
+            }
+            $payload[$signatureType . '_signature_latitude'] = $payload['gps_latitude'];
+            $payload[$signatureType . '_signature_longitude'] = $payload['gps_longitude'];
+            $payload[$signatureType . '_signature_accuracy_m'] = $payload['gps_accuracy_m'];
+            $payload[$signatureType . '_signature_captured_at'] = $payload['gps_captured_at'];
+        }
     }
 
     if ($makesPromise) {

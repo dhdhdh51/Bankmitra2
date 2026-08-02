@@ -28,6 +28,7 @@ spl_autoload_register(static function (string $class) use ($root): void {
 
 use App\Core\ColumnDetector;
 use App\Core\Config;
+use App\Core\Geo;
 use App\Core\Crypto;
 use App\Core\Jwt;
 use App\Core\Pdf;
@@ -759,6 +760,106 @@ check('hasNext', $p2->hasNext());
 check('hasPrevious', $p2->hasPrevious());
 check('meta shape', $p2->meta()['total'] === 137 && $p2->meta()['current_page'] === 3);
 check('window has gaps', in_array('...', $p2->window(1), true), json_encode($p2->window(1)));
+
+// ---------------------------------------------------------------------------
+section('Geo: how a recorded position is put into words');
+// ---------------------------------------------------------------------------
+
+// This wording used to be private to VisitController::pdf(), so the panel could not
+// reuse it and showed nothing at all - every photograph on screen was a bare
+// thumbnail while the printed copy of the same photograph carried its coordinates.
+check('coordinates print to six decimals',
+    Geo::coordinates(26.9124, 75.7873) === '26.912400, 75.787300',
+    Geo::coordinates(26.9124, 75.7873));
+check('a string coordinate is formatted the same way',
+    Geo::coordinates('26.9124', '75.7873') === '26.912400, 75.787300');
+check('a negative coordinate keeps its sign',
+    Geo::coordinates(-33.8688, 151.2093) === '-33.868800, 151.209300',
+    Geo::coordinates(-33.8688, 151.2093));
+
+check('accuracy reads as a tolerance', Geo::accuracy(12) === '+/-12 m', Geo::accuracy(12));
+check('a missing accuracy prints nothing at all', Geo::accuracy(null) === '');
+check('and so does an empty one', Geo::accuracy('') === '');
+
+// A 2 km fix reads exactly like an 8 m one unless something says otherwise, and only
+// one of them places somebody at a particular door.
+check('8 m places a doorstep', Geo::isPrecise(8));
+check('50 m is the limit and still counts', Geo::isPrecise(50));
+check('51 m does not', !Geo::isPrecise(51));
+check('a cell-tower fix does not', !Geo::isPrecise(2000));
+check('an unreported accuracy is not precise', !Geo::isPrecise(null));
+check('and neither is a zero', !Geo::isPrecise(0));
+
+// The central rule: a missing coordinate is never silently missing.
+check('a gallery pick says it was never going to have a position',
+    Geo::caption(null, null, null, null, 'gallery') === 'Chosen from the gallery - no location recorded.',
+    Geo::caption(null, null, null, null, 'gallery'));
+check('a camera photograph with no fix says that instead',
+    Geo::caption(null, null, null, null, 'camera') === 'Camera photograph, no location fix.');
+check('a refusal is reported as a refusal',
+    Geo::caption(null, null, null, null, 'denied') === 'Location recording was declined.');
+check('and "no signal" stays a different sentence',
+    Geo::caption(null, null, null, null, 'unavailable') === 'No location fix was available.');
+check('an unknown source falls back to the caller\'s wording',
+    Geo::caption(null, null, null, null, 'unknown', 'Nothing recorded.') === 'Nothing recorded.');
+check('a time is appended to an absent position',
+    Geo::caption(null, null, null, '02 Aug 2026', 'camera')
+        === 'Camera photograph, no location fix. 02 Aug 2026');
+
+check('a full caption carries position, accuracy and time',
+    Geo::caption(26.9124, 75.7873, 12, '02 Aug 2026, 10:31 AM')
+        === '26.912400, 75.787300 (+/-12 m) - 02 Aug 2026, 10:31 AM',
+    Geo::caption(26.9124, 75.7873, 12, '02 Aug 2026, 10:31 AM'));
+check('accuracy is omitted when the device did not report it',
+    Geo::caption(26.9124, 75.7873, null, null) === '26.912400, 75.787300');
+
+// An empty string is what a form post produces for a blank number, and it must not
+// be read as a coordinate of zero.
+check('a blank latitude is absent, not zero',
+    Geo::caption('', '', null, null, 'camera') === 'Camera photograph, no location fix.');
+
+check('a photo row is captioned from its own columns',
+    Geo::photo(['gps_latitude' => 26.9124, 'gps_longitude' => 75.7873,
+                'gps_accuracy_m' => 9, 'captured_at' => null, 'capture_source' => 'camera'])
+        === '26.912400, 75.787300 (+/-9 m)');
+check('a gallery photo row never borrows a position',
+    Geo::photo(['gps_latitude' => null, 'gps_longitude' => null, 'gps_accuracy_m' => null,
+                'captured_at' => null, 'capture_source' => 'gallery'])
+        === 'Chosen from the gallery - no location recorded.');
+check('a signature with no fix says so in its own words',
+    Geo::signature(['gps_latitude' => null, 'gps_longitude' => null,
+                    'gps_accuracy_m' => null, 'captured_at' => null, 'gps_source' => 'unavailable'])
+        === 'No location fix was available.');
+check('an approval away from a fix is reported',
+    Geo::approval(['approval_gps_source' => 'denied', 'approval_gps_latitude' => null])
+        === 'Location declined by the approver');
+check('an approval with a fix prints it',
+    Geo::approval(['approval_gps_source' => 'device', 'approval_gps_latitude' => 19.0728,
+                   'approval_gps_longitude' => 72.8826, 'approval_gps_accuracy_m' => 14])
+        === '19.072800, 72.882600 (+/-14 m)');
+check('a visit that declined location is not confused with one that had no signal',
+    Geo::visit(['gps_source' => 'denied', 'gps_latitude' => null])
+        !== Geo::visit(['gps_source' => 'unavailable', 'gps_latitude' => null]));
+
+check('has() is false for a half-recorded position',
+    !Geo::has(['gps_latitude' => 26.9124, 'gps_longitude' => null]));
+check('has() is true only with both', Geo::has(['gps_latitude' => 1.0, 'gps_longitude' => 2.0]));
+
+// The map link is a plain search URL: nothing about a borrower's location reaches a
+// third party until a human clicks it.
+$mapUrl = Geo::mapUrl(26.9124, 75.7873);
+check('the map link carries the coordinates', str_contains($mapUrl, '26.912400%2C75.787300'), $mapUrl);
+check('and needs no API key', !str_contains($mapUrl, 'key='));
+
+// Distance is what answers "was this photograph taken anywhere near the village it
+// claims", so it has to be right rather than approximately right.
+check('a point is zero metres from itself',
+    Geo::distanceMetres(26.9124, 75.7873, 26.9124, 75.7873) === 0);
+$oneMinuteNorth = Geo::distanceMetres(26.9124, 75.7873, 26.9124 + (1 / 60), 75.7873);
+check('one minute of latitude is about 1852 m',
+    $oneMinuteNorth !== null && abs($oneMinuteNorth - 1852) < 10, (string) $oneMinuteNorth);
+check('a missing coordinate gives no distance',
+    Geo::distanceMetres(26.9124, null, 26.9124, 75.7873) === null);
 
 // ---------------------------------------------------------------------------
 echo "\n" . str_repeat('-', 52) . "\n";

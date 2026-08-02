@@ -57,10 +57,24 @@ never processes a payment** — repayment always happens through the bank's own 
   disputed, absent, …), amount promised, promise date and free-text remarks.
 - Photo capture (borrower/house/document) and on-device signature pad.
 - **Photographs are geo-stamped and carry their source.** Each photo stores its own
-  coordinates, accuracy and whether it came from the camera or the gallery, and the
-  printed report captions every photograph with that. The source is sent by the app,
-  never inferred from whether a fix was obtained — a camera photo taken inside a house
-  has no fix, and recording that as a gallery pick is an accusation on a recovery file.
+  coordinates, accuracy, capture time and whether it came from the camera or the gallery,
+  and both the printed report *and the panel* caption every photograph with that. The
+  source is sent by the app, never inferred from whether a fix was obtained — a camera
+  photo taken inside a house has no fix, and recording that as a gallery pick is an
+  accusation on a recovery file. On screen a gallery pick is badged differently from a
+  camera capture, and a fix too coarse to place a particular house (worse than 50 m —
+  roughly a cell-tower triangulation) is marked as such, because "26.912400, 75.787300"
+  reads identically whether it is accurate to 8 metres or to a district.
+- **The agent's own photograph and signature record where the agent was standing.** A
+  camera-only slot takes the agent's photograph at the door — camera-only because the
+  slot's entire purpose is to record presence, and an image chosen from the gallery was
+  taken at an unknown time in an unknown place. Both signatures record the position the
+  pad was signed at, which is a different fact from where the report was submitted: a
+  borrower signs in their courtyard and the agent may well press send from the road.
+  The portrait held on the agent's user record is used only when no doorstep photograph
+  exists, and then it is labelled "photo on file" and explicitly captioned as an office
+  portrait — never stamped with the visit's coordinates, which would have the document
+  assert that the picture was taken at the borrower's house.
 - Submissions are **multipart and idempotent** — a `client_uuid` makes a retry on a
   flaky rural connection return the original report instead of creating a duplicate.
 - **Visit history is append-only.** The `visit_history` table is written by trigger-free
@@ -235,7 +249,7 @@ admin/                      web root for the panel and the API
     config.sample.php       copy to config.php and fill in (config.php is git-ignored)
   app/
     bootstrap.php           autoloader + error handler + container wiring
-    Core/                   24 framework classes, all hand-written, zero dependencies
+    Core/                   25 framework classes, all hand-written, zero dependencies
     Models/                 11 data models (Branch, User, Customer, LoanAccount, CustomField, …)
     Services/               10 services (Import, Visit, Assignment, Report, Dashboard, Backup, …)
     Controllers/Admin/      20 panel controllers + shared base
@@ -390,7 +404,8 @@ The printed report carries:
   distinguishing "the device had no fix" from "the agent declined location",
 - **Field photographs**, each captioned with its own coordinates and whether it came from
   the camera or the gallery,
-- **Signatures** — the borrower's, next to the **agent's photograph and signature**,
+- **Signatures** — the borrower's, next to the **agent's photograph and signature**, each
+  captioned with the position it was signed at (or with why there isn't one),
 - **Approval** — status, approver, their position, remarks, photograph and signature,
 - any custom fields marked to print,
 - and, in the footer, the number of times the report was corrected after filing.
@@ -508,20 +523,20 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 141 files (a file count, not assertions) |
-| Core unit tests | `php tools/selftest-core.php` | **191** — includes column detection against real bank-export shapes and the PDF image encoder |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
+| Core unit tests | `php tools/selftest-core.php` | **225** — includes column detection against real bank-export shapes, the PDF image encoder and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **24** — 35 tables, 57 FKs, seeds, bcrypt login hash |
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **14** — the migration in `DEPLOYMENT.md` is extracted from the document and run on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **656** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, and user-added fields |
+| Integration | `sh tools/integration-test.sh` | **675** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, and the agent's own geo-tagged photograph and signature |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **252** panel + **221** API |
-| Android | `sh tools/verify-android.sh` | **217** unit tests + both APKs + adaptive-icon safe zone |
+| Panel smoke | `sh tools/smoke-panel.sh` | **266** panel + **221** API |
+| Android | `sh tools/verify-android.sh` | **220** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
 | Brand previews | `python3 tools/render-brand-preview.py` | composites the real shipped artwork into `docs/previews/` for review |
 | **App/API contract** | `:app:testDebugUnitTest` (`ApiContractTest`) | **20** — real server JSON through the real DTOs (a subset of the Android row) |
 | **Tracking promises** | `:app:testDebugUnitTest` (`LocationTrackingTest`) | **14** — consent gate, foreground-only, no background permission, reachable from Settings (a subset of the Android row) |
-| **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **12** — a camera capture may carry coordinates, a gallery pick may not, and the capture source is sent rather than guessed (a subset of the Android row) |
+| **Photo geo-stamping** | `:app:testDebugUnitTest` (`PhotoGeoStampTest`) | **15** — a camera capture may carry coordinates, a gallery pick may not, the capture source and time are sent rather than guessed, and the agent's own photograph is camera-only (a subset of the Android row) |
 | **SSS entry** | `:app:testDebugUnitTest` (`SssEntryTest`) | **11** — four typed schemes, and no field anywhere for typing a visit count (a subset of the Android row) |
 | **Reminder arithmetic** | `:app:testDebugUnitTest` (`ReportReminderPlanTest`) | **21** — real behavioural tests: never in the past, never on a Sunday, a lead time that cannot move past the deadline (a subset of the Android row) |
 | **Reminder wiring** | `:app:testDebugUnitTest` (`ReportReminderWiringTest`) | **14** — survives reboot, cannot stop rescheduling, no exact-alarm permission (a subset of the Android row) |
@@ -533,7 +548,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**1,741 assertions total** — the sum of the bold counts above, counting the seven
+**1,811 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.5 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).
@@ -881,6 +896,50 @@ Kept here because they are the reason the tests exist:
     connecting to nothing, reported only as `!! schema import failed` with no hint why.
     The temporary server is started with networking disabled, so all six scripts now
     probe over TCP, which is the one signal it cannot produce.
+61. **`photos.captured_at` was never written, for every photograph ever filed.** The
+    column has existed since the first release carrying the comment "device clock at
+    capture", and the caption builder has always tried to print it — so every row held
+    `NULL`, a printed report stated where a photograph was taken but never when, and two
+    photographs of the same door an hour apart were indistinguishable. The app now sends
+    the capture time packed alongside the coordinates. It is recorded *independently* of
+    the fix, because the two are independent: a camera photograph taken inside a house
+    has no coordinates and a perfectly good capture time, and the first version of this
+    fix threw the time away whenever the position was missing. It is never defaulted to
+    "now" either — an upload can arrive hours later from a phone that was out of signal
+    all afternoon, and writing the arrival time into a column labelled "captured at"
+    turns a missing fact into a wrong one.
+62. **The panel showed none of the evidence the printed report carried.** Every
+    photograph on screen was a bare thumbnail with a type label, while the PDF of the
+    same photograph printed its coordinates, its accuracy and whether it came from the
+    camera. A camera capture and a gallery pick — the entire reason the column exists —
+    were pixel-identical on screen. The screen is what somebody looks at before
+    approving a report, so it was the weaker of the two documents. The wording had been
+    private to `VisitController::pdf()`, which is *why* the panel showed nothing: it was
+    not reusable. It now lives in `App\Core\Geo` and both renderings go through it, so
+    they cannot disagree. The same card also claimed "Not captured" for an agent
+    signature the PDF was printing from the agent's record.
+63. **Twenty-two test assertions that crashed the JVM instead of failing.** These tests
+    read the app's own source and assert on its shape, using
+    `Regex("""marker(.|\n)*?other marker""")`. That pattern is catastrophic
+    backtracking: on a *non-match* it explores an exponential number of paths and dies
+    with `StackOverflowError` from inside `java.util.regex`. Which is exactly what
+    happened the moment a guard clause moved into a helper function — the suite reported
+    `StackOverflowError at Pattern.java:4962` with no indication of which behaviour had
+    changed or where. All twenty-two now use `[\s\S]*?`, a character class, which cannot
+    build those backtracking frames. A test that crashes is far worse than one that
+    fails, because a failure names the thing that broke.
+64. **A printed report showed an office portrait where a reader would assume a doorstep
+    photograph.** The agent's photograph on a visit report was *always*
+    `users.photo_path` — a portrait uploaded once in a branch office — printed next to
+    the borrower's signature under the label "BC / DC Agent" with no indication of when
+    or where it was taken. Nothing was technically false, and that is the problem: on a
+    document that geo-captions every other photograph, an uncaptioned photograph of the
+    agent reads as one more piece of field evidence. There is now a camera-only slot for
+    the agent's own photograph taken at the door, captioned with its own fix; the office
+    portrait is used only as a fallback, labelled "photo on file", and is explicitly
+    captioned "Office portrait - not taken at this visit". It is never stamped with the
+    visit's coordinates, which would have the document assert that this picture was
+    taken at the borrower's house.
 59. **The documented upgrade SQL did not run.** The migration published in
     `DEPLOYMENT.md` for this release referenced a `users.signature_data` column that does
     not exist, and inserted permissions using `group_name` / `description` when the table

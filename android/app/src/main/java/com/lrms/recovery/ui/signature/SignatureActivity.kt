@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.snackbar.Snackbar
 import com.lrms.recovery.R
 import com.lrms.recovery.databinding.ActivitySignatureBinding
+import com.lrms.recovery.location.GeoStamp
 import com.lrms.recovery.util.FileStore
 
 /**
@@ -21,7 +22,12 @@ import com.lrms.recovery.util.FileStore
  * signature on the bank's records. Rotation is locked in the manifest so an
  * accidental turn cannot discard strokes mid-signature.
  *
- * Returns the saved PNG path through [EXTRA_RESULT_PATH].
+ * Returns the saved PNG path through [EXTRA_RESULT_PATH], and where it was signed
+ * through [EXTRA_RESULT_GPS] / [EXTRA_RESULT_GPS_SOURCE]. The position is read at the
+ * moment Save is pressed rather than taken from the visit's own fix: a borrower signs
+ * in their courtyard and the agent may well submit the report from the road, and a
+ * document that put the submission point under the signature would be asserting
+ * something nobody checked.
  */
 class SignatureActivity : AppCompatActivity() {
 
@@ -93,6 +99,11 @@ class SignatureActivity : AppCompatActivity() {
             return
         }
 
+        // Read the fix before writing the PNG, for the same reason the camera path
+        // reads it before compressing: the position of interest is where the pad was
+        // signed, not where the phone was a second and a half later.
+        val located = GeoStamp.current(this)
+
         val file = FileStore.writeSignaturePng(this, signatureType, bitmap)
         bitmap.recycle()
 
@@ -106,6 +117,21 @@ class SignatureActivity : AppCompatActivity() {
             Intent().apply {
                 putExtra(EXTRA_RESULT_PATH, file.absolutePath)
                 putExtra(EXTRA_TYPE, signatureType)
+                // Always sent, including "denied" and "unavailable", so the server can
+                // tell a refusal from a courtyard with no signal - and both of those
+                // from an older app that never collected a position at all.
+                putExtra(EXTRA_RESULT_GPS_SOURCE, located.wire)
+                located.fix?.let { fix ->
+                    putExtra(
+                        EXTRA_RESULT_GPS,
+                        listOf(
+                            fix.latitude.toString(),
+                            fix.longitude.toString(),
+                            fix.accuracyMetres?.toString() ?: "",
+                            fix.capturedAt,
+                        ).joinToString(","),
+                    )
+                }
             },
         )
         finish()
@@ -136,6 +162,12 @@ class SignatureActivity : AppCompatActivity() {
         const val EXTRA_TYPE = "signature_type"
         const val EXTRA_SIGNER_NAME = "signer_name"
         const val EXTRA_RESULT_PATH = "result_path"
+
+        /** "lat,lng,accuracyOrBlank,capturedAt" - absent when there was no fix. */
+        const val EXTRA_RESULT_GPS = "result_gps"
+
+        /** device / denied / unavailable, always present. */
+        const val EXTRA_RESULT_GPS_SOURCE = "result_gps_source"
 
         fun intent(context: Context, type: String, signerName: String? = null): Intent =
             Intent(context, SignatureActivity::class.java).apply {

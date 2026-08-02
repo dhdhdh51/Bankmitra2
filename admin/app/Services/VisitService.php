@@ -40,6 +40,11 @@ final class VisitService
         'land_photo'         => 'land',
         'passbook_photo'     => 'passbook',
         'renewal_form_photo' => 'renewal_form',
+        // The agent's own photograph, taken at the door. Not the portrait on their
+        // user record: that one was uploaded in a branch office and proves only that
+        // they have a face. This one carries the fix that says where they were
+        // standing, which is the thing a disputed visit turns on.
+        'agent_photo'        => 'agent',
     ];
 
     /** The three kinds of field report an agent can file. */
@@ -372,11 +377,12 @@ final class VisitService
                 // gets null rather than the visit's coordinates.
                 $point = self::photoPoint($input, $photoType, $userId);
                 $source = self::photoSource($input, $photoType);
+                $capturedAt = self::photoCapturedAt($input, $photoType);
 
                 if (Uploader::hasUpload($field)) {
                     foreach (Uploader::normalizeMultiple($field) as $file) {
                         $stored = Uploader::store($file, 'photos', $imageMime, $maxPhoto);
-                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source);
+                        self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source, $capturedAt);
                         $counts['photos']++;
                     }
                     continue;
@@ -385,7 +391,7 @@ final class VisitService
                 $base64 = trim((string) ($input[$field . '_base64'] ?? ''));
                 if ($base64 !== '') {
                     $stored = Uploader::storeBase64($base64, 'photos', $maxPhoto);
-                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source);
+                    self::insertPhoto($visitId, $loanAccountId, $photoType, $stored, $userId, $point, $source, $capturedAt);
                     $counts['photos']++;
                 }
             } catch (\Throwable $e) {
@@ -441,9 +447,9 @@ final class VisitService
                         'file_path'       => $stored['path'],
                         'signed_name'     => self::str($input[$type . '_signature_name'] ?? null, 150),
                         'file_size'       => $stored['size'],
-                        'captured_at'     => date('Y-m-d H:i:s'),
+                        'captured_at'     => self::deviceClock($input[$type . '_signature_captured_at'] ?? null),
                         'uploaded_by'     => $userId,
-                    ]);
+                    ] + self::signaturePoint($input, $type, $userId));
                     $counts['signatures']++;
                 }
             } catch (\Throwable $e) {
@@ -465,7 +471,8 @@ final class VisitService
         array $stored,
         int $userId,
         ?array $point = null,
-        string $source = 'unknown'
+        string $source = 'unknown',
+        ?string $capturedAt = null
     ): void {
         Database::instance()->insert('photos', [
             'visit_report_id' => $visitId,
@@ -480,6 +487,19 @@ final class VisitService
             'gps_latitude'    => $point['latitude'] ?? null,
             'gps_longitude'   => $point['longitude'] ?? null,
             'gps_accuracy_m'  => $point['accuracy'] ?? null,
+            // Also never written until now. The column has always carried the comment
+            // "device clock at capture", the caption has always tried to print it, and
+            // every row held NULL - so a printed photograph said where it was taken but
+            // never when, and two photographs of the same door an hour apart were
+            // indistinguishable.
+            //
+            // Recorded independently of the fix, because the two are independent: a
+            // camera photograph taken inside a house has no coordinates and a perfectly
+            // good capture time, and dropping the time along with the position would
+            // throw away the half we do know. Null when the app sent nothing, rather
+            // than the moment the upload reached the server - that is an arrival time
+            // dressed up as a capture time.
+            'captured_at'     => $capturedAt,
             // Recorded, finally. This column existed with a comment explaining that
             // capture_source = 'camera' is what makes a coordinate mean anything -
             // and nothing ever wrote it, so every photograph in the database claimed
@@ -631,6 +651,95 @@ final class VisitService
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
             'accuracy' => $accuracy === null || $accuracy === '' ? null : max(0, (int) $accuracy),
+        ];
+    }
+
+    /**
+     * When the photograph was taken, per the device, or null if it did not say.
+     *
+     * Deliberately not defaulted to "now": the upload can arrive hours after the
+     * capture from a phone that was out of signal all afternoon, and writing the
+     * arrival time into a column labelled "device clock at capture" would be a
+     * fabricated fact rather than a missing one.
+     *
+     * @param array<string,mixed> $input
+     */
+    private static function photoCapturedAt(array $input, string $slot): ?string
+    {
+        return self::deviceClock($input[$slot . '_photo_captured_at'] ?? null, null);
+    }
+
+    /**
+     * A device timestamp, clamped to the server's clock.
+     *
+     * The same rule geo() applies to the visit's own stamp: a phone whose clock runs
+     * ahead would file a photograph timestamped next week, and it would sort ahead of
+     * everything real forever. A clock running behind is left alone - a phone that was
+     * off overnight is ordinary, and rewriting it would erase a true capture time.
+     *
+     * @param string|null $fallback What to return when nothing usable was sent.
+     */
+    private static function deviceClock(mixed $value, ?string $fallback = 'now'): ?string
+    {
+        $default = $fallback === 'now' ? date('Y-m-d H:i:s') : $fallback;
+
+        $raw = self::str($value, 19);
+        if ($raw === null) {
+            return $default;
+        }
+
+        $parsed = strtotime($raw);
+
+        return $parsed !== false && $parsed <= time() + 300
+            ? date('Y-m-d H:i:s', $parsed)
+            : $default;
+    }
+
+    /**
+     * Where a signature was signed.
+     *
+     * A signature has no camera, so there is no "was this from the gallery" question
+     * to answer - the pad was either signed with a fix available or it was not. The
+     * three-way source is kept anyway, because "the agent declined location
+     * recording" and "there was no signal in the borrower's courtyard" are different
+     * answers to a supervisor asking why a signed report has no position on it.
+     *
+     * Same server-side gates as every other coordinate: consent is checked here, not
+     * trusted from the client, and an implausible fix is discarded rather than stored.
+     *
+     * @param  array<string,mixed> $input
+     * @return array{gps_latitude:float|null,gps_longitude:float|null,gps_accuracy_m:int|null,gps_source:string}
+     */
+    private static function signaturePoint(array $input, string $type, int $agentId): array
+    {
+        $blank = ['gps_latitude' => null, 'gps_longitude' => null, 'gps_accuracy_m' => null];
+
+        if ((string) ($input[$type . '_signature_gps_source'] ?? '') === 'denied') {
+            return $blank + ['gps_source' => 'denied'];
+        }
+
+        $latitude = self::nullableAmount($input[$type . '_signature_latitude'] ?? null);
+        $longitude = self::nullableAmount($input[$type . '_signature_longitude'] ?? null);
+
+        if ($latitude === null || $longitude === null) {
+            return $blank + ['gps_source' => 'unavailable'];
+        }
+
+        if (!TrackingService::hasConsented($agentId)) {
+            return $blank + ['gps_source' => 'denied'];
+        }
+
+        if (!TrackingService::plausible((float) $latitude, (float) $longitude)) {
+            return $blank + ['gps_source' => 'unavailable'];
+        }
+
+        $accuracy = $input[$type . '_signature_accuracy_m'] ?? null;
+
+        return [
+            'gps_latitude'   => (float) $latitude,
+            'gps_longitude'  => (float) $longitude,
+            'gps_accuracy_m' => $accuracy === null || $accuracy === '' ? null : max(0, (int) $accuracy),
+            'gps_source'     => 'device',
         ];
     }
 

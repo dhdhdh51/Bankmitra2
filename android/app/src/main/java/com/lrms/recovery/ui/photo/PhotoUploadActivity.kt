@@ -22,8 +22,10 @@ import java.io.File
 /**
  * Photo and document capture for a visit report.
  *
- * Three typed slots (customer, house, Aadhaar copy) plus a list of other
- * documents. Each slot takes a camera capture or a gallery pick.
+ * Four typed slots (borrower, house, Aadhaar copy, and the agent's own photograph)
+ * plus a list of other documents. Most slots take a camera capture or a gallery pick;
+ * THE AGENT'S OWN PHOTOGRAPH IS CAMERA-ONLY, because its only job is to record that
+ * this agent stood at this door and a gallery image cannot do that.
  *
  * Captures are downscaled and EXIF-rotated before returning: a raw 12 MP JPEG is
  * what makes a report submission time out on a rural connection, and an
@@ -43,6 +45,7 @@ class PhotoUploadActivity : BaseActivity() {
     private var customerPhoto: File? = null
     private var housePhoto: File? = null
     private var aadhaarPhoto: File? = null
+    private var agentPhoto: File? = null
     private val otherDocuments = mutableListOf<File>()
 
     /** Which slot the in-flight camera or gallery request belongs to. */
@@ -66,7 +69,7 @@ class PhotoUploadActivity : BaseActivity() {
      */
     private val sources = mutableMapOf<Slot, String>()
 
-    private enum class Slot { CUSTOMER, HOUSE, AADHAAR, OTHER }
+    private enum class Slot { CUSTOMER, HOUSE, AADHAAR, AGENT, OTHER }
 
     // ---- Launchers ---------------------------------------------------------
 
@@ -104,6 +107,16 @@ class PhotoUploadActivity : BaseActivity() {
         val imported = FileStore.importFromUri(this, uri, pendingSlot.name.lowercase())
         if (imported == null) {
             showMessage(R.string.error_unknown, binding.root)
+            return@registerForActivityResult
+        }
+
+        // Belt and braces. chooseSource() never offers the picker for the agent's own
+        // photograph, but that is one screen away from being changed by somebody adding
+        // a menu item, and the failure would be silent: a gallery image sitting in the
+        // slot the printed report labels "BC / DC Agent (at the visit)".
+        if (pendingSlot == Slot.AGENT) {
+            imported.delete()
+            showMessage(R.string.photo_agent_camera_only, binding.root)
             return@registerForActivityResult
         }
 
@@ -151,16 +164,19 @@ class PhotoUploadActivity : BaseActivity() {
         intent.getStringExtra(EXTRA_CUSTOMER_PHOTO)?.let { customerPhoto = File(it) }
         intent.getStringExtra(EXTRA_HOUSE_PHOTO)?.let { housePhoto = File(it) }
         intent.getStringExtra(EXTRA_AADHAAR_PHOTO)?.let { aadhaarPhoto = File(it) }
+        intent.getStringExtra(EXTRA_AGENT_PHOTO)?.let { agentPhoto = File(it) }
         intent.getStringArrayListExtra(EXTRA_OTHER_DOCS)?.forEach { otherDocuments.add(File(it)) }
 
         binding.buttonCustomerPhoto.setOnClickListener { chooseSource(Slot.CUSTOMER) }
         binding.buttonHousePhoto.setOnClickListener { chooseSource(Slot.HOUSE) }
         binding.buttonAadhaarPhoto.setOnClickListener { chooseSource(Slot.AADHAAR) }
+        binding.buttonAgentPhoto.setOnClickListener { chooseSource(Slot.AGENT) }
         binding.buttonOtherDocs.setOnClickListener { chooseSource(Slot.OTHER) }
 
         binding.buttonRemoveCustomer.setOnClickListener { remove(Slot.CUSTOMER) }
         binding.buttonRemoveHouse.setOnClickListener { remove(Slot.HOUSE) }
         binding.buttonRemoveAadhaar.setOnClickListener { remove(Slot.AADHAAR) }
+        binding.buttonRemoveAgent.setOnClickListener { remove(Slot.AGENT) }
         binding.buttonClearOthers.setOnClickListener { remove(Slot.OTHER) }
 
         binding.buttonDone.setOnClickListener { finishWithResult() }
@@ -170,6 +186,19 @@ class PhotoUploadActivity : BaseActivity() {
 
     private fun chooseSource(slot: Slot) {
         pendingSlot = slot
+
+        // The agent's own photograph is camera-only, and no dialog is offered.
+        //
+        // Its entire purpose is to record that this agent was standing at this door.
+        // An image chosen from the gallery cannot carry that - it was taken at an
+        // unknown time in an unknown place - so offering the picker would invite a
+        // photograph that looks like proof of presence and is not. The other slots
+        // keep the choice because a borrower's passbook or an Aadhaar copy is often
+        // legitimately already on the phone.
+        if (slot == Slot.AGENT) {
+            requestCamera()
+            return
+        }
 
         AlertDialog.Builder(this)
             .setTitle(labelFor(slot))
@@ -231,6 +260,7 @@ class PhotoUploadActivity : BaseActivity() {
             Slot.CUSTOMER -> customerPhoto = file
             Slot.HOUSE -> housePhoto = file
             Slot.AADHAAR -> aadhaarPhoto = file
+            Slot.AGENT -> agentPhoto = file
             Slot.OTHER -> otherDocuments.add(file)
         }
         render()
@@ -244,6 +274,7 @@ class PhotoUploadActivity : BaseActivity() {
             Slot.CUSTOMER -> { customerPhoto?.delete(); customerPhoto = null }
             Slot.HOUSE -> { housePhoto?.delete(); housePhoto = null }
             Slot.AADHAAR -> { aadhaarPhoto?.delete(); aadhaarPhoto = null }
+            Slot.AGENT -> { agentPhoto?.delete(); agentPhoto = null }
             Slot.OTHER -> {
                 otherDocuments.forEach { it.delete() }
                 otherDocuments.clear()
@@ -256,6 +287,7 @@ class PhotoUploadActivity : BaseActivity() {
         bindSlot(customerPhoto, binding.imageCustomer, binding.buttonRemoveCustomer, binding.textCustomerSize)
         bindSlot(housePhoto, binding.imageHouse, binding.buttonRemoveHouse, binding.textHouseSize)
         bindSlot(aadhaarPhoto, binding.imageAadhaar, binding.buttonRemoveAadhaar, binding.textAadhaarSize)
+        bindSlot(agentPhoto, binding.imageAgent, binding.buttonRemoveAgent, binding.textAgentSize)
 
         binding.textOtherCount.text = if (otherDocuments.isEmpty()) {
             getString(R.string.visit_signature_not_captured)
@@ -286,6 +318,7 @@ class PhotoUploadActivity : BaseActivity() {
         Slot.CUSTOMER -> RESULT_CUSTOMER_SOURCE
         Slot.HOUSE -> RESULT_HOUSE_SOURCE
         Slot.AADHAAR -> RESULT_AADHAAR_SOURCE
+        Slot.AGENT -> RESULT_AGENT_SOURCE
         Slot.OTHER -> "result_other_source"
     }
 
@@ -293,6 +326,7 @@ class PhotoUploadActivity : BaseActivity() {
         Slot.CUSTOMER -> RESULT_CUSTOMER_GPS
         Slot.HOUSE -> RESULT_HOUSE_GPS
         Slot.AADHAAR -> RESULT_AADHAAR_GPS
+        Slot.AGENT -> RESULT_AGENT_GPS
         // Other documents are a list with no per-item slot, so they are not stamped.
         // Inventing a single position for a bundle of unrelated scans would be worse
         // than leaving them unstamped.
@@ -304,6 +338,7 @@ class PhotoUploadActivity : BaseActivity() {
             Slot.CUSTOMER -> R.string.visit_customer_photo
             Slot.HOUSE -> R.string.visit_house_photo
             Slot.AADHAAR -> R.string.visit_aadhaar_photo
+            Slot.AGENT -> R.string.visit_agent_photo
             Slot.OTHER -> R.string.visit_other_documents
         },
     )
@@ -315,6 +350,7 @@ class PhotoUploadActivity : BaseActivity() {
                 customerPhoto?.let { putExtra(RESULT_CUSTOMER_PHOTO, it.absolutePath) }
                 housePhoto?.let { putExtra(RESULT_HOUSE_PHOTO, it.absolutePath) }
                 aadhaarPhoto?.let { putExtra(RESULT_AADHAAR_PHOTO, it.absolutePath) }
+                agentPhoto?.let { putExtra(RESULT_AGENT_PHOTO, it.absolutePath) }
                 putStringArrayListExtra(
                     RESULT_OTHER_DOCS,
                     ArrayList(otherDocuments.map { it.absolutePath }),
@@ -331,6 +367,11 @@ class PhotoUploadActivity : BaseActivity() {
                             fix.latitude.toString(),
                             fix.longitude.toString(),
                             fix.accuracyMetres?.toString() ?: "",
+                            // The capture time travels with the position. Without it the
+                            // server wrote NULL into photos.captured_at for every
+                            // photograph ever filed, so a printed report said where a
+                            // photograph was taken and never when.
+                            fix.capturedAt,
                         ).joinToString(","),
                     )
                 }
@@ -343,11 +384,13 @@ class PhotoUploadActivity : BaseActivity() {
         private const val EXTRA_CUSTOMER_PHOTO = "extra_customer_photo"
         private const val EXTRA_HOUSE_PHOTO = "extra_house_photo"
         private const val EXTRA_AADHAAR_PHOTO = "extra_aadhaar_photo"
+        private const val EXTRA_AGENT_PHOTO = "extra_agent_photo"
         private const val EXTRA_OTHER_DOCS = "extra_other_docs"
 
         const val RESULT_CUSTOMER_PHOTO = "result_customer_photo"
         const val RESULT_HOUSE_PHOTO = "result_house_photo"
         const val RESULT_AADHAAR_PHOTO = "result_aadhaar_photo"
+        const val RESULT_AGENT_PHOTO = "result_agent_photo"
         const val RESULT_OTHER_DOCS = "result_other_docs"
 
         const val SOURCE_CAMERA = "camera"
@@ -356,21 +399,25 @@ class PhotoUploadActivity : BaseActivity() {
         const val RESULT_CUSTOMER_SOURCE = "result_customer_source"
         const val RESULT_HOUSE_SOURCE = "result_house_source"
         const val RESULT_AADHAAR_SOURCE = "result_aadhaar_source"
+        const val RESULT_AGENT_SOURCE = "result_agent_source"
 
         const val RESULT_CUSTOMER_GPS = "result_customer_gps"
         const val RESULT_HOUSE_GPS = "result_house_gps"
         const val RESULT_AADHAAR_GPS = "result_aadhaar_gps"
+        const val RESULT_AGENT_GPS = "result_agent_gps"
 
         fun intent(
             context: Context,
             customerPhoto: String? = null,
             housePhoto: String? = null,
             aadhaarPhoto: String? = null,
+            agentPhoto: String? = null,
             otherDocs: List<String> = emptyList(),
         ): Intent = Intent(context, PhotoUploadActivity::class.java).apply {
             putExtra(EXTRA_CUSTOMER_PHOTO, customerPhoto)
             putExtra(EXTRA_HOUSE_PHOTO, housePhoto)
             putExtra(EXTRA_AADHAAR_PHOTO, aadhaarPhoto)
+            putExtra(EXTRA_AGENT_PHOTO, agentPhoto)
             putStringArrayListExtra(EXTRA_OTHER_DOCS, ArrayList(otherDocs))
         }
     }

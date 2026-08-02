@@ -62,9 +62,24 @@ class VisitReportActivity : BaseActivity() {
         if (path.isNullOrBlank()) return@registerForActivityResult
         val file = File(path)
 
+        // The position the pad was signed at, and the source even when there is no
+        // position - "declined" and "no signal in the courtyard" are different answers
+        // to a supervisor asking why a signed report carries no location.
+        val packedFix = result.data?.getStringExtra(SignatureActivity.EXTRA_RESULT_GPS).orEmpty()
+        val gpsSource = result.data?.getStringExtra(SignatureActivity.EXTRA_RESULT_GPS_SOURCE)
+            ?: "unavailable"
+
         when (type) {
-            SignatureActivity.TYPE_AGENT -> form.agentSignature = file
-            else -> form.customerSignature = file
+            SignatureActivity.TYPE_AGENT -> {
+                form.agentSignature = file
+                form.agentSignatureFix = packedFix
+                form.agentSignatureGpsSource = gpsSource
+            }
+            else -> {
+                form.customerSignature = file
+                form.customerSignatureFix = packedFix
+                form.customerSignatureGpsSource = gpsSource
+            }
         }
 
         renderSignatureState()
@@ -86,6 +101,9 @@ class VisitReportActivity : BaseActivity() {
         data.getStringExtra(PhotoUploadActivity.RESULT_AADHAAR_PHOTO)?.let {
             form.aadhaarPhoto = File(it)
         }
+        data.getStringExtra(PhotoUploadActivity.RESULT_AGENT_PHOTO)?.let {
+            form.agentPhoto = File(it)
+        }
         data.getStringArrayListExtra(PhotoUploadActivity.RESULT_OTHER_DOCS)?.let { paths ->
             form.otherDocuments = paths.map { File(it) }.toMutableList()
         }
@@ -99,6 +117,7 @@ class VisitReportActivity : BaseActivity() {
             "customer" to PhotoUploadActivity.RESULT_CUSTOMER_GPS,
             "house" to PhotoUploadActivity.RESULT_HOUSE_GPS,
             "aadhaar" to PhotoUploadActivity.RESULT_AADHAAR_GPS,
+            "agent" to PhotoUploadActivity.RESULT_AGENT_GPS,
         ).forEach { (slot, key) ->
             data.getStringExtra(key)?.let { form.photoStamps[slot] = it }
         }
@@ -111,6 +130,7 @@ class VisitReportActivity : BaseActivity() {
             "customer" to PhotoUploadActivity.RESULT_CUSTOMER_SOURCE,
             "house" to PhotoUploadActivity.RESULT_HOUSE_SOURCE,
             "aadhaar" to PhotoUploadActivity.RESULT_AADHAAR_SOURCE,
+            "agent" to PhotoUploadActivity.RESULT_AGENT_SOURCE,
         ).forEach { (slot, key) ->
             data.getStringExtra(key)?.let { form.photoSources[slot] = it }
         }
@@ -744,6 +764,7 @@ class VisitReportActivity : BaseActivity() {
                     customerPhoto = form.customerPhoto?.absolutePath,
                     housePhoto = form.housePhoto?.absolutePath,
                     aadhaarPhoto = form.aadhaarPhoto?.absolutePath,
+                    agentPhoto = form.agentPhoto?.absolutePath,
                     otherDocs = form.otherDocuments.map { it.absolutePath },
                 ),
             )

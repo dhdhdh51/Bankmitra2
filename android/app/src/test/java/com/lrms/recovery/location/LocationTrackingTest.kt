@@ -89,11 +89,11 @@ class LocationTrackingTest {
         // it, recording could run with nothing on screen to say so.
         assertTrue(
             "the service must declare foregroundServiceType=location",
-            Regex("""DutyLocationService(.|\n)*?foregroundServiceType="location"""").containsMatchIn(clean),
+            Regex("""DutyLocationService[\s\S]*?foregroundServiceType="location"""").containsMatchIn(clean),
         )
         assertTrue(
             "the service must not be exported",
-            Regex("""DutyLocationService(.|\n)*?android:exported="false"""").containsMatchIn(clean),
+            Regex("""DutyLocationService[\s\S]*?android:exported="false"""").containsMatchIn(clean),
         )
     }
 
@@ -149,7 +149,7 @@ class LocationTrackingTest {
         // accept, and would survive a withdrawal.
         assertTrue(
             "a 412 from the server must stop the session",
-            Regex("""412(.|\n)*?stopSelf\(\)""").containsMatchIn(service),
+            Regex("""412[\s\S]*?stopSelf\(\)""").containsMatchIn(service),
         )
     }
 
@@ -163,11 +163,11 @@ class LocationTrackingTest {
         // somebody who has not yet been told what the answer will be used for.
         assertTrue(
             "the duty button must check acknowledgement before requesting permission",
-            Regex("""acknowledged != true(.|\n)*?return""").containsMatchIn(activity),
+            Regex("""acknowledged != true[\s\S]*?return""").containsMatchIn(activity),
         )
         assertTrue(
             "withdrawing must stop the service immediately",
-            Regex("""withdrawLocationConsent(.|\n)*?DutyLocationService\.stop""").containsMatchIn(activity),
+            Regex("""withdrawLocationConsent[\s\S]*?DutyLocationService\.stop""").containsMatchIn(activity),
         )
         assertTrue(
             "the notice text must come from the server, not be hardcoded in the app",
@@ -175,7 +175,7 @@ class LocationTrackingTest {
         )
         assertTrue(
             "a changed notice version must force a re-read",
-            Regex("""409(.|\n)*?load\(\)""").containsMatchIn(activity),
+            Regex("""409[\s\S]*?load\(\)""").containsMatchIn(activity),
         )
     }
 
@@ -216,7 +216,7 @@ class LocationTrackingTest {
         )
         assertTrue(
             "the flag must be cleared in onDestroy, which every exit path reaches",
-            Regex("""onDestroy\(\)(.|\n)*?active = false""").containsMatchIn(code(service)),
+            Regex("""onDestroy\(\)[\s\S]*?active = false""").containsMatchIn(code(service)),
         )
 
         for (screen in listOf(
@@ -232,7 +232,7 @@ class LocationTrackingTest {
             // it still showing a Stop button for a session that already ended.
             assertTrue(
                 "$screen must refresh duty state in onResume",
-                Regex("""onResume\(\)(.|\n)*?isRunning""").containsMatchIn(text),
+                Regex("""onResume\(\)[\s\S]*?isRunning""").containsMatchIn(text),
             )
         }
     }

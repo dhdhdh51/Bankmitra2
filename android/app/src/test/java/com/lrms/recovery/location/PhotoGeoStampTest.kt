@@ -33,6 +33,10 @@ class PhotoGeoStampTest {
         "src/main/java/com/lrms/recovery/location/GeoStamp.kt",
     ).readText()
 
+    private val signaturePad = File(
+        "src/main/java/com/lrms/recovery/ui/signature/SignatureActivity.kt",
+    ).readText()
+
     private fun code(source: String): String = source
         .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
         .replace(Regex("""//[^\n]*"""), "")
@@ -42,7 +46,7 @@ class PhotoGeoStampTest {
         val clean = code(photoActivity)
         assertTrue(
             "the camera result must read a location",
-            Regex("""cameraLauncher(.|\n)*?GeoStamp\.current""").containsMatchIn(clean),
+            Regex("""cameraLauncher[\s\S]*?GeoStamp\.current""").containsMatchIn(clean),
         )
         assertTrue(
             "the fix must be stored against the slot being filled",
@@ -55,7 +59,7 @@ class PhotoGeoStampTest {
         val clean = code(photoActivity)
 
         // The gallery branch must not read a location...
-        val galleryBlock = Regex("""galleryLauncher = registerForActivityResult((.|\n)*?)\n    }""")
+        val galleryBlock = Regex("""galleryLauncher = registerForActivityResult([\s\S]*?)\n    }""")
             .find(clean)?.groupValues?.get(1) ?: error("gallery launcher not found")
 
         assertFalse(
@@ -73,7 +77,7 @@ class PhotoGeoStampTest {
     fun `removing a photo removes its coordinates`() {
         assertTrue(
             "remove() must drop the stamp, or a deleted photo's position survives it",
-            Regex("""fun remove\(slot: Slot\)(.|\n)*?stamps\.remove\(slot\)""")
+            Regex("""fun remove\(slot: Slot\)[\s\S]*?stamps\.remove\(slot\)""")
                 .containsMatchIn(code(photoActivity)),
         )
     }
@@ -94,7 +98,7 @@ class PhotoGeoStampTest {
         // agent who walked to the next house with the form still on screen.
         assertTrue(
             "the fix must be taken in the submit path",
-            Regex("""GeoStamp\.current\((.|\n)*?form\.gpsSource""").containsMatchIn(code(visitActivity)),
+            Regex("""GeoStamp\.current\([\s\S]*?form\.gpsSource""").containsMatchIn(code(visitActivity)),
         )
     }
 
@@ -111,11 +115,11 @@ class PhotoGeoStampTest {
         // question, and a supervisor cannot tell which conversation to have.
         assertTrue(
             "missing permission must report DENIED",
-            Regex("""hasPermission\(context\)(.|\n)*?Source\.DENIED""").containsMatchIn(clean),
+            Regex("""hasPermission\(context\)[\s\S]*?Source\.DENIED""").containsMatchIn(clean),
         )
         assertTrue(
             "a missing provider must report UNAVAILABLE",
-            Regex("""LOCATION_SERVICE(.|\n)*?Source\.UNAVAILABLE""").containsMatchIn(clean),
+            Regex("""LOCATION_SERVICE[\s\S]*?Source\.UNAVAILABLE""").containsMatchIn(clean),
         )
     }
 
@@ -126,7 +130,7 @@ class PhotoGeoStampTest {
         // the same fictional location - and it would look like real data.
         assertTrue(
             "GeoStamp must reject a null-island fix",
-            Regex("""abs\(best\.latitude\)(.|\n)*?Source\.UNAVAILABLE""").containsMatchIn(code(geoStamp)),
+            Regex("""abs\(best\.latitude\)[\s\S]*?Source\.UNAVAILABLE""").containsMatchIn(code(geoStamp)),
         )
     }
 
@@ -159,7 +163,7 @@ class PhotoGeoStampTest {
         // Coordinates only when there are coordinates.
         assertTrue(
             "coordinates must be gated on a device fix",
-            Regex("""gpsSource == "device"(.|\n)*?gps_latitude""").containsMatchIn(code(formData)),
+            Regex("""gpsSource == "device"[\s\S]*?gps_latitude""").containsMatchIn(code(formData)),
         )
     }
 
@@ -207,7 +211,79 @@ class PhotoGeoStampTest {
         )
         assertTrue(
             "a malformed stamp must be skipped rather than sent half-complete",
-            Regex("""parts\.size < 2(.|\n)*?return@forEach""").containsMatchIn(clean),
+            Regex("""parts\.size < 2[\s\S]*?return null""").containsMatchIn(clean),
+        )
+        assertTrue(
+            "and the caller must drop the slot when the stamp cannot be read",
+            clean.contains("unpackFix(packed) ?: return@forEach"),
+        )
+    }
+
+    @Test
+    fun `a photograph sends when it was taken, not just where`() {
+        val clean = code(formData)
+
+        // photos.captured_at held NULL for every photograph ever filed because nothing
+        // sent it, so a printed report said where a photograph was taken and never
+        // when - and two photographs of the same door an hour apart were identical.
+        assertTrue(
+            "the capture time must be sent alongside the coordinates",
+            clean.contains("_photo_captured_at\"] = it"),
+        )
+        assertTrue(
+            "the stamp packs the capture time as its fourth part",
+            code(photoActivity).contains("fix.capturedAt"),
+        )
+    }
+
+    @Test
+    fun `a signature records where it was signed`() {
+        val clean = code(formData)
+
+        for (field in listOf(
+            "_signature_latitude", "_signature_longitude",
+            "_signature_accuracy_m", "_signature_captured_at",
+        )) {
+            assertTrue("a signature must send $field", clean.contains(field))
+        }
+
+        // Sent even with no fix: "declined" and "no signal in the courtyard" are
+        // different answers to a supervisor asking why a signed report has no position.
+        assertTrue(
+            "the signature source must be sent unconditionally",
+            clean.contains("_signature_gps_source\"] = source"),
+        )
+
+        val pad = code(signaturePad)
+        assertTrue(
+            "the pad must read a fix when Save is pressed",
+            Regex("""GeoStamp\.current\(this\)[\s\S]*?writeSignaturePng""").containsMatchIn(pad),
+        )
+        assertTrue(
+            "and return the source even when there is no fix",
+            pad.contains("EXTRA_RESULT_GPS_SOURCE, located.wire"),
+        )
+    }
+
+    @Test
+    fun `the agent's own photograph cannot come from the gallery`() {
+        val clean = code(photoActivity)
+
+        // Its only job is to record that this agent stood at this door. A gallery image
+        // was taken at an unknown time in an unknown place, so offering the picker
+        // would invite something that looks like proof of presence and is not.
+        assertTrue(
+            "the agent slot must skip the source dialog and go straight to the camera",
+            Regex("""slot == Slot\.AGENT\)[\s\S]*?requestCamera\(\)""").containsMatchIn(clean),
+        )
+        assertTrue(
+            "and the gallery result must refuse the agent slot outright",
+            Regex("""pendingSlot == Slot\.AGENT\)[\s\S]*?imported\.delete\(\)""")
+                .containsMatchIn(clean),
+        )
+        assertTrue(
+            "the agent photograph is sent as its own typed slot",
+            code(formData).contains("""put("agent_photo", it)"""),
         )
     }
 }

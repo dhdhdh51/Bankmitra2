@@ -54,7 +54,7 @@ class SssEntryTest {
         )
         assertTrue(
             "the row must open SssEntryActivity",
-            Regex("""rowSss\.setOnClickListener(.|\n)*?SssEntryActivity""")
+            Regex("""rowSss\.setOnClickListener[\s\S]*?SssEntryActivity""")
                 .containsMatchIn(code(accountFragment)),
         )
     }
@@ -65,7 +65,7 @@ class SssEntryTest {
         assertTrue("the activity must be declared", clean.contains(".ui.sss.SssEntryActivity"))
         assertTrue(
             "it must not be exported",
-            Regex("""SssEntryActivity(.|\n)*?android:exported="false"""").containsMatchIn(clean),
+            Regex("""SssEntryActivity[\s\S]*?android:exported="false"""").containsMatchIn(clean),
         )
     }
 
@@ -152,7 +152,7 @@ class SssEntryTest {
         )
         assertTrue(
             "the save button must be hidden on a read-only day",
-            Regex("""buttonSave\.visibility(.|\n)*?editable""").containsMatchIn(code(activity)),
+            Regex("""buttonSave\.visibility[\s\S]*?editable""").containsMatchIn(code(activity)),
         )
         assertTrue(
             "and the reason must be shown",
@@ -185,7 +185,7 @@ class SssEntryTest {
     @Test
     fun `the screen reloads after saving rather than trusting what was typed`() {
         // Matched inside save() rather than across the file: an alternation like
-        // (.|\n)*? over a few hundred lines backtracks itself into a StackOverflow,
+        // [\s\S]*? over a few hundred lines backtracks itself into a StackOverflow,
         // which is a test failing for a reason that has nothing to do with the code.
         val saveBody = code(activity).substringAfter("private fun save()", "")
         assertTrue("save() not found", saveBody.isNotEmpty())

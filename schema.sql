@@ -759,7 +759,13 @@ CREATE TABLE `photos` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `visit_report_id` BIGINT UNSIGNED DEFAULT NULL,
   `loan_account_id` BIGINT UNSIGNED NOT NULL,
-  `photo_type`      ENUM('customer','house','land','aadhaar','passbook','renewal_form','other') NOT NULL DEFAULT 'other',
+  -- 'agent' is the agent's own photograph, taken at the door. It lives here rather
+  -- than in a column on visit_reports so it inherits everything a photograph
+  -- already has: its own fix, its own capture_source, branch-scoped media
+  -- authorisation and a place in the galleries. users.photo_path is a different
+  -- thing entirely - a portrait uploaded once in the branch office, which is why it
+  -- must never be captioned with the visit's coordinates.
+  `photo_type`      ENUM('customer','house','land','aadhaar','passbook','renewal_form','agent','other') NOT NULL DEFAULT 'other',
   `file_path`       VARCHAR(500) NOT NULL COMMENT 'relative to uploads root',
   `original_name`   VARCHAR(255) DEFAULT NULL,
   `mime_type`       VARCHAR(100) DEFAULT NULL,
@@ -819,6 +825,19 @@ CREATE TABLE `signatures` (
   `signed_name`     VARCHAR(150) DEFAULT NULL,
   `file_size`       INT UNSIGNED DEFAULT NULL,
   `captured_at`     DATETIME     DEFAULT NULL,
+
+  -- Where the pad was signed. A signature is the borrower agreeing to what the
+  -- report says and the agent asserting they were there to collect it, so "signed
+  -- at these coordinates" is the part that makes it more than a squiggle. Same
+  -- three rules as every other coordinate here: no consent means no point, an
+  -- implausible fix is discarded, and 'device' vs 'denied' vs 'unavailable' stay
+  -- distinct because "the agent refused" and "there was no signal indoors" are
+  -- different statements about the same missing latitude.
+  `gps_latitude`    DECIMAL(10,7) DEFAULT NULL,
+  `gps_longitude`   DECIMAL(10,7) DEFAULT NULL,
+  `gps_accuracy_m`  SMALLINT UNSIGNED DEFAULT NULL,
+  `gps_source`      ENUM('device','unavailable','denied') NOT NULL DEFAULT 'unavailable',
+
   `uploaded_by`     INT UNSIGNED NOT NULL,
   `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

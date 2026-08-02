@@ -159,7 +159,7 @@ class SplashBrandingTest {
         assertTrue("must show progress", layout.contains("CircularProgressIndicator"))
         assertTrue(
             "the slow-network hint must start hidden",
-            Regex("""splash_status(.|\n)*?android:visibility="invisible"""").containsMatchIn(layout),
+            Regex("""splash_status[\s\S]*?android:visibility="invisible"""").containsMatchIn(layout),
         )
     }
 

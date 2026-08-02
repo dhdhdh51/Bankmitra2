@@ -397,10 +397,70 @@ if ($pdfWithMedia !== null) {
         str_contains($pdfWithMedia, 'has not been modified')
         || str_contains($pdfWithMedia, 'every change is retained'));
 
+    // The agent's own photograph, taken at the door, carries its own fix. The office
+    // portrait on their user record must never be captioned with the visit's
+    // coordinates - the document would be asserting the picture was taken here.
+    // Searched without the brackets: a PDF content stream escapes "(" and ")" as
+    // "\(" and "\)", so the literal label never appears verbatim in the bytes.
+    check('the agent photograph taken at the visit is labelled as such',
+        str_contains($pdfWithMedia, 'at the visit'));
+    check('an office portrait is never presented as taken at the visit',
+        !str_contains($pdfWithMedia, 'photo on file')
+        || str_contains($pdfWithMedia, 'not taken at this visit'));
+
+    // A signature says where the pad was signed, and says so when it does not.
+    check('a signature records where it was signed',
+        preg_match('/\d{2}\.\d{6}, \d{2}\.\d{6}/', $pdfWithMedia) === 1);
+
     $pdfFile = sys_get_temp_dir() . '/lrms_visit_pdf_' . bin2hex(random_bytes(4)) . '.pdf';
     file_put_contents($pdfFile, $pdfWithMedia);
     check('the PDF with images is well formed', filesize($pdfFile) > 4000, (string) filesize($pdfFile));
     @unlink($pdfFile);
+}
+
+// ---------------------------------------------------------------------------
+// The panel has to show the same evidence the PDF prints.
+//
+// It did not: every photograph on screen was a bare thumbnail with a type label,
+// while the printed copy of the same photograph carried coordinates, accuracy and
+// whether it came from the camera. The screen is what somebody looks at before
+// approving a report, so it was the weaker of the two documents.
+$panelWithMedia = null;
+foreach ($mediaCandidates as $candidateId) {
+    $candidate = request($base . '/visits/' . $candidateId);
+    if ($candidate['status'] === 200 && str_contains($candidate['body'], 'geo-tagged')) {
+        $panelWithMedia = $candidate['body'];
+        break;
+    }
+}
+
+check('a visit page with geo-tagged photographs was found', $panelWithMedia !== null,
+    'no seeded visit rendered a geo-tagged photograph in the panel');
+
+if ($panelWithMedia !== null) {
+    check('the panel states how many photographs carry a position',
+        preg_match('/\d+ geo-tagged/', $panelWithMedia) === 1);
+    check('the panel shows a photograph\'s coordinates',
+        preg_match('/\d{2}\.\d{6}, \d{2}\.\d{6}/', $panelWithMedia) === 1);
+    check('the coordinates link out to a map',
+        str_contains($panelWithMedia, 'google.com/maps/search/'));
+    check('a camera capture is marked as one', str_contains($panelWithMedia, '>Camera<'));
+    check('a gallery pick is marked differently, not left to look identical',
+        str_contains($panelWithMedia, '>Gallery<'));
+    check('the gallery badge explains why it is weaker evidence',
+        str_contains($panelWithMedia, 'could have been taken anywhere'));
+    check('the accuracy is shown, not just the coordinates',
+        preg_match('/\+\/-\d+ m/', $panelWithMedia) === 1);
+    check('the agent photograph appears in the panel too',
+        str_contains($panelWithMedia, 'BC / DC Agent'));
+    check('a signature reports where it was signed',
+        str_contains($panelWithMedia, 'Borrower signature')
+        && !str_contains($panelWithMedia, 'No location recorded at signing.</span>'
+            . '</div></div><div class="mb-3"><div class="text-muted mb-1"'));
+    // The panel used to say "Not captured" for a report whose PDF showed a signature.
+    check('the panel does not claim a signature is missing when one is on file',
+        !str_contains($panelWithMedia, 'Not captured')
+        || !str_contains($panelWithMedia, 'Agent Signature (on file)'));
 }
 
 // ---------------------------------------------------------------------------

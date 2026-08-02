@@ -2402,6 +2402,160 @@ check('a visit-report field is a third namespace',
     \App\Models\CustomField::valuesFor('visit_report', $reportId) === []);
 
 // ---------------------------------------------------------------------------
+section('The agent\'s own photograph and signature, and where they were taken');
+
+// Consent first: every coordinate in the system is gated on it server-side, so a test
+// that skipped this would prove the gate works and nothing else.
+\App\Services\TrackingService::recordConsent($agent1Id, '127.0.0.1', 'itest');
+
+$pixel = base64_encode((string) file_get_contents(__DIR__ . '/fixtures/pixel.png'));
+$geoVisit = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_date'      => date('Y-m-d'),
+    'visit_time'      => '11:45',
+    'customer_met'    => '1',
+    'client_uuid'     => 'geo00001-1111-2222-3333-444444444444',
+
+    'gps_source'      => 'device',
+    'gps_latitude'    => '26.9124000',
+    'gps_longitude'   => '75.7873000',
+    'gps_accuracy_m'  => '11',
+
+    // The agent's own photograph, taken at the door.
+    'agent_photo_base64'      => $pixel,
+    'agent_photo_source'      => 'camera',
+    'agent_photo_gps_source'  => 'camera',
+    'agent_photo_latitude'    => '26.9125000',
+    'agent_photo_longitude'   => '75.7874000',
+    'agent_photo_accuracy_m'  => '7',
+    'agent_photo_captured_at' => date('Y-m-d H:i:s', time() - 600),
+
+    // A gallery pick, which must never inherit a position.
+    'house_photo_base64' => $pixel,
+    'house_photo_source' => 'gallery',
+
+    // Both signatures, one with a fix and one without.
+    'customer_signature_base64'      => $pixel,
+    'customer_signature_name'        => 'Ramesh Kumar Yadav',
+    'customer_signature_latitude'    => '26.9126000',
+    'customer_signature_longitude'   => '75.7875000',
+    'customer_signature_accuracy_m'  => '9',
+    'customer_signature_captured_at' => date('Y-m-d H:i:s', time() - 300),
+
+    'agent_signature_base64'     => $pixel,
+    'agent_signature_gps_source' => 'unavailable',
+], $agentCtx);
+
+$geoVisitId = (int) $geoVisit['visit_id'];
+$geoPhotos = [];
+foreach (VisitReport::photos($geoVisitId) as $row) {
+    $geoPhotos[(string) $row['photo_type']] = $row;
+}
+
+check('the agent photograph is stored as its own type', isset($geoPhotos['agent']),
+    implode(',', array_keys($geoPhotos)));
+check('it carries its own fix, not the visit\'s',
+    abs((float) ($geoPhotos['agent']['gps_latitude'] ?? 0) - 26.9125) < 0.00001,
+    (string) ($geoPhotos['agent']['gps_latitude'] ?? 'null'));
+check('and its own accuracy', (int) ($geoPhotos['agent']['gps_accuracy_m'] ?? 0) === 7);
+check('and is recorded as a camera capture',
+    (string) ($geoPhotos['agent']['capture_source'] ?? '') === 'camera');
+
+// captured_at held NULL for every photograph ever filed because nothing wrote it.
+check('the capture time is finally recorded',
+    ($geoPhotos['agent']['captured_at'] ?? null) !== null);
+check('and it is the device\'s time, not the moment the row was written',
+    ($geoPhotos['agent']['captured_at'] ?? '') < date('Y-m-d H:i:s', time() - 60),
+    (string) ($geoPhotos['agent']['captured_at'] ?? 'null'));
+
+check('a gallery photograph still refuses a position',
+    ($geoPhotos['house']['gps_latitude'] ?? null) === null);
+check('and refuses a capture time it was never given',
+    ($geoPhotos['house']['captured_at'] ?? null) === null);
+
+$geoSignatures = [];
+foreach (VisitReport::signatures($geoVisitId) as $row) {
+    $geoSignatures[(string) $row['signature_type']] = $row;
+}
+
+check('the borrower signature records where it was signed',
+    abs((float) ($geoSignatures['customer']['gps_latitude'] ?? 0) - 26.9126) < 0.00001,
+    (string) ($geoSignatures['customer']['gps_latitude'] ?? 'null'));
+check('with its accuracy', (int) ($geoSignatures['customer']['gps_accuracy_m'] ?? 0) === 9);
+check('and is marked as coming from the device',
+    (string) ($geoSignatures['customer']['gps_source'] ?? '') === 'device');
+check('a signature signed with no fix says so',
+    (string) ($geoSignatures['agent']['gps_source'] ?? '') === 'unavailable',
+    (string) ($geoSignatures['agent']['gps_source'] ?? 'null'));
+check('and stores no coordinates rather than the visit\'s',
+    ($geoSignatures['agent']['gps_latitude'] ?? null) === null);
+
+// The signature position is a different fact from the visit position. If the code ever
+// starts copying one into the other this is the assertion that notices.
+check('the signature position is not silently the visit position',
+    abs((float) $geoSignatures['customer']['gps_latitude'] - 26.9124) > 0.0000001);
+
+// Consent is the gate, and it is checked on the server for signatures too.
+\App\Services\TrackingService::withdrawConsent($agent1Id, '127.0.0.1', 'itest');
+$withdrawnVisit = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_date'      => date('Y-m-d'),
+    'visit_time'      => '12:15',
+    'client_uuid'     => 'geo00002-1111-2222-3333-444444444444',
+    'customer_signature_base64'     => $pixel,
+    'customer_signature_latitude'   => '26.9126000',
+    'customer_signature_longitude'  => '75.7875000',
+], $agentCtx);
+
+$withdrawnSignature = VisitReport::signatures((int) $withdrawnVisit['visit_id'])[0] ?? [];
+check('without consent a signature coordinate is refused',
+    ($withdrawnSignature['gps_latitude'] ?? null) === null);
+check('and it is recorded as declined, not as no signal',
+    (string) ($withdrawnSignature['gps_source'] ?? '') === 'denied',
+    (string) ($withdrawnSignature['gps_source'] ?? 'null'));
+
+\App\Services\TrackingService::recordConsent($agent1Id, '127.0.0.1', 'itest');
+
+// An implausible fix is discarded rather than stored - (0,0) is a real place in the
+// Gulf of Guinea, so recording it would put every agent without a signal there.
+$nullIslandVisit = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_date'      => date('Y-m-d'),
+    'visit_time'      => '12:45',
+    'client_uuid'     => 'geo00003-1111-2222-3333-444444444444',
+    'customer_signature_base64'    => $pixel,
+    'customer_signature_latitude'  => '0',
+    'customer_signature_longitude' => '0',
+], $agentCtx);
+
+$nullIsland = VisitReport::signatures((int) $nullIslandVisit['visit_id'])[0] ?? [];
+check('a (0,0) signature fix is thrown away',
+    ($nullIsland['gps_latitude'] ?? null) === null);
+check('and reported as unavailable rather than declined',
+    (string) ($nullIsland['gps_source'] ?? '') === 'unavailable',
+    (string) ($nullIsland['gps_source'] ?? 'null'));
+
+// A device clock running ahead is clamped: a photograph stamped next week would sort
+// ahead of everything real forever.
+$futureVisit = VisitService::submit([
+    'loan_account_id' => $leadId,
+    'visit_date'      => date('Y-m-d'),
+    'visit_time'      => '13:15',
+    'client_uuid'     => 'geo00004-1111-2222-3333-444444444444',
+    'agent_photo_base64'      => $pixel,
+    'agent_photo_source'      => 'camera',
+    'agent_photo_gps_source'  => 'camera',
+    'agent_photo_latitude'    => '26.9125000',
+    'agent_photo_longitude'   => '75.7874000',
+    'agent_photo_captured_at' => date('Y-m-d H:i:s', time() + 86400),
+], $agentCtx);
+
+$futurePhoto = VisitReport::photos((int) $futureVisit['visit_id'])[0] ?? [];
+check('a capture time from tomorrow is clamped to now',
+    ($futurePhoto['captured_at'] ?? '') <= date('Y-m-d H:i:s', time() + 5),
+    (string) ($futurePhoto['captured_at'] ?? 'null'));
+
+// ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";
 printf("  INTEGRATION: %d passed, %d failed\n", $passed, $failed);
 if ($failures !== []) {

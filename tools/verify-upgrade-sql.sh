@@ -57,21 +57,38 @@ fi
 db() { $CLIENT "$@" 2>&1 | grep -v 'Using a password' || true; }
 dbq() { $CLIENT -N -B "$@" 2>/dev/null | tr -d '\r'; }
 
-echo "==> extracting the migration from DEPLOYMENT.md"
+echo "==> extracting the migration chain from DEPLOYMENT.md"
 python3 - "$ROOT/DEPLOYMENT.md" "$WORK/migration.sql" <<'PY'
 import re, sys
 doc, out = sys.argv[1], sys.argv[2]
 text = open(doc, encoding='utf-8').read()
-heading = '### Adding staff photographs, report approval and custom fields to an existing install'
-if heading not in text:
-    sys.exit('!! the upgrade section is missing from DEPLOYMENT.md')
-section = text.split(heading, 1)[1].split('\n### ', 1)[0]
-blocks = re.findall(r'```sql\n(.*?)```', section, re.S)
-if not blocks:
-    sys.exit('!! no ```sql block under the upgrade heading')
-# The first block is the migration; later blocks are the confirmation queries.
-open(out, 'w', encoding='utf-8').write(blocks[0])
-print(f"    {len(blocks[0].splitlines())} lines of SQL")
+
+# The chain this harness covers, in the order an operator runs them. Listed
+# explicitly rather than discovered, because the document also carries migrations for
+# much older releases whose columns this script's downgrade does not remove - and a
+# harness that silently skipped one would be worse than one that named them.
+HEADINGS = [
+    '### Adding staff photographs, report approval and custom fields to an existing install',
+    '### Adding geo-tagged agent photographs and signatures to an existing install',
+]
+
+chunks = []
+for heading in HEADINGS:
+    if heading not in text:
+        sys.exit(f'!! missing from DEPLOYMENT.md: {heading}')
+    section = text.split(heading, 1)[1].split('\n### ', 1)[0]
+    blocks = re.findall(r'```sql\n(.*?)```', section, re.S)
+    if not blocks:
+        sys.exit(f'!! no ```sql block under: {heading}')
+    # The first block is the migration; later blocks are confirmation queries.
+    chunks.append(blocks[0])
+    print(f"    {len(blocks[0].splitlines()):3d} lines - {heading[4:60]}")
+
+# Ordered by their position in the document, which is the order they must be applied:
+# the second release's ALTERs assume the first release's columns exist.
+positions = sorted(range(len(HEADINGS)), key=lambda i: text.index(HEADINGS[i]))
+open(out, 'w', encoding='utf-8').write('\n'.join(chunks[i] for i in positions))
+print(f"    {sum(len(c.splitlines()) for c in chunks)} lines of SQL in {len(chunks)} migrations")
 PY
 
 if [ "$USE_DOCKER" = "1" ]; then
@@ -109,6 +126,16 @@ db lrms_upg < "$ROOT/schema.sql"
 # The downgrade. Deliberately hand-written: it is the inverse of the documented
 # migration, so if the two disagree the comparison below fails and says so.
 db lrms_upg <<'SQL'
+ALTER TABLE `signatures`
+  DROP COLUMN `gps_latitude`,
+  DROP COLUMN `gps_longitude`,
+  DROP COLUMN `gps_accuracy_m`,
+  DROP COLUMN `gps_source`;
+
+ALTER TABLE `photos`
+  MODIFY COLUMN `photo_type` ENUM('customer','house','land','aadhaar','passbook',
+                                  'renewal_form','other') NOT NULL DEFAULT 'other';
+
 DROP TABLE IF EXISTS `custom_field_values`;
 DROP TABLE IF EXISTS `custom_field_definitions`;
 DROP TABLE IF EXISTS `visit_report_revisions`;
@@ -211,7 +238,8 @@ def q(db, sql):
     return [line.split('\t') for line in out.stdout.strip().splitlines() if line.strip()]
 
 TABLES = ['users','loan_accounts','visit_reports','visit_history',
-          'visit_report_revisions','custom_field_definitions','custom_field_values']
+          'visit_report_revisions','custom_field_definitions','custom_field_values',
+          'photos','signatures']
 tlist = "','".join(TABLES)
 results = []
 

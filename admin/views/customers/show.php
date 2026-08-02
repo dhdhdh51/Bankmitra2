@@ -16,6 +16,8 @@
  * @var list<array<string,mixed>> $branches
  */
 
+use App\Controllers\Admin\VisitController;
+use App\Core\Geo;
 use App\Core\Url;
 
 $mobile = $showPii ? ($lead['mobile'] ?? null) : null;
@@ -578,19 +580,59 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                     <span class="text-muted" style="font-size:.75rem"><?= e((string) count($photos)) ?> photo(s)</span>
                 </div>
                 <div class="lrms-card-body">
-                    <div class="lrms-gallery">
+                    <div class="row g-3">
                         <?php foreach ($photos as $photo): ?>
-                            <a class="lrms-thumb" target="_blank" rel="noopener"
-                               href="<?= e(Url::media((string) $photo['file_path'])) ?>">
-                                <img src="<?= e(Url::media((string) $photo['file_path'])) ?>" alt=""
-                                     loading="lazy">
-                                <span class="lrms-thumb-label">
-                                    <?= e(str_replace('_', ' ', (string) $photo['photo_type'])) ?>
-                                    <?php if (!empty($photo['visit_date'])): ?>
-                                        · <?= e(fmt_date((string) $photo['visit_date'], 'd M y')) ?>
-                                    <?php endif; ?>
-                                </span>
-                            </a>
+                            <?php $hasFix = Geo::has($photo); ?>
+                            <div class="col-6 col-lg-4">
+                                <figure class="lrms-photo">
+                                    <a class="lrms-photo-frame" target="_blank" rel="noopener"
+                                       href="<?= e(Url::media((string) $photo['file_path'])) ?>"
+                                       title="Open the full-size photograph">
+                                        <img src="<?= e(Url::media((string) $photo['file_path'])) ?>"
+                                             alt="<?= e(VisitController::photoLabel((string) $photo['photo_type'])) ?>"
+                                             loading="lazy">
+                                    </a>
+                                    <figcaption>
+                                        <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                            <strong style="font-size:.8125rem">
+                                                <?= e(VisitController::photoLabel((string) $photo['photo_type'])) ?>
+                                            </strong>
+                                            <?= geo_source_badge((string) ($photo['capture_source'] ?? 'unknown')) ?>
+                                        </div>
+
+                                        <?php if ($hasFix): ?>
+                                            <div class="lrms-photo-geo">
+                                                <span style="line-height:0"><?= icon('map-pin') ?></span>
+                                                <a href="<?= e(Geo::mapUrl($photo['gps_latitude'], $photo['gps_longitude'])) ?>"
+                                                   target="_blank" rel="noopener noreferrer"
+                                                   title="Open these coordinates in a map">
+                                                    <?= e(Geo::coordinates($photo['gps_latitude'], $photo['gps_longitude'])) ?>
+                                                </a>
+                                                <?php if (($photo['gps_accuracy_m'] ?? null) !== null): ?>
+                                                    <span class="<?= Geo::isPrecise($photo['gps_accuracy_m']) ? 'text-muted' : 'lrms-geo-coarse' ?>"
+                                                          <?php if (!Geo::isPrecise($photo['gps_accuracy_m'])): ?>
+                                                              title="Too coarse to place a particular house"
+                                                          <?php endif; ?>>
+                                                        <?= e(Geo::accuracy($photo['gps_accuracy_m'])) ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="text-muted" style="font-size:.75rem">
+                                                <?= e(Geo::photo($photo)) ?>
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <div class="text-muted" style="font-size:.6875rem;margin-top:2px">
+                                            <?php if (($photo['captured_at'] ?? null) !== null): ?>
+                                                Taken <?= e(fmt_datetime((string) $photo['captured_at'])) ?>
+                                            <?php elseif (!empty($photo['visit_date'])): ?>
+                                                Visit of <?= e(fmt_date((string) $photo['visit_date'], 'd M Y')) ?>
+                                            <?php endif; ?>
+                                        </div>
+                                    </figcaption>
+                                </figure>
+                            </div>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -611,11 +653,22 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                                     <img src="<?= e(Url::media((string) $signature['file_path'])) ?>"
                                          alt="<?= e($signature['signature_type']) ?> signature" loading="lazy">
                                     <div class="cap">
-                                        <?= e($signature['signature_type']) ?>
+                                        <?= e($signature['signature_type'] === 'customer' ? 'borrower' : 'agent') ?>
                                         <?php if (!empty($signature['visit_date'])): ?>
                                             · <?= e(fmt_date((string) $signature['visit_date'], 'd M y')) ?>
                                         <?php endif; ?>
                                     </div>
+                                </div>
+                                <div class="lrms-photo-geo mt-1" style="font-size:.6875rem">
+                                    <?php if (Geo::has($signature)): ?>
+                                        <span style="line-height:0"><?= icon('map-pin') ?></span>
+                                        <a href="<?= e(Geo::mapUrl($signature['gps_latitude'], $signature['gps_longitude'])) ?>"
+                                           target="_blank" rel="noopener noreferrer">
+                                            <?= e(Geo::coordinates($signature['gps_latitude'], $signature['gps_longitude'])) ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-muted"><?= e(Geo::signature($signature)) ?></span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         <?php endforeach; ?>

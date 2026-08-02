@@ -167,6 +167,8 @@
     <string name="visit_customer_photo">Customer photo</string>
     <string name="visit_house_photo">House photo</string>
     <string name="visit_aadhaar_photo">Aadhaar copy</string>
+    <string name="visit_agent_photo">Your photo at this visit</string>
+    <string name="visit_agent_photo_hint">Camera only — records that you were here</string>
     <string name="visit_other_documents">Other documents</string>
 
     <string name="visit_customer_signature">Customer signature</string>
@@ -191,6 +193,7 @@
     <string name="photo_choose">Choose from gallery</string>
     <string name="photo_remove">Remove</string>
     <string name="photo_camera_denied">Camera permission is needed to take a photo.</string>
+    <string name="photo_agent_camera_only">Your own photo must be taken with the camera so it records where you are.</string>
     <string name="photo_gallery_denied">Storage permission is needed to pick a photo.</string>
 
     <!-- ==================== Signature ==================== -->
