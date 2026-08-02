@@ -539,7 +539,7 @@ final class LoanAccount
         'remarks'               => 'Notes on this account',
         // The last of the real data. Everything an import can write, a person can now
         // correct; what is left out below is derived or plumbing, nothing else.
-        'bc_code'               => 'BC / DC code on the account',
+        'bc_code'               => 'BC code on the account',
         'ots_eligible'          => 'Eligible for OTS',
         'krm_eligible'          => 'Eligible for KRM',
         'next_followup_date'    => 'Next follow-up date',

@@ -28,7 +28,7 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $branch)
             <span class="text-muted"><?= $isEdit ? 'Edit' : 'New' ?></span>
         </nav>
         <h1><?= $isEdit ? 'Edit branch' : 'Add branch' ?></h1>
-        <p><?= $isEdit ? e((string) $branch['name']) : 'Create a new branch for BC/DC operations' ?></p>
+        <p><?= $isEdit ? e((string) $branch['name']) : 'Create a new branch for BC operations' ?></p>
     </div>
 </div>
 

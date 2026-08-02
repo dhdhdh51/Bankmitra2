@@ -229,7 +229,7 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label" for="bc_code">BC / DC code on the account</label>
+                            <label class="form-label" for="bc_code">BC code on the account</label>
                             <input type="text" class="form-control<?= has_error($errors, 'bc_code') ?>"
                                    id="bc_code" name="bc_code" maxlength="40"
                                    value="<?= $value('bc_code') ?>">

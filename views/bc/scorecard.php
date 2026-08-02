@@ -86,7 +86,7 @@ $standingLabel = static function (?string $status): string {
     <?php if ($rows === []): ?>
         <?= \App\Core\View::partial('partials/empty', [
             'heading'  => 'No agents to score',
-            'message'  => 'No active BC/DC agents were found for this branch, so there is nothing to rank.',
+            'message'  => 'No active BC agents were found for this branch, so there is nothing to rank.',
             'iconName' => 'chart',
         ]) ?>
     <?php else: ?>

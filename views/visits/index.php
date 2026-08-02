@@ -91,7 +91,7 @@
     <?php if ($visits->isEmpty()): ?>
         <?= \App\Core\View::partial('partials/empty', [
             'heading'  => 'No visit reports',
-            'message'  => 'Field visits submitted by BC/DC agents from the Android app will appear here.',
+            'message'  => 'Field visits submitted by BC agents from the Android app will appear here.',
             'iconName' => 'clipboard',
         ]) ?>
     <?php else: ?>

@@ -272,7 +272,7 @@ final class Auth
     /**
      * Admin panel guard: redirect to login when unauthenticated.
      *
-     * @param bool $allowAgent Whether a BC/DC agent may reach this route.
+     * @param bool $allowAgent Whether a BC agent may reach this route.
      *
      * Agents used to be refused the whole panel. They now have a deliberately narrow
      * surface - their own leads, and the custom fields they collect against them -
@@ -576,7 +576,7 @@ final class Auth
             . '<div style="max-width:520px;margin:14vh auto;padding:32px;background:#fff;border:1px solid #e2e5ea;border-radius:10px;box-shadow:0 1px 3px rgba(28,33,40,.06)">'
             . '<h1 style="margin:0 0 10px;font-size:19px;color:#071d40">Use the D2 Recovery Solutions & Services mobile app</h1>'
             . '<p style="margin:0 0 16px;color:#4b5563">This section is for administrators and branch '
-            . 'managers. As a BC/DC agent you can open <strong>your own borrowers</strong> here to correct '
+            . 'managers. As a BC agent you can open <strong>your own borrowers</strong> here to correct '
             . 'their details and add fields, and everything else - visits, photographs, signatures, '
             . 'promises - is in the Android app.</p>'
             . '<a href="' . htmlspecialchars(Url::path('/customers'), ENT_QUOTES, 'UTF-8') . '" '

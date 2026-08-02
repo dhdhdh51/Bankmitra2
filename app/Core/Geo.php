@@ -162,15 +162,30 @@ final class Geo
      * A map link for a recorded position.
      *
      * Opened by a supervisor checking whether a photograph was taken anywhere near
-     * the village it claims. Deliberately a plain search URL with no API key and no
-     * embedded map: nothing about a borrower's location is sent to a third party
-     * until a human decides to click, and no page in the panel loads a remote script
-     * that would leak it automatically.
+     * the village it claims. OpenStreetMap, not Google Maps: the same open-source
+     * choice already made for the location trail (Leaflet) and for reverse geocoding
+     * (Nominatim), so a click-through link is not the one place in the panel that
+     * quietly depends on a Google account. Deliberately a plain link with no API key
+     * and no embedded map on this page: nothing about a borrower's location is sent
+     * anywhere until a human decides to click, and no page in the panel loads a
+     * remote script that would leak it automatically.
+     *
+     * `mlat`/`mlon` drop a marker at the exact point rather than just centring the
+     * view, and `#map=<zoom>/lat/lon` is what actually sets the zoom - OSM ignores a
+     * bare `zoom` query parameter.
      */
     public static function mapUrl(mixed $latitude, mixed $longitude): string
     {
-        return 'https://www.google.com/maps/search/?api=1&query='
-            . rawurlencode(sprintf('%.6F,%.6F', (float) $latitude, (float) $longitude));
+        $lat = sprintf('%.6F', (float) $latitude);
+        $lng = sprintf('%.6F', (float) $longitude);
+
+        return sprintf(
+            'https://www.openstreetmap.org/?mlat=%s&mlon=%s#map=17/%s/%s',
+            $lat,
+            $lng,
+            $lat,
+            $lng
+        );
     }
 
     /**

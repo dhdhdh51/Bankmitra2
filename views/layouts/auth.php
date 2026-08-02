@@ -53,7 +53,7 @@ $bankName = Settings::get('bank_name', '');
         <div>
             <h1>Loan Recovery<br>Management System</h1>
             <p>
-                Field verification and recovery follow-up for BC/DC agents working on behalf of
+                Field verification and recovery follow-up for BC agents working on behalf of
                 <?= e($bankName !== '' && $bankName !== null ? $bankName : 'the bank') ?>.
             </p>
 

@@ -20,8 +20,8 @@ final class Logger
     private const REDACT = [
         'password', 'password_hash', 'password_confirmation', 'current_password',
         'new_password', 'token', 'remember_token', 'otp', 'otp_hash',
-        'smtp_password', 'sms_api_key', 'firebase_server_key', 'google_maps_key',
-        'mobile_enc', 'aadhaar_enc', 'app_key', 'data_key', 'hash_pepper',
+        'smtp_password', 'sms_api_key', 'firebase_server_key',
+        'mobile_enc', 'aadhaar_enc', 'pan_enc', 'app_key', 'data_key', 'hash_pepper',
     ];
 
     /**
