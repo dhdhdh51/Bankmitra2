@@ -1431,3 +1431,31 @@ a.lrms-stat:active { transform: translateY(0); }
        flagged urgent. */
     .lrms-callout, .lrms-figure { background: #fff !important; }
 }
+
+
+/* ==========================================================================
+   Closed by default, even with no Bootstrap
+   ==========================================================================
+   Everything that is meant to be hidden until it is opened - dropdown menus,
+   modal dialogs, offcanvas panels - is hidden by Bootstrap's own stylesheet,
+   which arrives from a CDN. When that request fails, and on a bank's outbound
+   filter it does, every menu and every dialog on the page renders at once,
+   stacked down the screen. On the user list that meant one open dialog per
+   user, which is precisely how it was reported.
+
+   These four rules are in THIS file, which is served from the same host as the
+   panel, so a page can no longer depend on somebody else's server arriving in
+   order to stay shut. They mirror what Bootstrap does rather than fight it:
+   Bootstrap opens a dropdown by adding .show to the menu, and a modal by
+   setting an inline display:block - and an inline style wins over a class
+   selector, so nothing here can keep a dialog from opening.
+   ========================================================================== */
+.dropdown-menu:not(.show) { display: none; }
+.modal:not(.show) { display: none; }
+
+/* The settings screen is tabs, and an unstyled tab set is every group's fields at
+   once - seven panels of settings down one page. Scoped to .tab-content so it can
+   never catch anything else, and deliberately NOT extended to .collapse or
+   .navbar-collapse: neither is used here, and a blanket rule for them would be a
+   trap for whoever adds the first one. */
+.tab-content > .tab-pane:not(.active) { display: none; }

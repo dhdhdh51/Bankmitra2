@@ -1586,6 +1586,73 @@ check('viewing another person\'s trail is written to the audit log',
     'HTTP ' . $auditAfterTrail['status']);
 
 // ---------------------------------------------------------------------------
+section('One dialog per page, not one per row');
+
+// The user list rendered a whole reset-password dialog PER USER - twenty-five identical
+// forms and twenty-five password inputs in one page, invisible only for as long as
+// Bootstrap's stylesheet was reachable. On a network that cannot reach the CDN they all
+// rendered stacked, which is exactly how it was reported: "as many as there are users".
+$usersPage = request($base . '/users')['body'];
+preg_match_all('#<tbody[\s\S]*?</tbody>#', $usersPage, $tbody);
+$rowCount = substr_count($tbody[0][0] ?? '', '<tr');
+
+check('the user list has several rows to test with', $rowCount >= 2, $rowCount . ' row(s)');
+check('but only one reset-password dialog',
+    substr_count($usersPage, 'class="modal fade"') === 1,
+    substr_count($usersPage, 'class="modal fade"') . ' dialog(s) for ' . $rowCount . ' row(s)');
+check('and only one password box',
+    substr_count($usersPage, 'name="password"') === 1,
+    substr_count($usersPage, 'name="password"') . ' box(es)');
+check('each row still opens it with its own target',
+    substr_count($usersPage, 'data-reset-action="') === $rowCount,
+    substr_count($usersPage, 'data-reset-action="') . ' trigger(s)');
+check('the shared dialog has no action of its own to submit blind',
+    str_contains($usersPage, 'action="" data-reset-form'));
+
+// No page anywhere may render more dialogs than it has kinds of dialog. Checked across the
+// panel rather than on the one screen that had the bug, because the next one will be
+// somewhere else.
+$dialogHeavy = [];
+foreach (['/users', '/customers', '/customers/1', '/visits', '/branches', '/promises',
+          '/import/history', '/bc/sss', '/bc/targets', '/logs/audit'] as $path) {
+    $body = request($base . $path)['body'];
+    $modals = substr_count($body, 'class="modal fade"');
+    if ($modals > 2) {
+        $dialogHeavy[] = $path . ' has ' . $modals;
+    }
+}
+check('no page carries a dialog per row', $dialogHeavy === [], implode('; ', $dialogHeavy));
+
+// And the panel must not depend on somebody else's stylesheet arriving in order to stay
+// shut. These rules live in app.css, which is served from the same host as the page.
+$ownCss = file_get_contents(__DIR__ . '/../admin/assets/css/app.css');
+check('menus are closed by our own stylesheet, not only by the CDN\'s',
+    str_contains($ownCss, '.dropdown-menu:not(.show)') && str_contains($ownCss, '.modal:not(.show)'));
+check('and so are the settings tabs',
+    str_contains($ownCss, '.tab-content > .tab-pane:not(.active)'));
+check('the shared dialog is also hidden inline, for no stylesheet at all',
+    str_contains($usersPage, 'id="resetModal"') && str_contains($usersPage, 'style="display:none"'));
+
+// And it still resets a password. One shared form that posts to the wrong person would be a
+// far worse bug than the one being fixed, so the action the row hands over is followed.
+preg_match('#data-reset-action="([^"]*/users/(\d+)/reset-password)"#', $usersPage, $resetTarget);
+check('a row hands over a real reset URL', isset($resetTarget[1]), $resetTarget[1] ?? 'none found');
+
+if (isset($resetTarget[1])) {
+    $resetPath = html_entity_decode($resetTarget[1]);
+    $resetDone = request(
+        (str_starts_with($resetPath, 'http') ? '' : $base) . $resetPath,
+        ['_csrf' => csrfToken($usersPage), 'password' => 'Reset@12345']
+    );
+    check('the shared dialog still resets a password',
+        $resetDone['status'] === 200
+        && (str_contains($resetDone['body'], 'assword') && !str_contains($resetDone['body'], 'not have permission')),
+        'HTTP ' . $resetDone['status']);
+    check('and it named the user it was reset for, not the first row blindly',
+        str_contains($resetDone['body'], 'Reset@12345') || str_contains($resetDone['body'], 'reset'));
+}
+
+// ---------------------------------------------------------------------------
 section('Every dropdown on every page');
 
 /**

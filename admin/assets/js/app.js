@@ -399,6 +399,38 @@
         });
     }
 
+    /* ----------------------------------------------------------------------
+       One shared dialog, filled in from the row that opened it
+       ----------------------------------------------------------------------
+       The user list used to render a whole reset-password dialog per user -
+       twenty-five identical forms and twenty-five password inputs sitting in
+       the page, invisible only for as long as Bootstrap's stylesheet was
+       reachable. Bootstrap hands the triggering element over as
+       event.relatedTarget for exactly this pattern.
+
+       Generic on purpose: any future screen can reuse it by putting
+       data-reset-action / data-reset-name / data-reset-code on its trigger. */
+    var sharedReset = document.getElementById('resetModal');
+    if (sharedReset) {
+        sharedReset.addEventListener('show.bs.modal', function (event) {
+            var trigger = event.relatedTarget;
+            if (!trigger) return;
+
+            var form = sharedReset.querySelector('[data-reset-form]');
+            var nameOut = sharedReset.querySelector('[data-reset-name-out]');
+            var codeOut = sharedReset.querySelector('[data-reset-code-out]');
+            var input = sharedReset.querySelector('input[name="password"]');
+
+            if (form) form.setAttribute('action', trigger.getAttribute('data-reset-action') || '');
+            if (nameOut) nameOut.textContent = trigger.getAttribute('data-reset-name') || '';
+            if (codeOut) codeOut.textContent = trigger.getAttribute('data-reset-code') || '';
+
+            /* Cleared every time. A password typed for one person and left in the
+               box would otherwise be submitted against whoever is opened next. */
+            if (input) input.value = '';
+        });
+    }
+
     initBulk();
     initVisitForm();
 })();
