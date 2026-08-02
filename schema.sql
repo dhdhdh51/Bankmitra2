@@ -137,17 +137,15 @@ CREATE TABLE `users` (
   `dashboard_status`     ENUM('normal','warning_1','warning_2','final_warning') NOT NULL DEFAULT 'normal',
   `escalation_flag`      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT 'final warning unimproved past its window',
   `status_changed_at`    DATETIME     DEFAULT NULL,
-  -- Identity for printed reports. A field visit report is a document a borrower
-  -- signs and a court may later read, so it has to say who stood at the door: the
-  -- agent's photograph next to their signature. Stored as uploads-relative paths
-  -- like every other file here, never as blobs in the row.
+  -- No portrait or signature is held against a person here, deliberately.
   --
-  -- The signature is an uploaded image rather than a drawn one. Agents sign a
-  -- printed sheet once and it is photographed; asking them to redraw it on a phone
-  -- for every report produced a different squiggle each time, which is worse than
-  -- useless on a document meant to be comparable.
-  `photo_path`           VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed on visit reports',
-  `signature_path`       VARCHAR(500) DEFAULT NULL COMMENT 'uploads-relative; printed beside the photo',
+  -- There were two, printed at the foot of every report the person filed. They were
+  -- removed because a stored image says nothing about the visit it gets printed on: a
+  -- portrait uploaded once in a branch office, captioned nothing, sitting on a
+  -- document that geo-captions every other photograph, reads as field evidence. An
+  -- image now belongs to the thing it evidences - a photograph to the visit it was
+  -- taken at (photos.photo_type = 'agent', with its own fix), a signature to the
+  -- report it signs (signatures, with where and how it was captured).
   `created_by`           INT UNSIGNED DEFAULT NULL,
   `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -327,6 +325,37 @@ CREATE TABLE `loan_accounts` (
   `ots_amount`           DECIMAL(15,2) DEFAULT NULL COMMENT 'settlement figure proposed by the branch',
   `deposit_amount`       DECIMAL(15,2) DEFAULT NULL COMMENT 'initial deposit expected alongside the OTS',
 
+  -- ---- The rest of what a core banking NPA / recovery statement carries --------
+  --
+  -- These exist so a real export lands whole instead of being trimmed to the handful
+  -- of columns the panel happened to have. An agent standing at a door is asked "how
+  -- much, since when, what did I last pay, what happens if I don't" - and every one of
+  -- those answers was previously sitting in a spreadsheet column the importer dropped.
+  --
+  -- All nullable: NULL means the file did not carry it, which is a different fact from
+  -- a zero. An overdue amount of 0.00 says the account is current; a NULL says nobody
+  -- told us.
+  --
+  -- asset_classification is text, not an ENUM, on purpose. Banks write this column
+  -- twenty different ways - "SS", "D-1", "DOUBTFUL 2", "Sub Standard", "LOSS ASSET" -
+  -- and an ENUM would force every unrecognised spelling to NULL, silently discarding
+  -- the single most important prioritisation field in an NPA statement. The importer
+  -- normalises the spellings it recognises to a canonical label and otherwise stores
+  -- what the file said, so nothing is ever lost.
+  `asset_classification` VARCHAR(40)   DEFAULT NULL COMMENT 'Standard / SMA-1 / Doubtful 2 / Loss ...',
+  `interest_rate`        DECIMAL(6,3)  DEFAULT NULL COMMENT 'percent per annum',
+  `installment_amount`   DECIMAL(15,2) DEFAULT NULL COMMENT 'EMI / instalment due per period',
+  `last_payment_date`    DATE          DEFAULT NULL,
+  `last_payment_amount`  DECIMAL(15,2) DEFAULT NULL,
+  -- Days past due as the BANK computed it. Not derived here: a bank's DPD follows its
+  -- own product rules, and recomputing it from npa_date would quietly disagree with
+  -- the statement the branch is working from.
+  `days_past_due`        SMALLINT UNSIGNED DEFAULT NULL,
+  `security_value`       DECIMAL(15,2) DEFAULT NULL COMMENT 'value of collateral held',
+  `guarantor_name`       VARCHAR(150)  DEFAULT NULL,
+  `maturity_date`        DATE          DEFAULT NULL,
+  `purpose`              VARCHAR(150)  DEFAULT NULL COMMENT 'crop / activity the loan was for',
+
   `remarks`              VARCHAR(1000) DEFAULT NULL COMMENT 'remarks from the source Excel file',
   `import_id`            BIGINT UNSIGNED DEFAULT NULL,
   `closed_at`            DATETIME     DEFAULT NULL,
@@ -340,6 +369,9 @@ CREATE TABLE `loan_accounts` (
   KEY `idx_loan_branch_agent` (`branch_id`, `assigned_agent_id`),
   KEY `idx_loan_type` (`loan_type`),
   KEY `idx_loan_npa` (`is_npa`, `npa_date`),
+  -- Recovery work is prioritised by classification within a branch, so that ordering
+  -- gets an index rather than a filesort over every lead the branch holds.
+  KEY `idx_loan_classification` (`branch_id`, `asset_classification`),
   KEY `idx_loan_followup` (`next_followup_date`),
   KEY `idx_loan_ckcc_renewal` (`ckcc_renewal_due_date`),
   -- Drives the "which accounts can we settle" worklist.
@@ -762,9 +794,9 @@ CREATE TABLE `photos` (
   -- 'agent' is the agent's own photograph, taken at the door. It lives here rather
   -- than in a column on visit_reports so it inherits everything a photograph
   -- already has: its own fix, its own capture_source, branch-scoped media
-  -- authorisation and a place in the galleries. users.photo_path is a different
-  -- thing entirely - a portrait uploaded once in the branch office, which is why it
-  -- must never be captioned with the visit's coordinates.
+  -- authorisation and a place in the galleries. It is the only photograph of an
+  -- agent the system holds - there is no stored portrait to fall back on, because a
+  -- portrait taken in a branch office is not evidence of a doorstep.
   `photo_type`      ENUM('customer','house','land','aadhaar','passbook','renewal_form','agent','other') NOT NULL DEFAULT 'other',
   `file_path`       VARCHAR(500) NOT NULL COMMENT 'relative to uploads root',
   `original_name`   VARCHAR(255) DEFAULT NULL,
@@ -825,6 +857,17 @@ CREATE TABLE `signatures` (
   `signed_name`     VARCHAR(150) DEFAULT NULL,
   `file_size`       INT UNSIGNED DEFAULT NULL,
   `captured_at`     DATETIME     DEFAULT NULL,
+
+  -- How the mark got here, and it is not a detail.
+  --
+  -- 'device_pad' was drawn on the phone at the visit, which is why it can carry a
+  -- position. 'panel_upload' is an image somebody attached from a desk afterwards -
+  -- a photographed paper signature, usually. Both are legitimate; presenting the
+  -- second as the first is not. So the printed report labels an upload as an upload
+  -- and never puts a coordinate under it, because the only coordinate available
+  -- would be the office the file was uploaded from.
+  `capture_method`  ENUM('device_pad','panel_upload') NOT NULL DEFAULT 'device_pad',
+  `uploaded_note`   VARCHAR(255) DEFAULT NULL COMMENT 'why a panel upload was needed',
 
   -- Where the pad was signed. A signature is the borrower agreeing to what the
   -- report says and the agent asserting they were there to collect it, so "signed
@@ -1438,9 +1481,17 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 -- that agent in code; it does not expose branch or all-branch figures.
 -- Agents deliberately do NOT get promises.update: recording a promise during a
 -- visit is theirs, but deciding it was kept or broken is a branch decision.
+-- customers.update and custom_fields.manage are granted deliberately. An agent who
+-- spots a wrong father's name or a dead phone number at a doorstep is the only person
+-- who will ever be standing there; the alternative to letting them fix it is a phone
+-- call to the branch, or the record staying wrong. Every figure they change is stamped
+-- into loan_accounts.manual_overrides, so the correction is attributed and the next
+-- import leaves it alone. The panel restricts them to leads assigned to them - branch
+-- scope is not enough, because a branch holds several agents.
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
   SELECT 3, `id` FROM `permissions` WHERE `code` IN (
-    'dashboard.view','customers.view','customers.view_pii',
+    'dashboard.view','customers.view','customers.view_pii','customers.update',
+    'custom_fields.manage',
     'visits.view','visits.create','promises.view','notifications.view'
   );
 

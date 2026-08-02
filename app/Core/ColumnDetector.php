@@ -95,6 +95,23 @@ final class ColumnDetector
             'krm_eligible'          => ['label' => 'KRM Eligible (Yes/No)', 'required' => false, 'type' => 'boolean', 'example' => 'Yes'],
             'ots_amount'            => ['label' => 'OTS Amount',            'required' => false, 'type' => 'amount',  'example' => '56250.00'],
             'deposit_amount'        => ['label' => 'Deposit Amount',        'required' => false, 'type' => 'amount',  'example' => '5625.00'],
+            'closure_amount'        => ['label' => 'Closure Amount',        'required' => false, 'type' => 'amount',  'example' => '161500.00'],
+
+            // The rest of what a core banking NPA / recovery statement carries. An
+            // agent at a door is asked "how much, since when, what did I last pay,
+            // what is held against it" - and every one of those answers used to sit
+            // in a spreadsheet column the importer dropped on the floor.
+            'asset_classification'  => ['label' => 'Asset Classification',  'required' => false, 'type' => 'text',    'example' => 'Doubtful 2'],
+            'interest_rate'         => ['label' => 'Interest Rate (%)',     'required' => false, 'type' => 'amount',  'example' => '7.00'],
+            'installment_amount'    => ['label' => 'Instalment / EMI',      'required' => false, 'type' => 'amount',  'example' => '12500.00'],
+            'last_payment_date'     => ['label' => 'Last Payment Date',     'required' => false, 'type' => 'date',    'example' => '12/08/2024'],
+            'last_payment_amount'   => ['label' => 'Last Payment Amount',   'required' => false, 'type' => 'amount',  'example' => '5000.00'],
+            'days_past_due'         => ['label' => 'Days Past Due (DPD)',   'required' => false, 'type' => 'amount',  'example' => '412'],
+            'security_value'        => ['label' => 'Security Value',        'required' => false, 'type' => 'amount',  'example' => '450000.00'],
+            'guarantor_name'        => ['label' => 'Guarantor Name',        'required' => false, 'type' => 'name',    'example' => 'Mohan Lal'],
+            'maturity_date'         => ['label' => 'Maturity Date',         'required' => false, 'type' => 'date',    'example' => '31/03/2027'],
+            'purpose'               => ['label' => 'Purpose / Activity',    'required' => false, 'type' => 'text',    'example' => 'Wheat cultivation'],
+
             'remarks'               => ['label' => 'Remarks',               'required' => false, 'type' => 'text',    'example' => 'First default'],
         ];
     }
@@ -247,6 +264,71 @@ final class ColumnDetector
                 'required initial deposit', 'required deposit amount', 'upfront deposit',
                 'down payment', 'advance deposit', 'first installment',
                 'जमा राशि',
+            ],
+            'closure_amount' => [
+                'closure amount', 'closing amount', 'account closure amount',
+                'total closure amount', 'amount to close', 'closure figure',
+                'full closure amount', 'payoff amount', 'foreclosure amount',
+                'total payable', 'total payable amount', 'amount payable to close',
+                'बंद करने की राशि', 'कुल देय राशि',
+            ],
+            'asset_classification' => [
+                'asset classification', 'asset class', 'classification', 'npa category',
+                'npa class', 'npa classification', 'category', 'asset category',
+                'iracp classification', 'irac status', 'irac', 'asset status',
+                'account classification', 'npa grade', 'dpd bucket', 'bucket',
+                'sma category', 'sma status',
+                'परिसंपत्ति वर्गीकरण', 'एनपीए श्रेणी',
+            ],
+            'interest_rate' => [
+                'interest rate', 'rate of interest', 'roi', 'int rate',
+                'applicable rate', 'current roi', 'interest per annum', 'rate pa',
+                'ब्याज दर',
+            ],
+            'installment_amount' => [
+                'instalment emi', 'instalment', 'installment', 'installment amount',
+                'instalment amount', 'emi', 'emi amount', 'monthly instalment',
+                'monthly installment', 'repayment amount', 'instalment due',
+                'किस्त', 'मासिक किस्त',
+            ],
+            'last_payment_date' => [
+                'last payment date', 'last paid date', 'date of last payment',
+                'last credit date', 'last repayment date', 'last deposit date',
+                'last transaction date', 'last recovery date', 'lpd',
+                'अंतिम भुगतान तिथि',
+            ],
+            'last_payment_amount' => [
+                'last payment amount', 'last paid amount', 'amount of last payment',
+                'last credit amount', 'last repayment amount', 'last recovery amount',
+                'अंतिम भुगतान राशि',
+            ],
+            'days_past_due' => [
+                'days past due', 'dpd', 'dpd days', 'days overdue', 'no of days overdue',
+                'number of days overdue', 'overdue days', 'age of overdue', 'ageing days',
+                'ageing', 'aging', 'days in default',
+                'अतिदेय दिन',
+            ],
+            'security_value' => [
+                'security value', 'value of security', 'collateral value',
+                'value of collateral', 'security amount', 'realisable value',
+                'realizable value', 'market value of security', 'mortgage value',
+                'प्रतिभूति मूल्य',
+            ],
+            'guarantor_name' => [
+                'guarantor name', 'guarantor', 'name of guarantor', 'surety name',
+                'surety', 'co obligant', 'co applicant name', 'co borrower name',
+                'जमानतदार', 'गारंटर',
+            ],
+            'maturity_date' => [
+                'maturity date', 'date of maturity', 'due date of loan',
+                'loan maturity date', 'repayment due date', 'final due date',
+                'loan closure date', 'loan end date',
+                'परिपक्वता तिथि',
+            ],
+            'purpose' => [
+                'purpose', 'purpose of loan', 'loan purpose', 'activity', 'crop',
+                'crop name', 'activity type', 'end use', 'purpose activity',
+                'उद्देश्य', 'फसल',
             ],
             'remarks' => [
                 'remarks', 'remark', 'comments', 'comment', 'notes', 'note', 'observation',

@@ -288,6 +288,15 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                 <option value="">Choose action…</option>
                 <?php if ($canAssign): ?>
                     <option value="assign">Assign to agent</option>
+                    <?php
+                    /*
+                     * Spreads the selection across the branch's agents, balancing what
+                     * each of them is already carrying rather than dealing the rows out
+                     * in turn - two imports dealt round-robin both start at the same
+                     * agent, which is how one person ends up with every other lead.
+                     */
+                    ?>
+                    <option value="distribute">Distribute equally among agents</option>
                 <?php endif; ?>
                 <?php if (can('leads.reassign')): ?>
                     <option value="reassign">Reassign to agent</option>

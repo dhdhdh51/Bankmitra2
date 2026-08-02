@@ -44,7 +44,7 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
 
 <div class="row">
     <div class="col-lg-9 col-xl-7">
-        <form method="post" action="<?= e($action) ?>" enctype="multipart/form-data" novalidate data-no-double-submit>
+        <form method="post" action="<?= e($action) ?>" novalidate data-no-double-submit>
             <?= csrf_field() ?>
 
             <div class="lrms-card mb-3">
@@ -146,81 +146,6 @@ $currentBranchId = (string) ($old['branch_id'] ?? ($user['branch_id'] ?? ''));
                                 <option value="suspended" <?= $currentStatus === 'suspended' ? 'selected' : '' ?>>Suspended</option>
                                 <option value="inactive" <?= $currentStatus === 'inactive' ? 'selected' : '' ?>>Inactive</option>
                             </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <?php
-            /**
-             * Photograph and signature.
-             *
-             * These are printed side by side on every field visit report this person
-             * files. That is the reason they exist: a report a borrower signed should
-             * say who was standing there, and a name in a text field does not.
-             *
-             * The signature is an uploaded image rather than something drawn on screen.
-             * Agents sign one sheet, it gets photographed once, and the same mark then
-             * appears on every report - which is what makes two reports comparable. A
-             * pad redrawn per report produces a different squiggle each time.
-             */
-            ?>
-            <div class="lrms-card mb-3">
-                <div class="lrms-card-head"><h2>Photograph &amp; signature</h2></div>
-                <div class="lrms-card-body">
-                    <p class="text-muted mb-3" style="font-size:.8125rem">
-                        Both are printed together at the foot of this person's field visit
-                        reports. JPEG, PNG or WebP, up to 8&nbsp;MB. A signature photographed
-                        against white paper reproduces best.
-                    </p>
-
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label" for="photo">Photograph</label>
-                            <?php if ($isEdit && !empty($user['photo_path'])): ?>
-                                <div class="mb-2">
-                                    <img src="<?= e(\App\Core\Url::media((string) $user['photo_path'])) ?>"
-                                         alt="Current photograph"
-                                         style="height:96px;width:auto;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" value="1"
-                                           id="remove_photo" name="remove_photo">
-                                    <label class="form-check-label" for="remove_photo" style="font-size:.8125rem">
-                                        Remove the current photograph
-                                    </label>
-                                </div>
-                            <?php endif; ?>
-                            <input type="file" class="form-control<?= has_error($errors, 'photo') ?>"
-                                   id="photo" name="photo" accept="image/jpeg,image/png,image/webp">
-                            <?= field_error($errors, 'photo') ?>
-                            <?php if ($isEdit && !empty($user['photo_path'])): ?>
-                                <div class="form-text">Choosing a file replaces the one above.</div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label" for="signature">Signature</label>
-                            <?php if ($isEdit && !empty($user['signature_path'])): ?>
-                                <div class="mb-2">
-                                    <img src="<?= e(\App\Core\Url::media((string) $user['signature_path'])) ?>"
-                                         alt="Current signature"
-                                         style="height:96px;width:auto;border:1px solid var(--lrms-border);border-radius:6px;background:#fff">
-                                </div>
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" value="1"
-                                           id="remove_signature" name="remove_signature">
-                                    <label class="form-check-label" for="remove_signature" style="font-size:.8125rem">
-                                        Remove the current signature
-                                    </label>
-                                </div>
-                            <?php endif; ?>
-                            <input type="file" class="form-control<?= has_error($errors, 'signature') ?>"
-                                   id="signature" name="signature" accept="image/jpeg,image/png,image/webp">
-                            <?= field_error($errors, 'signature') ?>
-                            <?php if ($isEdit && !empty($user['signature_path'])): ?>
-                                <div class="form-text">Choosing a file replaces the one above.</div>
-                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

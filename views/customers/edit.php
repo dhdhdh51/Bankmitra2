@@ -124,11 +124,14 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                     <div class="row g-3">
                         <?php
                         $moneyFields = [
-                            'outstanding_amount' => 'Outstanding amount',
-                            'overdue_amount'     => 'Overdue amount',
-                            'closure_amount'     => 'Closure amount',
-                            'ots_amount'         => 'OTS amount',
-                            'deposit_amount'     => 'Deposit amount',
+                            'outstanding_amount'  => 'Outstanding amount',
+                            'overdue_amount'      => 'Overdue amount',
+                            'closure_amount'      => 'Closure amount',
+                            'ots_amount'          => 'OTS amount',
+                            'deposit_amount'      => 'Deposit amount',
+                            'installment_amount'  => 'Instalment / EMI',
+                            'last_payment_amount' => 'Last payment amount',
+                            'security_value'      => 'Security value',
                         ];
                         $overriddenSet = array_flip($overridden ?? []);
                         ?>
@@ -172,6 +175,80 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                                    id="npa_date" name="npa_date" value="<?= $value('npa_date') ?>">
                             <?= field_error($errors, 'npa_date') ?>
                             <div class="form-text">Clearing it removes the NPA flag too.</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="asset_classification">Asset classification</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'asset_classification') ?>"
+                                   id="asset_classification" name="asset_classification"
+                                   value="<?= $value('asset_classification') ?>" maxlength="40"
+                                   list="classification_options">
+                            <datalist id="classification_options">
+                                <?php foreach (['Standard', 'SMA-0', 'SMA-1', 'SMA-2', 'Sub-Standard',
+                                                'Doubtful-1', 'Doubtful-2', 'Doubtful-3', 'Loss'] as $option): ?>
+                                    <option value="<?= e($option) ?>"></option>
+                                <?php endforeach; ?>
+                            </datalist>
+                            <?= field_error($errors, 'asset_classification') ?>
+                            <div class="form-text">Whatever the bank's statement says. Suggestions are the canonical spellings.</div>
+                            <?php if (isset($overriddenSet['asset_classification'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="interest_rate">Interest rate (% p.a.)</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'interest_rate') ?>"
+                                   id="interest_rate" name="interest_rate"
+                                   value="<?= $value('interest_rate') ?>" min="0" step="0.001" inputmode="decimal">
+                            <?= field_error($errors, 'interest_rate') ?>
+                            <?php if (isset($overriddenSet['interest_rate'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label" for="days_past_due">Days past due</label>
+                            <input type="number" class="form-control<?= has_error($errors, 'days_past_due') ?>"
+                                   id="days_past_due" name="days_past_due"
+                                   value="<?= $value('days_past_due') ?>" min="0" step="1" inputmode="numeric">
+                            <?= field_error($errors, 'days_past_due') ?>
+                            <div class="form-text">As the bank computed it, not derived here.</div>
+                            <?php if (isset($overriddenSet['days_past_due'])): ?>
+                                <div class="form-text text-warning">Hand-edited &mdash; imports skip this.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="guarantor_name">Guarantor name</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'guarantor_name') ?>"
+                                   id="guarantor_name" name="guarantor_name"
+                                   value="<?= $value('guarantor_name') ?>" maxlength="150">
+                            <?= field_error($errors, 'guarantor_name') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="purpose">Purpose / activity</label>
+                            <input type="text" class="form-control<?= has_error($errors, 'purpose') ?>"
+                                   id="purpose" name="purpose"
+                                   value="<?= $value('purpose') ?>" maxlength="150">
+                            <?= field_error($errors, 'purpose') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="last_payment_date">Last payment date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'last_payment_date') ?>"
+                                   id="last_payment_date" name="last_payment_date"
+                                   value="<?= $value('last_payment_date') ?>">
+                            <?= field_error($errors, 'last_payment_date') ?>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="maturity_date">Maturity date</label>
+                            <input type="date" class="form-control<?= has_error($errors, 'maturity_date') ?>"
+                                   id="maturity_date" name="maturity_date"
+                                   value="<?= $value('maturity_date') ?>">
+                            <?= field_error($errors, 'maturity_date') ?>
                         </div>
 
                         <div class="col-md-6">

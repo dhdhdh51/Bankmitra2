@@ -14,6 +14,7 @@ use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\Notification;
 use App\Models\Timeline;
+use App\Services\AssignmentService;
 
 /**
  * Excel/CSV lead import.
@@ -58,6 +59,11 @@ final class ImportService
         array $overrides = [],
         bool $mayCreateBranches = false,
         ?string $storedPath = null,
+        // Spread the file across each branch's agents instead of giving all of it to
+        // one. The sensible choice for any branch with more than one BC, and the reason
+        // it exists: naming a single agent hands them every lead in the file, and the
+        // reassignment that would fix it afterwards is work nobody does.
+        bool $distribute = false,
     ): array {
         $db = Database::instance();
 
@@ -110,6 +116,14 @@ final class ImportService
             $agentBranchId = $agent === null ? null : (int) $agent['branch_id'];
         }
 
+        // Loaded per branch on first use and then carried through the whole file, so the
+        // running tally reflects rows this import has already placed. Seeded from what
+        // each agent is ALREADY carrying, which is what makes a second import continue
+        // the spread instead of restarting it at the same agent.
+        /** @var array<int,array<int,array{name:string,open:int}>> $workloadByBranch */
+        $workloadByBranch = [];
+        $distributedCounts = [];
+
         $inserted = 0;
         $updated = 0;
         $skipped = 0;
@@ -144,6 +158,9 @@ final class ImportService
                 &$unmatchedBranches,
                 &$createdBranches,
                 &$assignedLeadIds,
+                &$workloadByBranch,
+                &$distributedCounts,
+                $distribute,
                 // By reference, or the appends below land in a local array that dies
                 // with the closure and every import reports "nothing skipped" while
                 // silently declining to update overridden columns - the worst of both.
@@ -207,36 +224,76 @@ final class ImportService
                             ];
                         }
 
+                        // Even distribution: whoever in this row's branch is carrying
+                        // the least takes it, and the tally moves so the next row goes
+                        // to somebody else.
+                        if ($distribute) {
+                            if (!isset($workloadByBranch[$branchId])) {
+                                $workloadByBranch[$branchId] = AssignmentService::agentWorkload($branchId);
+                            }
+
+                            $agentForRow = AssignmentService::lightestAgent($workloadByBranch[$branchId]);
+
+                            if ($agentForRow === null) {
+                                $errors[] = [
+                                    'row'     => $lineNumber,
+                                    'account' => $account,
+                                    'message' => 'Imported without assignment: this branch has no active BC/DC agent.',
+                                ];
+                            } else {
+                                $workloadByBranch[$branchId][$agentForRow]['open']++;
+                                $distributedCounts[$agentForRow] =
+                                    ($distributedCounts[$agentForRow] ?? 0) + 1;
+                            }
+                        }
+
                         $mobile = self::cleanDigits($values['mobile'], 10, 13);
                         $aadhaar = self::cleanDigits($values['aadhaar'], 12, 12);
                         $npaDate = self::parseDate($values['npa_date']);
                         $outstanding = self::parseAmount($values['outstanding_amount']);
                         $overdue = self::parseAmount($values['overdue_amount']);
 
-                        // CKCC / sanction columns. These exist on loan_accounts and
-                        // the CKCC renewal report needs them, but nothing could fill
-                        // them before: they are only written when the file has them,
-                        // so a plain NPA statement leaves them untouched.
-                        $ckcc = array_filter([
+                        // Everything else the file may carry.
+                        //
+                        // Filtered so a blank cell is omitted from the write entirely,
+                        // and merged with `+` so it can never overwrite the columns
+                        // above. That combination is what makes a partial file safe: a
+                        // plain NPA statement with six columns leaves the CKCC and
+                        // settlement figures from last month's fuller export alone,
+                        // instead of nulling them out.
+                        $fileColumns = array_filter([
                             'cif_number'            => self::nullable($values['cif_number'], 40),
                             'sanction_date'         => self::parseDate($values['sanction_date']),
                             'ckcc_renewal_due_date' => self::parseDate($values['ckcc_renewal_due_date']),
-                            'sanction_limit'        => trim($values['sanction_limit']) === ''
-                                ? null : self::parseAmount($values['sanction_limit']),
-                            'drawing_power'         => trim($values['drawing_power']) === ''
-                                ? null : self::parseAmount($values['drawing_power']),
-                            'interest_overdue'      => trim($values['interest_overdue']) === ''
-                                ? null : self::parseAmount($values['interest_overdue']),
+                            'sanction_limit'        => self::optionalAmount($values['sanction_limit']),
+                            'drawing_power'         => self::optionalAmount($values['drawing_power']),
+                            'interest_overdue'      => self::optionalAmount($values['interest_overdue']),
                             // The branch's settlement position. A blank cell stays
                             // NULL rather than becoming "No": not stated and refused
                             // are different answers, and only one of them should
                             // stop an agent offering a settlement.
                             'ots_eligible'          => self::parseBoolean($values['ots_eligible']),
                             'krm_eligible'          => self::parseBoolean($values['krm_eligible']),
-                            'ots_amount'            => trim($values['ots_amount']) === ''
-                                ? null : self::parseAmount($values['ots_amount']),
-                            'deposit_amount'        => trim($values['deposit_amount']) === ''
-                                ? null : self::parseAmount($values['deposit_amount']),
+                            'ots_amount'            => self::optionalAmount($values['ots_amount']),
+                            'deposit_amount'        => self::optionalAmount($values['deposit_amount']),
+
+                            // What it costs to close the account outright. Distinct
+                            // from ots_amount, which is a discount the branch agreed
+                            // to accept - quoting one for the other at a doorstep is
+                            // the mistake this pair of columns exists to prevent.
+                            'closure_amount'        => self::optionalAmount($values['closure_amount']),
+
+                            // The rest of a core banking recovery statement.
+                            'asset_classification'  => self::parseClassification($values['asset_classification']),
+                            'interest_rate'         => self::optionalAmount($values['interest_rate']),
+                            'installment_amount'    => self::optionalAmount($values['installment_amount']),
+                            'last_payment_date'     => self::parseDate($values['last_payment_date']),
+                            'last_payment_amount'   => self::optionalAmount($values['last_payment_amount']),
+                            'days_past_due'         => self::optionalInt($values['days_past_due'], 0, 65535),
+                            'security_value'        => self::optionalAmount($values['security_value']),
+                            'guarantor_name'        => self::nullable($values['guarantor_name'], 150),
+                            'maturity_date'         => self::parseDate($values['maturity_date']),
+                            'purpose'               => self::nullable($values['purpose'], 150),
                         ], static fn ($value): bool => $value !== null);
 
                         $existing = $db->first(
@@ -282,7 +339,7 @@ final class ImportService
                                 'is_npa'             => $npaDate === null ? 0 : 1,
                                 'remarks'            => self::nullable($values['remarks'], 1000),
                                 'import_id'          => $importId,
-                            ] + $ckcc;
+                            ] + $fileColumns;
 
                             // Never steal a lead that is already being worked.
                             if ($agentForRow !== null && $existing['assigned_agent_id'] === null) {
@@ -360,7 +417,7 @@ final class ImportService
                             'assigned_by'         => $agentForRow === null ? null : $actorId,
                             'remarks'             => self::nullable($values['remarks'], 1000),
                             'import_id'           => $importId,
-                        ] + $ckcc);
+                        ] + $fileColumns);
 
                         Timeline::record(
                             $loanId,
@@ -456,6 +513,9 @@ final class ImportService
             'unmatched_branches' => $unmatchedBranches,
             'created_branches'   => $createdBranches,
             'skipped_overrides'  => $skippedOverrides,
+            // Who ended up with what. Reported rather than assumed: "distributed
+            // equally" is a claim, and this is the evidence for it.
+            'distribution'       => $distributedCounts,
             'sheet'              => (string) ($parsed['sheet'] ?? ''),
             'mapping'            => self::describeMapping($headings, $detection),
         ];
@@ -856,6 +916,102 @@ final class ImportService
         }
 
         return null;
+    }
+
+    /**
+     * An amount, or null when the cell was blank.
+     *
+     * Distinct from parseAmount(), which returns 0.00 for a blank. That distinction is
+     * the whole point: 0.00 in `overdue_amount` says the account is current, while NULL
+     * in `security_value` says the file did not tell us what collateral is held. Writing
+     * zero for the second would put "no security" on a file that never claimed it.
+     */
+    private static function optionalAmount(string $raw): ?float
+    {
+        return trim($raw) === '' ? null : self::parseAmount($raw);
+    }
+
+    /**
+     * A whole number within bounds, or null.
+     *
+     * Clamped rather than rejected: a bank's DPD column occasionally carries something
+     * absurd from a bad join, and the choice is between storing a nonsense number,
+     * dropping the row, or pinning it to the column's limit. Pinning keeps the rest of
+     * a genuine row while making no claim it can't support - and the column is
+     * SMALLINT UNSIGNED, so an unclamped 90000 would be silently truncated by MySQL
+     * anyway, which is the same lie told less visibly.
+     */
+    private static function optionalInt(string $raw, int $min, int $max): ?int
+    {
+        $digits = preg_replace('/[^\d-]/', '', trim($raw)) ?? '';
+        if ($digits === '' || $digits === '-') {
+            return null;
+        }
+
+        return max($min, min($max, (int) $digits));
+    }
+
+    /**
+     * The asset classification, normalised where it is recognisable.
+     *
+     * Banks write this column twenty different ways: "SS", "S/S", "Sub-Standard",
+     * "DOUBTFUL-II", "D2", "D-2", "LOSS ASSET", "SMA 2". It is the single most useful
+     * prioritisation field in an NPA statement, so the one thing this must not do is
+     * throw a spelling away.
+     *
+     * Recognised spellings collapse to a canonical label so a branch can group by it.
+     * Anything else is stored exactly as the file wrote it - a value nobody anticipated
+     * is still worth more than a NULL, and it shows up in the panel where somebody can
+     * see what the bank is actually sending.
+     */
+    private static function parseClassification(string $raw): ?string
+    {
+        $value = trim($raw);
+        if ($value === '') {
+            return null;
+        }
+
+        // Collapse to letters and digits so "D-2", "D 2" and "d2" are one key.
+        $key = strtolower((string) preg_replace('/[^a-z0-9]/i', '', $value));
+
+        $canonical = [
+            'standard'      => 'Standard',
+            'std'           => 'Standard',
+            'stdasset'      => 'Standard',
+            'standardasset' => 'Standard',
+            'regular'       => 'Standard',
+            'performing'    => 'Standard',
+
+            'sma'           => 'SMA-0',
+            'sma0'          => 'SMA-0',
+            'sma1'          => 'SMA-1',
+            'sma2'          => 'SMA-2',
+
+            'ss'            => 'Sub-Standard',
+            'substandard'   => 'Sub-Standard',
+            'substd'        => 'Sub-Standard',
+            'subs'          => 'Sub-Standard',
+
+            'd1'            => 'Doubtful-1',
+            'doubtful1'     => 'Doubtful-1',
+            'doubtfuli'     => 'Doubtful-1',
+            'df1'           => 'Doubtful-1',
+            'd2'            => 'Doubtful-2',
+            'doubtful2'     => 'Doubtful-2',
+            'doubtfulii'    => 'Doubtful-2',
+            'df2'           => 'Doubtful-2',
+            'd3'            => 'Doubtful-3',
+            'doubtful3'     => 'Doubtful-3',
+            'doubtfuliii'   => 'Doubtful-3',
+            'df3'           => 'Doubtful-3',
+            'doubtful'      => 'Doubtful',
+
+            'loss'          => 'Loss',
+            'lossasset'     => 'Loss',
+            'l'             => 'Loss',
+        ][$key] ?? null;
+
+        return $canonical ?? mb_substr($value, 0, 40);
     }
 
     /** Keeps digits only and enforces a plausible length, else returns null. */

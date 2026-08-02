@@ -29,7 +29,7 @@ final class CustomFieldController extends Controller
 {
     public function index(Request $request): void
     {
-        $this->guard($request, 'custom_fields.manage');
+        $this->guard($request, 'custom_fields.manage', allowAgent: true);
 
         $this->view($request, 'custom-fields/index', [
             'title'      => 'Custom fields',
@@ -41,7 +41,7 @@ final class CustomFieldController extends Controller
 
     public function create(Request $request): void
     {
-        $this->guard($request, 'custom_fields.manage');
+        $this->guard($request, 'custom_fields.manage', allowAgent: true);
 
         if (!$request->isPost()) {
             $this->view($request, 'custom-fields/form', [
@@ -80,7 +80,7 @@ final class CustomFieldController extends Controller
 
     public function edit(Request $request): void
     {
-        $this->guard($request, 'custom_fields.manage');
+        $this->guard($request, 'custom_fields.manage', allowAgent: true);
 
         $id = $request->paramInt('id');
         $field = CustomField::find($id);
@@ -120,7 +120,7 @@ final class CustomFieldController extends Controller
 
     public function delete(Request $request): void
     {
-        $this->guard($request, 'custom_fields.manage');
+        $this->guard($request, 'custom_fields.manage', allowAgent: true);
 
         $id = $request->paramInt('id');
         $field = CustomField::find($id);

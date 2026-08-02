@@ -63,6 +63,9 @@ return static function (Router $router): void {
     // read as an id.
     $router->form('/visits/{id}/approve', [VisitController::class, 'approve']);
     $router->form('/visits/{id}/revise', [VisitController::class, 'revise']);
+    // Attaching a signature from a desk: a photographed paper signature, for the
+    // reports where nobody signed the phone.
+    $router->post('/visits/{id}/signature', [VisitController::class, 'uploadSignature']);
 
     // ---- Promises --------------------------------------------------------
     $router->get('/promises', [PromiseController::class, 'index']);

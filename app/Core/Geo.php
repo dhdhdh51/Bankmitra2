@@ -116,6 +116,13 @@ final class Geo
      */
     public static function signature(array $signature): string
     {
+        // An image attached from a desk is never given a position, and says why. The
+        // only coordinate available at upload time is the office the file came from,
+        // which would be a fact about a clerk presented as a fact about a doorstep.
+        if ((string) ($signature['capture_method'] ?? 'device_pad') === 'panel_upload') {
+            return 'Uploaded image - not signed at the visit.';
+        }
+
         return self::caption(
             $signature['gps_latitude'] ?? null,
             $signature['gps_longitude'] ?? null,

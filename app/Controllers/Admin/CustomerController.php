@@ -28,7 +28,8 @@ final class CustomerController extends Controller
      */
     public function index(Request $request): void
     {
-        $this->guard($request, 'customers.view');
+        // Agents see this list, filtered to their own leads by filters() below.
+        $this->guard($request, 'customers.view', allowAgent: true);
 
         $filters = $this->filters($request);
         [$sortBy, $sortDir] = $request->sort(LoanAccount::SORTABLE, 'created_at', 'DESC');
@@ -61,7 +62,7 @@ final class CustomerController extends Controller
      */
     public function show(Request $request): void
     {
-        $this->guard($request, 'customers.view');
+        $this->guard($request, 'customers.view', allowAgent: true);
 
         $id = $request->paramInt('id');
 
@@ -74,6 +75,7 @@ final class CustomerController extends Controller
         }
 
         Auth::assertBranchAccess((int) $lead['branch_id']);
+        $this->assertOwnLead($lead);
 
         $this->logView('Customers', sprintf('Viewed loan account %s', (string) $lead['loan_account_number']));
 
@@ -110,7 +112,7 @@ final class CustomerController extends Controller
      */
     public function edit(Request $request): void
     {
-        $this->guard($request, 'customers.update');
+        $this->guard($request, 'customers.update', allowAgent: true);
 
         $id = $request->paramInt('id');
         $lead = LoanAccount::findWithPii($id);
@@ -119,6 +121,7 @@ final class CustomerController extends Controller
             $this->back('/customers', 'danger', 'That loan account could not be found.');
         }
         Auth::assertBranchAccess((int) $lead['branch_id']);
+        $this->assertOwnLead($lead);
 
         if (!$request->isPost()) {
             $this->view($request, 'customers/edit', [
@@ -149,6 +152,17 @@ final class CustomerController extends Controller
             'npa_date'            => 'nullable|date',
             'ckcc_renewal_due_date' => 'nullable|date',
             'cif_number'          => 'nullable|max:40',
+            // The rest of the core banking statement.
+            'asset_classification' => 'nullable|max:40',
+            'interest_rate'       => 'nullable|numeric|min_value:0',
+            'installment_amount'  => 'nullable|numeric|min_value:0',
+            'last_payment_date'   => 'nullable|date',
+            'last_payment_amount' => 'nullable|numeric|min_value:0',
+            'days_past_due'       => 'nullable|numeric|min_value:0',
+            'security_value'      => 'nullable|numeric|min_value:0',
+            'guarantor_name'      => 'nullable|max:150',
+            'maturity_date'       => 'nullable|date',
+            'purpose'             => 'nullable|max:150',
         ], [
             'father_husband_name' => 'Father / husband name',
             'ckcc_renewal_due_date' => 'CKCC renewal due date',
@@ -203,6 +217,16 @@ final class CustomerController extends Controller
             'deposit_amount'        => 'money',
             'npa_date'              => 'date',
             'ckcc_renewal_due_date' => 'date',
+            'asset_classification'  => 'str',
+            'interest_rate'         => 'money',
+            'installment_amount'    => 'money',
+            'last_payment_date'     => 'date',
+            'last_payment_amount'   => 'money',
+            'days_past_due'         => 'int',
+            'security_value'        => 'money',
+            'guarantor_name'        => 'str',
+            'maturity_date'         => 'date',
+            'purpose'               => 'str',
         ] as $column => $kind) {
             if (!$request->has($column)) {
                 continue;
@@ -212,6 +236,9 @@ final class CustomerController extends Controller
                 'money' => $request->nullableStr($column) === null
                     ? null
                     : round((float) $request->float($column), 2),
+                'int'   => $request->nullableStr($column) === null
+                    ? null
+                    : max(0, (int) $request->float($column)),
                 'date'  => $request->nullableStr($column),
                 default => $request->nullableStr($column),
             };
@@ -276,6 +303,7 @@ final class CustomerController extends Controller
 
         $result = match ($action) {
             'assign', 'reassign' => $this->bulkAssign($request, $ids, $action === 'reassign'),
+            'distribute'         => $this->bulkDistribute($ids),
             'transfer'           => $this->bulkTransfer($request, $ids),
             'unassign'           => $this->bulkUnassign($ids),
             'close'              => $this->bulkStatus($ids, 'closed'),
@@ -383,6 +411,22 @@ final class CustomerController extends Controller
             'date_from'  => $request->str('date_from'),
             'date_to'    => $request->str('date_to'),
         ];
+    }
+
+    /**
+     * Spread the selection evenly across the branch's agents.
+     *
+     * Behind leads.assign rather than a permission of its own: it is the same act as
+     * assigning, minus the part where somebody has to decide who gets what.
+     *
+     * @param  list<int> $ids
+     * @return array{updated:int,skipped:int,messages:list<string>}
+     */
+    private function bulkDistribute(array $ids): array
+    {
+        Auth::requirePermissionPanel('leads.assign', '/customers');
+
+        return AssignmentService::distribute($ids);
     }
 
     /**

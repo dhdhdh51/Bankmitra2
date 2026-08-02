@@ -406,3 +406,20 @@ if (!function_exists('geo_source_badge')) {
         );
     }
 }
+
+
+if (!function_exists('is_agent')) {
+    /**
+     * Whether the signed-in user is a BC/DC agent.
+     *
+     * Used by the navigation, which has to mirror the `allowAgent` flags on the
+     * controllers. A permission an agent holds is not the same thing as a screen an
+     * agent can open: they hold `visits.view` for the app's benefit, while the panel's
+     * visit screens are not scoped to a single agent and so stay closed to them. A link
+     * to a page that refuses you is worse than no link.
+     */
+    function is_agent(): bool
+    {
+        return Auth::isAgent();
+    }
+}

@@ -26,10 +26,15 @@ abstract class Controller
 {
     /**
      * @param string|null $permission Required permission, or null for any signed-in user.
+     * @param bool        $allowAgent Whether a BC/DC agent may reach this action.
+     *                                Defaults to false: a new screen is closed to
+     *                                agents until somebody says otherwise, because
+     *                                forgetting the flag hides a page while forgetting
+     *                                a check would expose one.
      */
-    protected function guard(Request $request, ?string $permission = null): void
+    protected function guard(Request $request, ?string $permission = null, bool $allowAgent = false): void
     {
-        Auth::requirePanel($request);
+        Auth::requirePanel($request, $allowAgent);
 
         // Cookie-authenticated writes need a CSRF token.
         if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
@@ -74,10 +79,41 @@ abstract class Controller
     }
 
     /**
+     * An agent may only open a record assigned to them.
+     *
+     * Branch scope is not enough. A branch holds several agents, and one of them
+     * reading a colleague's borrower - name, address, family, phone number - is not
+     * something the job needs. Callers run this after assertBranchAccess(), which has
+     * already dealt with everybody who is not an agent.
+     *
+     * @param array<string,mixed> $lead
+     */
+    protected function assertOwnLead(array $lead): void
+    {
+        $agentId = Auth::scopedAgentId();
+        if ($agentId === null) {
+            return;
+        }
+
+        $assigned = $lead['assigned_agent_id'] ?? null;
+        if ($assigned === null || (int) $assigned !== $agentId) {
+            $this->back('/customers', 'danger', 'That borrower is not assigned to you.');
+        }
+    }
+
+    /**
      * Agent filter, constrained to the caller's branch.
      */
     protected function agentFilter(Request $request): ?int
     {
+        // An agent's list is their own leads, and not negotiable by query string. This
+        // sits before the request is read at all so ?agent_id=<colleague> cannot widen
+        // it - the parameter is simply never consulted for an agent.
+        $own = Auth::scopedAgentId();
+        if ($own !== null) {
+            return $own;
+        }
+
         $agentId = $request->nullableInt('agent_id');
         if ($agentId === null || $agentId <= 0) {
             return null;

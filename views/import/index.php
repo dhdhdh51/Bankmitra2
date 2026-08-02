@@ -71,6 +71,15 @@
                                 <label class="form-label" for="default_agent_id">Bulk assign to agent</label>
                                 <select class="form-select" id="default_agent_id" name="default_agent_id">
                                     <option value="">Do not assign</option>
+                                    <?php
+                                    /*
+                                     * The sensible default for a branch with more than
+                                     * one BC. Picking a single agent for a whole file
+                                     * gives one person every lead in it, and the fix
+                                     * afterwards is a manual reassignment nobody does.
+                                     */
+                                    ?>
+                                    <option value="distribute">Distribute equally among the branch's agents</option>
                                     <?php foreach ($agents as $agent): ?>
                                         <option value="<?= e((string) $agent['id']) ?>">
                                             <?= e($agent['name']) ?> (<?= e($agent['employee_code']) ?>)
@@ -80,6 +89,8 @@
                                 </select>
                                 <div class="form-text">
                                     Leads already being worked by another agent are never reassigned by an import.
+                                    Distributing balances what each agent is already carrying, so a second
+                                    import does not pile onto whoever was first in the list.
                                 </div>
                             </div>
                         </div>
