@@ -1256,6 +1256,129 @@ check('POST without CSRF token is refused',
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
+section('Adding a borrower and a loan account by hand');
+
+// Until now a lead could only arrive as a row in an Excel file, which assumes head office
+// has the account before the field does. It is often the other way round.
+$createForm = request($base . '/customers/create');
+check('the create form opens', $createForm['status'] === 200
+    && str_contains($createForm['body'], 'Add borrower'), 'HTTP ' . $createForm['status']);
+check('it asks for the account number, which is the one thing an import matches on',
+    str_contains($createForm['body'], 'name="loan_account_number"'));
+check('and it says plainly that the next import replaces what is typed here',
+    str_contains($createForm['body'], 'The next import wins'));
+check('the borrower list offers it', str_contains($customers, 'Add borrower'));
+
+$newAccount = 'HAND' . substr((string) time(), -6);
+$created = request($base . '/customers/create', [
+    '_csrf'               => csrfToken($createForm['body']),
+    'loan_account_number' => $newAccount,
+    'branch_id'           => '1',
+    'name'                => 'Hand Typed Borrower',
+    'father_husband_name' => 'Typed Senior',
+    'mobile'              => '9876500011',
+    'aadhaar'             => '432109876501',
+    'village'             => 'Handmade',
+    'loan_type'           => 'KCC',
+    'facility_type'       => 'kcc',
+    'outstanding_amount'  => '41000.50',
+    'overdue_amount'      => '9000',
+    'npa_date'            => date('Y-m-d', strtotime('-40 days')),
+    'remarks'             => 'Handed over on paper by the branch.',
+]);
+check('a borrower and a loan account are created', $created['status'] === 200
+    && str_contains($created['body'], 'Hand Typed Borrower'), 'HTTP ' . $created['status']);
+check('and it lands on the new borrower rather than back on a list',
+    str_contains($created['body'], $newAccount));
+check('the figures typed are stored', str_contains($created['body'], '41,000'));
+check('setting an NPA date marks the account NPA', str_contains($created['body'], 'NPA'));
+
+// The trail has to say where this account came from. "Imported" would be a lie about a
+// figure somebody typed, and it is the kind of lie that matters years later.
+check('the timeline records it as created by hand, not imported',
+    str_contains($created['body'], 'Lead created by hand'));
+check('and does not claim it was imported',
+    !str_contains($created['body'], 'Lead imported'));
+
+preg_match('#/customers/(\d+)#', $created['headers'] . $created['body'], $newIdMatch);
+$handLeadId = (int) ($newIdMatch[1] ?? 0);
+
+// Deliberately NOT stamped as hand-edited. A created lead is a placeholder until the
+// bank's export reaches the account; then the core banking figures must win. A figure
+// corrected afterwards through the edit form is a different claim and IS stamped.
+if ($handLeadId > 0) {
+    $handEdit = request($base . '/customers/' . $handLeadId . '/edit');
+    check('a created lead carries no hand-edited overrides',
+        $handEdit['status'] === 200 && !str_contains($handEdit['body'], 'Hand-edited'),
+        'HTTP ' . $handEdit['status']);
+}
+
+// The same number twice is the mistake somebody will actually make, and "already in use"
+// leaves them nowhere to go.
+$dupeForm = request($base . '/customers/create');
+$duplicate = request($base . '/customers/create', [
+    '_csrf'               => csrfToken($dupeForm['body']),
+    'loan_account_number' => $newAccount,
+    'branch_id'           => '1',
+    'name'                => 'Second Attempt',
+]);
+check('the same account number is refused',
+    str_contains($duplicate['body'], 'already exists'), 'HTTP ' . $duplicate['status']);
+check('and the refusal names the borrower who already holds it',
+    str_contains($duplicate['body'], 'Hand Typed Borrower'));
+check('the typing is not thrown away with it',
+    formValue($duplicate['body'], 'loan_account_number') === $newAccount
+    || str_contains($duplicate['body'], $newAccount));
+
+$blank = request($base . '/customers/create', [
+    '_csrf' => csrfToken(request($base . '/customers/create')['body']),
+    'name'  => '',
+]);
+check('a blank form is refused rather than creating an empty borrower',
+    str_contains($blank['body'], 'invalid-feedback') || str_contains($blank['body'], 'required'),
+    'HTTP ' . $blank['status']);
+
+// A second account for the SAME borrower: a KCC and an OD-2 are two accounts and one
+// person, and starting a second copy of the person is how a village ends up with four
+// Ramesh Kumars.
+if ($handLeadId > 0) {
+    $profile = request($base . '/customers/' . $handLeadId);
+    check('the borrower page offers another account for the same person',
+        str_contains($profile['body'], 'Add another account'));
+
+    preg_match('#/customers/create\?customer_id=(\d+)#', $profile['body'], $custMatch);
+    $handCustomerId = (int) ($custMatch[1] ?? 0);
+    check('and the link carries the borrower it is for', $handCustomerId > 0);
+
+    if ($handCustomerId > 0) {
+        $secondForm = request($base . '/customers/create?customer_id=' . $handCustomerId);
+        check('the second-account form names the borrower instead of asking again',
+            $secondForm['status'] === 200
+            && str_contains($secondForm['body'], 'Add another loan account')
+            && !str_contains($secondForm['body'], 'name="father_husband_name"'),
+            'HTTP ' . $secondForm['status']);
+
+        $secondAccount = 'OD2' . substr((string) time(), -6);
+        $second = request($base . '/customers/create?customer_id=' . $handCustomerId, [
+            '_csrf'               => csrfToken($secondForm['body']),
+            'loan_account_number' => $secondAccount,
+            'loan_type'           => 'KCC OD-2',
+            'facility_type'       => 'od2',
+            'outstanding_amount'  => '15000',
+        ]);
+        check('a second account is added to the same borrower', $second['status'] === 200
+            && str_contains($second['body'], $secondAccount), 'HTTP ' . $second['status']);
+        check('and the borrower is not duplicated',
+            str_contains($second['body'], 'Hand Typed Borrower'));
+        check('both accounts are listed against them',
+            str_contains($second['body'], 'Other accounts for this borrower'),
+            'landed on: ' . (str_contains($second['body'], 'Add another loan account')
+                ? 'the form again, so the post was refused'
+                : substr(strip_tags($second['body']), 0, 200)));
+    }
+}
+
+// ---------------------------------------------------------------------------
 section('Every dropdown on every page');
 
 /**
@@ -1594,6 +1717,57 @@ foreach (['agent_id=99999', 'agent_id=', 'branch_id=99999', 'unassigned=1', 'sta
         'HTTP ' . $widened['status'] . ' extra=' . implode(',', array_diff($shown, $ownIds))
     );
 }
+
+// An agent adds a borrower the export has not reached. This is the half of the feature
+// that matters: the branch hands them an account on paper, and building a one-row
+// spreadsheet to get it into the system is not a thing anybody does.
+$agentCreateForm = request($base . '/customers/create');
+check('an agent reaches the create form rather than the "use the app" page',
+    $agentCreateForm['status'] === 200
+    && !str_contains($agentCreateForm['body'], 'Use the D2 Recovery mobile app'),
+    'HTTP ' . $agentCreateForm['status']);
+check('their own list offers it too', str_contains($agentLeads['body'], 'Add borrower'));
+
+// They are not offered a branch or an agent to choose: the account is created in their
+// own branch, assigned to them, and neither is theirs to redirect.
+check('an agent is not asked which branch',
+    !str_contains($agentCreateForm['body'], 'name="branch_id"'));
+check('nor who to assign it to',
+    !str_contains($agentCreateForm['body'], 'name="assigned_agent_id"'));
+
+$agentAccount = 'AGENT' . substr((string) time(), -6);
+// Mobile AND Aadhaar on purpose. This lead is assigned to AGT001 and sorts to the top of
+// their list, which is exactly the row the API smoke reads as "the agent's first lead" to
+// assert a dialable number on. A fixture that is not shaped like real data breaks four
+// assertions in a different harness - the same trap a seeded import batch set earlier in
+// this file's history.
+$agentCreated = request($base . '/customers/create', [
+    '_csrf'               => csrfToken($agentCreateForm['body']),
+    'loan_account_number' => $agentAccount,
+    'name'                => 'Doorstep Borrower',
+    'mobile'              => '9876500022',
+    'aadhaar'             => '432109876502',
+    'village'             => 'Kotri',
+    'outstanding_amount'  => '22500',
+    // Posted deliberately: a scoped user's branch must come from their session, never
+    // from the form, or an agent can write a lead into another branch.
+    'branch_id'           => '99999',
+]);
+check('an agent creates a borrower', $agentCreated['status'] === 200
+    && str_contains($agentCreated['body'], 'Doorstep Borrower'), 'HTTP ' . $agentCreated['status']);
+check('a posted branch_id is ignored in favour of their own branch',
+    !str_contains($agentCreated['body'], '99999'));
+
+// And they can immediately open it, which is the assertion that catches the trap: the
+// panel shows an agent only the leads assigned to them, so a new lead left unassigned
+// would vanish the moment they saved it.
+check('the lead they just created is assigned to them and openable',
+    str_contains($agentCreated['body'], $agentAccount)
+    && !str_contains($agentCreated['body'], 'not assigned to you'));
+
+$agentListAfter = request($base . '/customers');
+check('and it appears in their own borrower list',
+    str_contains($agentListAfter['body'], $agentAccount));
 
 // Custom fields: an agent may add one and name it.
 $fieldsPage = request($base . '/custom-fields');

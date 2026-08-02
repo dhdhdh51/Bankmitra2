@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Admin;
 
 use App\Core\Auth;
+use App\Core\Database;
 use App\Core\Logger;
 use App\Core\Request;
 use App\Core\Response;
@@ -109,6 +110,294 @@ final class CustomerController extends Controller
      * one: it did not stop corrections happening, it just moved them into a spreadsheet
      * nobody else could see.
      */
+    /**
+     * Adds a borrower and a loan account by hand.
+     *
+     * Until now the only way a lead could enter the system was an Excel import, which
+     * assumes head office has the account before the field does. That is often the wrong
+     * way round: a branch hands an agent a new NPA, a takeover, or an account opened
+     * elsewhere, on paper, and the agent is standing in front of the borrower weeks
+     * before the account appears in anybody's export.
+     *
+     * Three things this deliberately does NOT do:
+     *
+     *  - It does not mark the typed figures as manual overrides. A hand-created lead is a
+     *    placeholder for an account the bank's export has not reached yet; when the export
+     *    does reach it, the core banking figures are the ones that matter and they must
+     *    win. Correcting a figure afterwards through the edit form still stamps an
+     *    override, which is the case where a human genuinely knows better.
+     *  - It does not let a scoped user choose the branch. Both `customers.branch_id` and
+     *    `loan_accounts.branch_id` are set from the caller's own branch, from one value:
+     *    the two are independent columns and the panel reads them in different places, so
+     *    a lead with two different branches is filterable in one and visible in the other.
+     *  - It does not leave an agent's own lead unassigned. `assertOwnLead()` gates an
+     *    agent to leads assigned to them, so an unassigned new lead would vanish the
+     *    moment they pressed Save.
+     */
+    public function create(Request $request): void
+    {
+        // Its own permission, not customers.update: adding an account is not correcting
+        // one, and an auditor who may read every borrower must not be able to invent one.
+        $this->guard($request, 'customers.create', allowAgent: true);
+
+        $scopedBranch = Auth::scopedBranchId();
+        $ownAgentId = Auth::scopedAgentId();
+
+        // A borrower can hold more than one account - a KCC and an OD-2 are two accounts
+        // and one person - so the form can be opened against an existing borrower to add
+        // another account to them rather than duplicating the person.
+        $existing = null;
+        $existingId = $request->int('customer_id');
+        if ($existingId > 0) {
+            $existing = Customer::findWithPii($existingId);
+            if ($existing === null) {
+                $this->back('/customers', 'danger', 'That borrower could not be found.');
+            }
+            Auth::assertBranchAccess((int) $existing['branch_id']);
+        }
+
+        if (!$request->isPost()) {
+            $this->view($request, 'customers/create', [
+                'title'      => $existing === null ? 'Add borrower' : 'Add another loan account',
+                'existing'   => $existing,
+                'branches'   => Branch::options($scopedBranch),
+                'agents'     => $ownAgentId === null ? User::agents($scopedBranch) : [],
+                'ownAgentId' => $ownAgentId,
+                'facilities' => LoanAccount::FACILITIES,
+            ]);
+        }
+
+        $rules = [
+            'loan_account_number' => 'required|max:60',
+            'loan_type'           => 'nullable|max:80',
+            'facility_type'       => 'nullable|in:kcc,od2,other',
+            'cif_number'          => 'nullable|max:40',
+            'outstanding_amount'  => 'nullable|numeric|min_value:0',
+            'overdue_amount'      => 'nullable|numeric|min_value:0',
+            'npa_date'            => 'nullable|date',
+            'ckcc_renewal_due_date' => 'nullable|date',
+            'asset_classification' => 'nullable|max:40',
+            'interest_rate'       => 'nullable|numeric|min_value:0',
+            'days_past_due'       => 'nullable|numeric|min_value:0',
+            'guarantor_name'      => 'nullable|max:150',
+            'purpose'             => 'nullable|max:150',
+            'remarks'             => 'nullable|max:1000',
+        ];
+
+        // The borrower's own fields are only asked for when there is no borrower yet.
+        if ($existing === null) {
+            $rules += [
+                'name'                => 'required|max:150',
+                'father_husband_name' => 'nullable|max:150',
+                'mobile'              => 'nullable|mobile',
+                'aadhaar'             => 'nullable|aadhaar',
+                'village'             => 'nullable|max:150',
+                'address'             => 'nullable|max:500',
+            ];
+        }
+
+        $validator = Validator::make($request->all(), $rules, [
+            'loan_account_number' => 'Loan account number',
+            'father_husband_name' => 'Father / husband name',
+            'ckcc_renewal_due_date' => 'CKCC renewal due date',
+        ]);
+
+        $errors = $validator->fails() ? $validator->errors() : [];
+
+        // Checked by hand rather than with `unique:`, so the message can say WHERE the
+        // number already is. "This loan account number is already in use" leaves somebody
+        // who has just typed a whole statement with nothing to do next.
+        $account = trim($request->str('loan_account_number'));
+        if ($account !== '' && !isset($errors['loan_account_number'])) {
+            $clash = LoanAccount::findByNumber($account);
+            if ($clash !== null) {
+                $errors['loan_account_number'] = [sprintf(
+                    'Account %s already exists - %s, %s branch. Open it from the borrower list instead of adding it again.',
+                    $account,
+                    (string) ($clash['customer_name'] ?? 'unknown borrower'),
+                    (string) ($clash['branch_name'] ?? 'another')
+                )];
+            }
+        }
+
+        if ($errors !== []) {
+            $this->backWithErrors($this->createUrl($existingId), $errors, $request->all());
+        }
+
+        // Never read from the request for a scoped user: a posted branch_id is a request
+        // to write into somebody else's branch. And an account added to an existing
+        // borrower belongs to that borrower's branch - it is not a question worth asking,
+        // and asking it invites the answer that splits a person across two branches.
+        $branchId = $scopedBranch
+            ?? ($existing !== null ? (int) $existing['branch_id'] : $request->int('branch_id'));
+        if ($branchId <= 0) {
+            $this->backWithErrors(
+                $this->createUrl($existingId),
+                ['branch_id' => ['Choose the branch this account belongs to.']],
+                $request->all()
+            );
+        }
+        Auth::assertBranchAccess($branchId);
+
+        // An agent gets their own lead. A manager or admin may hand it to one of their
+        // agents now, or leave it unassigned and distribute it later.
+        $agentId = $ownAgentId;
+        if ($agentId === null && $request->int('assigned_agent_id') > 0) {
+            $candidate = User::find($request->int('assigned_agent_id'));
+            if ($candidate !== null
+                && (string) ($candidate['role_slug'] ?? '') === 'agent'
+                && (int) $candidate['branch_id'] === $branchId) {
+                $agentId = (int) $candidate['id'];
+            }
+        }
+
+        $npaDate = $request->nullableStr('npa_date');
+        $now = date('Y-m-d H:i:s');
+
+        // One transaction: a loan account that fails to insert must not leave a borrower
+        // behind, and a borrower nobody owes anything is a row nothing in the panel lists.
+        try {
+            [$customerId, $loanId] = Database::instance()->transaction(
+                function () use ($request, $existing, $existingId, $branchId, $account, $agentId, $npaDate, $now): array {
+                    $customerId = $existingId;
+
+                    if ($existing === null) {
+                        $customerId = Customer::create([
+                            'branch_id'           => $branchId,
+                            'name'                => mb_substr($request->str('name'), 0, 150),
+                            'father_husband_name' => $request->nullableStr('father_husband_name'),
+                            'village'             => $request->nullableStr('village'),
+                            'address'             => $request->nullableStr('address'),
+                        ], $request->nullableStr('mobile'), $request->nullableStr('aadhaar'));
+                    }
+
+                    $loanId = LoanAccount::create([
+                        'loan_account_number' => mb_substr($account, 0, 60),
+                        'customer_id'         => $customerId,
+                        'branch_id'           => $branchId,
+                        'current_status'      => 'pending',
+                        'is_npa'              => $npaDate === null ? 0 : 1,
+                        'npa_date'            => $npaDate,
+                        'outstanding_amount'  => round($request->float('outstanding_amount'), 2),
+                        'overdue_amount'      => round($request->float('overdue_amount'), 2),
+                        'assigned_agent_id'   => $agentId,
+                        'assigned_at'         => $agentId === null ? null : $now,
+                        'assigned_by'         => $agentId === null ? null : Auth::id(),
+                        // NULL, and it has to be: import_id is a foreign key into
+                        // lead_imports and there is no import behind this row.
+                        'import_id'           => null,
+                    ] + self::optionalLoanColumns($request));
+
+                    return [$customerId, $loanId];
+                }
+            );
+        } catch (\Throwable $e) {
+            // The unique key on loan_account_number is the last word. Two people typing
+            // the same account at once get a message rather than a stack trace.
+            $this->backWithErrors(
+                $this->createUrl($existingId),
+                ['loan_account_number' => ['That account could not be saved: ' . $e->getMessage()]],
+                $request->all()
+            );
+        }
+
+        $actorName = (string) (Auth::user()['name'] ?? '');
+
+        Timeline::record(
+            $loanId,
+            'lead_created',
+            'Lead created by hand',
+            sprintf(
+                'Typed into the panel by %s, not imported from a bank export. Outstanding %s.',
+                $actorName !== '' ? $actorName : 'a panel user',
+                money($request->float('outstanding_amount'))
+            ),
+            Auth::id(),
+            $actorName
+        );
+
+        if ($agentId !== null) {
+            Timeline::record(
+                $loanId,
+                'assigned',
+                'Assigned to agent',
+                $ownAgentId !== null
+                    ? 'Assigned to the agent who created it.'
+                    : 'Assigned when the account was created.',
+                Auth::id(),
+                $actorName,
+                null,
+                null,
+                ['agent_id' => $agentId]
+            );
+        }
+
+        Logger::audit(
+            'create',
+            'loan_account',
+            $loanId,
+            null,
+            ['loan_account_number' => $account, 'customer_id' => $customerId, 'branch_id' => $branchId],
+            sprintf('Created loan account %s by hand', $account)
+        );
+
+        $saved = CustomField::saveValues('customer', $customerId, $request->all(), Auth::id())
+            + CustomField::saveValues('loan_account', $loanId, $request->all(), Auth::id());
+
+        $this->back(
+            '/customers/' . $loanId,
+            'success',
+            $existing === null
+                ? 'Borrower and loan account added. Figures typed here are replaced by the next import that carries this account.'
+                : 'Loan account added to this borrower.'
+        );
+    }
+
+    /** Where the create form posts back to, keeping the borrower it was opened for. */
+    private function createUrl(int $customerId): string
+    {
+        return '/customers/create' . ($customerId > 0 ? '?customer_id=' . $customerId : '');
+    }
+
+    /**
+     * The loan columns a person may type on creation, cast and stripped of blanks.
+     *
+     * Blank-stripped rather than written as NULL so the DDL defaults apply, which is the
+     * same shape ImportService uses for the columns a spreadsheet did not carry.
+     *
+     * @return array<string,mixed>
+     */
+    private static function optionalLoanColumns(Request $request): array
+    {
+        $columns = [
+            'loan_type'             => 'str',
+            'facility_type'         => 'str',
+            'cif_number'            => 'str',
+            'ckcc_renewal_due_date' => 'date',
+            'asset_classification'  => 'str',
+            'interest_rate'         => 'money',
+            'days_past_due'         => 'int',
+            'guarantor_name'        => 'str',
+            'purpose'               => 'str',
+            'remarks'               => 'str',
+        ];
+
+        $out = [];
+        foreach ($columns as $column => $kind) {
+            $value = match ($kind) {
+                'money' => $request->nullableStr($column) === null ? null : round($request->float($column), 2),
+                'int'   => $request->nullableStr($column) === null ? null : max(0, (int) $request->float($column)),
+                default => $request->nullableStr($column),
+            };
+
+            if ($value !== null) {
+                $out[$column] = $value;
+            }
+        }
+
+        return $out;
+    }
+
     public function edit(Request $request): void
     {
         $this->guard($request, 'customers.update', allowAgent: true);

@@ -58,6 +58,25 @@ never processes a payment** — repayment always happens through the bank's own 
   so rather than importing them to nobody.
 - Manual assign / reassign / transfer / unassign, and duplicate detection on loan account
   number.
+- **A borrower can also be added by hand, and a BC agent can do it.** An import assumes
+  head office has the account before the field does, and it is often the other way round:
+  a branch hands an agent a new NPA, a takeover, or an account opened elsewhere on paper,
+  weeks before it appears in anybody's export. Building a one-row spreadsheet to get that
+  into the system is not a thing anybody does, so there is **Add borrower** on the list and
+  **Add another account** on a borrower's page — a KCC and an OD-2 are two accounts and one
+  person. `customers.create` is its own permission rather than part of `customers.update`,
+  because adding an account is not correcting one and an auditor must never be able to
+  invent one.
+- **What is typed by hand is a placeholder, and the form says so.** A created account
+  carries no override, so the first import that carries the same number replaces the typed
+  figures with the bank's — the core banking system owns a balance. A figure *corrected
+  later* is the opposite claim and is stamped as hand-edited, so imports leave that one
+  alone. A duplicate account number is refused with the name and branch of the borrower who
+  already holds it, and the timeline records **"Lead created by hand"** so a typed account
+  is never mistaken for one the core banking system produced.
+- An account an agent creates is **assigned to that agent, in that agent's branch**,
+  whatever the form posts — the panel shows an agent only their own leads, so an unassigned
+  new lead would vanish the moment they saved it.
 
 **Field reports — three types**
 - **Recovery visit** — the standard call: contact, verification, recovery
@@ -393,7 +412,7 @@ php -S 127.0.0.1:8080 -t admin tools/router-dev.php
 | **Agent** | Own assigned leads only: view, visit, upload, promise history, and correcting their own borrowers |
 | **Auditor** | Read-only: reports, audit and activity logs. No edits, no PII |
 
-44 permissions across the four seeded roles, including the BC performance group.
+45 permissions across the four seeded roles, including the BC performance group.
 
 `visits.approve` and `visits.revise` are held by branch managers and super admins, not
 agents: an agent approving their own report, or correcting the name on it after filing,
@@ -621,13 +640,13 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 
 | Harness | Command | Checks |
 |---|---|---|
-| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 142 files (a file count, not assertions) |
+| Syntax | `find admin tools -name '*.php' -print0 \| xargs -0 -n1 php -l` | 143 files (a file count, not assertions) |
 | Core unit tests | `php tools/selftest-core.php` | **249** — includes column detection against real bank-export shapes, the PDF image encoder, the blank signature boxes the printout carries, multi-line captions, and how a recorded position is worded |
 | Schema | `sh tools/verify-schema.sh` | **28** — 34 tables, 54 FKs, seeds, bcrypt login hash, and every dropdown setting checked for choices it can actually offer (including a deliberately broken row, to prove the check fails) |
 | **Upgrade SQL** | `sh tools/verify-upgrade-sql.sh` | **18** — all six release migrations in `DEPLOYMENT.md` are extracted from the document and run as a chain on a *populated* pre-release database, then the result is compared against `schema.sql` column by column, index by index, FK delete rule by FK delete rule, setting by setting — including what kind of control each setting renders as and the choices it offers — and grant by grant |
-| Integration | `sh tools/integration-test.sh` | **744** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, and leads spread evenly across a branch |
+| Integration | `sh tools/integration-test.sh` | **757** — includes the customer sheet PDF, warning escalation, the tracking consent gate, the geocode cache, dense ranking, live same-day figures, visit-counter repair, hand-corrected figures surviving the next import, report corrections replayed back to the filed original, user-added fields, the agent's own geo-tagged photograph, every banking column a recovery statement carries, leads spread evenly across a branch, and a lead typed in by hand which the next import then owns |
 | Cron jobs | `sh tools/verify-cron.sh` | **52** — backup restores; every job is idempotent, and the CLI-only guard is checked for every file in `cron/` rather than a list kept in the test |
-| Panel smoke | `sh tools/smoke-panel.sh` | **344** panel + **226** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
+| Panel smoke | `sh tools/smoke-panel.sh` | **373** panel + **226** API — includes an audit of **every `<select>` on every page**: none empty, none with two options selected, every filter dropdown holding the value it was given |
 | Android | `sh tools/verify-android.sh` | **227** unit tests + both APKs + adaptive-icon safe zone |
 | Icon geometry | `python3 tools/check-icon-safezone.py` | every path point survives a circular launcher mask |
 | Brand assets | `python3 tools/prepare-brand-assets.py` | regenerates the shipped lockup and monogram from `docs/brand/` |
@@ -646,7 +665,7 @@ and a real PHP HTTP server**, and the Android build runs a real Gradle assemble.
 | **Key setup** | `sh tools/verify-setup-keys.sh` | **38** — `setup-keys.php` fills blanks, never overwrites a live key, never mangles a config |
 | **Install diagnostic** | `sh tools/verify-hosting-diag.sh` | **25** — no false alarms, no leaked secrets |
 
-**2,004 assertions total** — the sum of the bold counts above, counting the seven
+**2,046 assertions total** — the sum of the bold counts above, counting the seven
 subset rows only once and excluding the syntax row, which counts files. Release APK
 is 2.9 MB after R8; debug APK is 8.0 MB (measured with `du --apparent-size` — a
 signed, zipaligned APK is block-padded on disk, so plain `du -h` overstates it).

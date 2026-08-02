@@ -684,11 +684,11 @@ Everything in the repository is covered by runnable checks.
 | --- | --- |
 | `php tools/selftest-core.php` | 249 checks — crypto, JWT, XLSX, PDF (including image embedding, the blank signature boxes and multi-line captions), geo wording, validator, paginator, key validation |
 | `sh tools/verify-schema.sh` | 28 checks — 34 tables, 54 FKs, InnoDB, utf8mb4, seeds, the seeded bcrypt login, dropdown settings that have choices |
-| `sh tools/integration-test.sh` | 744 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo |
+| `sh tools/integration-test.sh` | 757 checks — import, visits, promises, reports, backup, report corrections, hand-corrected figures, custom fields, geo-tagged agent photo, a lead typed in by hand and what the next import does to it |
 | `sh tools/verify-upgrade-sql.sh` | 18 checks — **runs every migration in section 10 of this document as a chain** on a populated pre-release database and compares the result against `schema.sql` |
 | `sh tools/verify-cron.sh` | 52 checks — the nightly backup restores, reminders are idempotent |
 | `sh tools/verify-apache.sh` | 27 checks — `.htaccess` under a real Apache: deny rules, HTTPS, Bearer auth |
-| `sh tools/smoke-panel.sh` | 344 panel + 226 API checks over real HTTP, including every dropdown on every page |
+| `sh tools/smoke-panel.sh` | 373 panel + 226 API checks over real HTTP, including every dropdown on every page and a borrower created by hand as both an admin and an agent |
 | `sh tools/verify-android.sh` | 227 unit tests (incl. 20 app/API contract checks + 6 server-URL checks), debug + release APK |
 | `sh tools/capture-api-fixtures.sh` | Re-captures the API fixtures the contract test reads |
 | `sh tools/verify-signing.sh` | 21 checks — release signing works, the unsigned fallback really is uninstallable, and the debug APK comes from the committed keystore so a new build installs over the old one |
@@ -1413,6 +1413,8 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 Confirm it landed:
 
 ```sql
+-- 9 at this release. A later one ("Letting the panel add a borrower by hand") grants
+-- customers.create to agents as well, after which this reads 10.
 SELECT COUNT(*) FROM `role_permissions` WHERE `role_id` = 3;   -- 9
 SELECT COUNT(*) FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'loan_accounts';   -- 45
@@ -1629,6 +1631,70 @@ Afterwards:
   "current, not in the list", and warns rather than silently rewriting it to the first
   choice on the next Save.
 - No new APK. These are panel-side controls only.
+
+### Letting the panel add a borrower by hand
+
+Until this release a lead could only enter the system as a row in an Excel import, which
+assumes head office has the account before the field does. It is frequently the other way
+round: a branch hands an agent a new NPA, a takeover, or an account opened elsewhere, on
+paper, and the agent is at the borrower's door weeks before that account appears in
+anybody's export. The only way in was for somebody to build a one-row spreadsheet.
+
+There is now **Add borrower** on the borrower list and **Add another account** on a
+borrower's own page — a borrower can owe on more than one account, and a KCC and an OD-2
+are two accounts and one person.
+
+```sql
+-- 1. Its own permission. Adding a borrower is not correcting one: an auditor holds
+--    customers.view and must never be able to invent an account.
+INSERT INTO `permissions` (`code`, `module`, `display_name`) VALUES
+  ('customers.create', 'Customers', 'Add a borrower and loan account by hand');
+
+-- 2. Branch managers and BC/DC agents. The agent grant is the point of the release:
+--    they are the ones standing in front of the borrower.
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 2, `id` FROM `permissions` WHERE `code` = 'customers.create';
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+  SELECT 3, `id` FROM `permissions` WHERE `code` = 'customers.create';
+
+-- 3. A typed lead is not an imported one. Logger::audit() and Timeline::record() both
+--    throw on a value missing from an ENUM, so this has to land before anybody uses the
+--    new form.
+ALTER TABLE `visit_history`
+  MODIFY COLUMN `event_type` ENUM(
+    'lead_imported','lead_updated','assigned','reassigned','transferred',
+    'visit','promise_created','promise_kept','promise_broken',
+    'status_changed','closed','reopened','note',
+    'visit_approved','visit_rejected','visit_revised',
+    'lead_created'
+  ) NOT NULL;
+```
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM `role_permissions` WHERE `role_id` = 3;   -- 10
+SELECT COUNT(*) FROM `permissions`;                            -- 45
+SELECT COUNT(*) FROM information_schema.columns
+ WHERE table_schema = DATABASE() AND table_name = 'visit_history'
+   AND column_name = 'event_type' AND column_type LIKE '%lead_created%';   -- 1
+```
+
+Afterwards:
+
+- **What is typed is a placeholder, and the form says so.** A hand-created account carries
+  no `manual_overrides`, so the first import that carries the same account number replaces
+  the typed figures with the bank's — which is right, because the core banking system is
+  the source of truth for a balance. A figure *corrected later* from the borrower's page is
+  a different claim: that one is stamped as hand-edited and imports leave it alone.
+- **An account added by an agent is assigned to that agent**, in that agent's branch,
+  whatever the form posts. The panel shows an agent only the leads assigned to them, so an
+  unassigned new lead would vanish the moment they saved it.
+- **A duplicate account number is refused**, and the refusal names the borrower who already
+  holds it and which branch they are in, so whoever typed it knows where to look instead.
+- The timeline shows **"Lead created by hand"** with its own icon, so a typed account is
+  never mistaken for one the core banking system produced.
+- No new APK. This is a panel screen; the app does not create leads.
 
 ### Renaming to D2 Recovery on an existing install
 

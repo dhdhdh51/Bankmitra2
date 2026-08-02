@@ -2910,6 +2910,103 @@ check('and the file says why',
     json_encode($orphanResult['errors']));
 
 // ---------------------------------------------------------------------------
+section('A lead typed in by hand, and what the next import does to it');
+
+// The panel can now create a borrower and a loan account without a spreadsheet, for the
+// accounts a branch hands an agent on paper before head office has them. What matters
+// here is the promise made on that form: the figures typed are a placeholder, and the
+// import that eventually carries the account replaces them.
+$handBranchId = (int) $branchAId;
+$handCustomerId = \App\Models\Customer::create([
+    'branch_id'           => $handBranchId,
+    'name'                => 'Typed Borrower',
+    'father_husband_name' => 'Typed Senior',
+    'village'             => 'Paper Village',
+], '9811100022', '432109876511');
+
+$handLoanId = LoanAccount::create([
+    'loan_account_number' => 'TYPED0001',
+    'customer_id'         => $handCustomerId,
+    'branch_id'           => $handBranchId,
+    'current_status'      => 'pending',
+    'outstanding_amount'  => 10000.00,
+    'overdue_amount'      => 2500.00,
+    'assigned_agent_id'   => $agent1Id,
+    'assigned_at'         => date('Y-m-d H:i:s'),
+    'assigned_by'         => 1,
+    'import_id'           => null,
+]);
+
+check('a loan account can be created with no import behind it', $handLoanId > 0);
+// Read straight from the table, not through LoanAccount::find(): import_id is not in the
+// model's projection, so `find(...)['import_id'] === null` is true because the key is
+// absent, which is a test that passes without ever looking at the column.
+check('and it carries no import id to a row that does not exist',
+    $db->scalar('SELECT import_id FROM loan_accounts WHERE id = ?', [$handLoanId]) === null);
+check('the borrower is encrypted like any other',
+    \App\Models\Customer::findWithPii($handCustomerId)['mobile'] === '9811100022');
+
+// The ENUM is the whole risk here: a value missing from visit_history.event_type throws
+// on insert, inside the same transaction as the thing it was recording.
+$handEventId = Timeline::record(
+    $handLoanId,
+    'lead_created',
+    'Lead created by hand',
+    'Typed into the panel, not imported from a bank export.',
+    1,
+    'System Administrator'
+);
+check('the timeline accepts a lead_created event', $handEventId > 0);
+check('and it is stored as its own event type, not as an import',
+    (string) $db->scalar('SELECT event_type FROM visit_history WHERE id = ?', [$handEventId]) === 'lead_created');
+
+// No overrides, deliberately. This is the assertion behind the sentence on the form.
+check('a hand-created lead is not stamped with manual overrides',
+    LoanAccount::find($handLoanId)['manual_overrides'] === null);
+
+$typedCsv = $workDir . '/typed.csv';
+file_put_contents($typedCsv, implode("\n", [
+    'Loan Account Number,Customer Name,Outstanding Amount,Overdue Amount',
+    'TYPED0001,Typed Borrower,77777,4321',
+]));
+$typedImport = ImportService::run(
+    ['name' => 'typed.csv', 'tmp_name' => $typedCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($typedCsv)],
+    $handBranchId, null, 1, 'System Administrator', [], false, null, false
+);
+
+check('an import carrying the same account updates it rather than failing on the unique key',
+    $typedImport['updated'] === 1 && $typedImport['inserted'] === 0, json_encode($typedImport));
+$afterImport = LoanAccount::find($handLoanId);
+check('and the typed figures are replaced by the bank\'s',
+    abs((float) $afterImport['outstanding_amount'] - 77777.0) < 0.01,
+    (string) $afterImport['outstanding_amount']);
+check('the account is not duplicated',
+    (int) $db->scalar('SELECT COUNT(*) FROM loan_accounts WHERE loan_account_number = ?', ['TYPED0001']) === 1);
+check('nor is the borrower',
+    (int) $db->scalar('SELECT COUNT(*) FROM customers WHERE name = ?', ['Typed Borrower']) === 1);
+check('and the agent who created it keeps it',
+    (int) $afterImport['assigned_agent_id'] === $agent1Id);
+
+// The other half of the promise: a figure corrected AFTER creation is a human saying they
+// know better, and that one the import must leave alone.
+LoanAccount::applyManualEdit($handLoanId, ['overdue_amount' => 6000.00], 1);
+file_put_contents($typedCsv, implode("\n", [
+    'Loan Account Number,Customer Name,Outstanding Amount,Overdue Amount',
+    'TYPED0001,Typed Borrower,88888,1111',
+]));
+ImportService::run(
+    ['name' => 'typed.csv', 'tmp_name' => $typedCsv, 'error' => UPLOAD_ERR_OK, 'size' => filesize($typedCsv)],
+    $handBranchId, null, 1, 'System Administrator', [], false, null, false
+);
+$afterSecond = LoanAccount::find($handLoanId);
+check('a figure corrected after creation survives the next import',
+    abs((float) $afterSecond['overdue_amount'] - 6000.0) < 0.01,
+    (string) $afterSecond['overdue_amount']);
+check('while the figures nobody touched keep tracking the import',
+    abs((float) $afterSecond['outstanding_amount'] - 88888.0) < 0.01,
+    (string) $afterSecond['outstanding_amount']);
+
+// ---------------------------------------------------------------------------
 echo "\n" . str_repeat('=', 60) . "\n";
 printf("  INTEGRATION: %d passed, %d failed\n", $passed, $failed);
 if ($failures !== []) {

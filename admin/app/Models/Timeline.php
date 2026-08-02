@@ -19,6 +19,10 @@ final class Timeline
     /** @var array<string,array{label:string,icon:string,tone:string}> */
     public const EVENTS = [
         'lead_imported'   => ['label' => 'Lead imported',    'icon' => 'upload',   'tone' => 'slate'],
+        // Typed into the panel rather than read out of a bank export. A different icon
+        // and label on purpose: somebody reading the trail years later needs to see at a
+        // glance which figures came from the core banking system and which from a person.
+        'lead_created'    => ['label' => 'Lead created by hand', 'icon' => 'edit',   'tone' => 'warning'],
         'lead_updated'    => ['label' => 'Lead updated',     'icon' => 'refresh',  'tone' => 'slate'],
         'assigned'        => ['label' => 'Assigned',         'icon' => 'user',     'tone' => 'blue'],
         'reassigned'      => ['label' => 'Reassigned',       'icon' => 'swap',     'tone' => 'blue'],

@@ -74,6 +74,7 @@ HEADINGS = [
     '### Splitting KCC from OD-2, and making the alarm persist, on an existing install',
     '### Removing captured signatures on an existing install',
     '### Fixing the two on/off settings that were dropdowns',
+    '### Letting the panel add a borrower by hand',
 ]
 
 chunks = []
@@ -132,6 +133,20 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- Leads could only arrive from an Excel import, so there was no customers.create
+-- permission and no 'lead_created' timeline event.
+DELETE FROM `role_permissions`
+ WHERE `permission_id` IN (SELECT `id` FROM `permissions` WHERE `code` = 'customers.create');
+DELETE FROM `permissions` WHERE `code` = 'customers.create';
+
+ALTER TABLE `visit_history`
+  MODIFY COLUMN `event_type` ENUM(
+    'lead_imported','lead_updated','assigned','reassigned','transferred',
+    'visit','promise_created','promise_kept','promise_broken',
+    'status_changed','closed','reopened','note',
+    'visit_approved','visit_rejected','visit_revised'
+  ) NOT NULL;
+
 -- Two boolean settings were dropdowns offering the choices "1" and "0" before it, which
 -- is a control that makes the operator guess which one means on.
 UPDATE `settings` SET `input_type` = 'select', `options` = '1,0'

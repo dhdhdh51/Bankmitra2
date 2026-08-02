@@ -53,6 +53,20 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
             </a>
         <?php endif; ?>
 
+        <?php
+        /*
+         * A borrower can owe on more than one account - a KCC and an OD-2 are two accounts
+         * and one person - so this adds an account TO them rather than starting a second
+         * copy of the person, which is what "Add borrower" from the list would do.
+         */
+        ?>
+        <?php if (can('customers.create')): ?>
+            <a href="<?= e(url('/customers/create') . '?customer_id=' . (int) $lead['customer_id']) ?>"
+               class="btn btn-outline-secondary btn-sm">
+                <?= icon('plus') ?> Add another account
+            </a>
+        <?php endif; ?>
+
         <?php if ($agents !== [] && (string) $lead['current_status'] !== 'closed'): ?>
             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignModal">
                 <?= icon('user') ?> <?= $lead['assigned_agent_id'] === null ? 'Assign agent' : 'Reassign' ?>
@@ -416,11 +430,25 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
         </div>
 
         <!-- Other loans for the same borrower -->
-        <?php if (count($otherLoans) > 1): ?>
+        <?php if (count($otherLoans) > 1 || can('customers.create')): ?>
             <div class="lrms-card mb-3">
                 <div class="lrms-card-head">
                     <h2><?= icon('file') ?> Other accounts for this borrower</h2>
+                    <?php if (can('customers.create')): ?>
+                        <a class="btn btn-ghost btn-sm"
+                           href="<?= e(url('/customers/create') . '?customer_id=' . (int) $lead['customer_id']) ?>">
+                            <?= icon('plus') ?> Add an account
+                        </a>
+                    <?php endif; ?>
                 </div>
+                <?php if (count($otherLoans) <= 1): ?>
+                    <div class="lrms-card-body">
+                        <p class="text-muted mb-0" style="font-size:.8125rem">
+                            This is the only account on record for this borrower.
+                        </p>
+                    </div>
+                <?php endif; ?>
+                <?php if (count($otherLoans) > 1): ?>
                 <div class="lrms-table-wrap">
                     <table class="lrms-table">
                         <thead>
@@ -444,6 +472,7 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                         </tbody>
                     </table>
                 </div>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
