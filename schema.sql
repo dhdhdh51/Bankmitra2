@@ -147,6 +147,18 @@ CREATE TABLE `users` (
   `iibf_number`          VARCHAR(40)  DEFAULT NULL COMMENT 'IIBF certification number',
   `dra_name_id`          VARCHAR(150) DEFAULT NULL COMMENT 'the Direct Recovery Agent''s own name/ID, when the BC works through one',
 
+  -- Address Details. The BC's own residential address, not a branch or a
+  -- borrower's - separate columns from `district` above (that one is part of BC
+  -- Basic Details, the bank's reporting hierarchy) so a BC whose home district
+  -- differs from their reporting district is not forced to pick one.
+  `addr_line`            VARCHAR(500) DEFAULT NULL COMMENT 'Address',
+  `addr_village`         VARCHAR(150) DEFAULT NULL,
+  `addr_block`           VARCHAR(150) DEFAULT NULL,
+  `addr_tehsil`          VARCHAR(150) DEFAULT NULL,
+  `addr_district`        VARCHAR(100) DEFAULT NULL,
+  `addr_state`           VARCHAR(100) DEFAULT NULL,
+  `addr_pin_code`        VARCHAR(10)  DEFAULT NULL,
+
   -- Aadhaar and PAN follow the same encrypted-at-rest pattern already used for
   -- customers.aadhaar and visit_reports.pan_number: the plaintext is never
   -- stored, only an AES-256-GCM ciphertext, a keyed HMAC for exact-match lookup,

@@ -79,6 +79,7 @@ HEADINGS = [
     '### Seeing the location trail on a map',
     '### Making the field visit report match the printed form',
     '### Adding BC Basic Details to an existing install',
+    '### Adding Address Details to an existing install',
 ]
 
 chunks = []
@@ -137,6 +138,16 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- Address Details: the new user columns did not exist before this release.
+ALTER TABLE `users`
+  DROP COLUMN `addr_line`,
+  DROP COLUMN `addr_village`,
+  DROP COLUMN `addr_block`,
+  DROP COLUMN `addr_tehsil`,
+  DROP COLUMN `addr_district`,
+  DROP COLUMN `addr_state`,
+  DROP COLUMN `addr_pin_code`;
+
 -- BC Basic Details: the new user columns did not exist before this release.
 ALTER TABLE `users`
   DROP KEY `idx_users_bcbf_code`,
