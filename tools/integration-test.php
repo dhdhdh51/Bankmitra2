@@ -962,18 +962,9 @@ check('search by encrypted Aadhaar (HMAC)', $byAadhaar->total === 1, 'total=' . 
 // ---------------------------------------------------------------------------
 section('Facility filter (KCC vs OD-2), the same enum the renewal worklists use');
 
-$kccOnly = LoanAccount::paginate(['facility_type' => 'kcc'], 'created_at', 'DESC', 1, 25);
-$kccNumbers = array_column($kccOnly->items, 'loan_account_number');
-check('facility_type=kcc returns the KCC account', in_array('KCCACC001', $kccNumbers, true));
-check('facility_type=kcc excludes the OD-2 account', !in_array('OD2ACC001', $kccNumbers, true));
-
-$od2Only = LoanAccount::paginate(['facility_type' => 'od2'], 'created_at', 'DESC', 1, 25);
-$od2Numbers = array_column($od2Only->items, 'loan_account_number');
-check('facility_type=od2 returns the OD-2 account', in_array('OD2ACC001', $od2Numbers, true));
-check('facility_type=od2 excludes the KCC account', !in_array('KCCACC001', $od2Numbers, true));
-
 // An unrecognised value must be ignored rather than turned into a WHERE clause that
-// matches nothing or, worse, one built from unvalidated input.
+// matches nothing or, worse, one built from unvalidated input. Checked here, ahead of
+// the KCC/OD-2 fixtures below, because it needs no facility-typed account to exist.
 $allLeads = LoanAccount::paginate([], 'created_at', 'DESC', 1, 500);
 $bogus = LoanAccount::paginate(['facility_type' => 'drop table users'], 'created_at', 'DESC', 1, 500);
 check('an unrecognised facility_type is ignored rather than filtering anything out',
@@ -1241,6 +1232,19 @@ check('an OD-2 loan type is recognised as the OD-2 facility',
 check('a plain overdraft is left undetermined rather than guessed into a worklist',
     LoanAccount::findByNumber('ODXACC001')['facility_type'] === null,
     (string) (LoanAccount::findByNumber('ODXACC001')['facility_type'] ?? 'null'));
+
+// The facility_type filter on the leads list/API - the same enum the two worklists
+// above filter on - needs these same fixtures, so it is checked here rather than
+// earlier in the file, before either account existed.
+$kccOnly = LoanAccount::paginate(['facility_type' => 'kcc'], 'created_at', 'DESC', 1, 25);
+$kccNumbers = array_column($kccOnly->items, 'loan_account_number');
+check('facility_type=kcc returns the KCC account', in_array('KCCACC001', $kccNumbers, true));
+check('facility_type=kcc excludes the OD-2 account', !in_array('OD2ACC001', $kccNumbers, true));
+
+$od2Only = LoanAccount::paginate(['facility_type' => 'od2'], 'created_at', 'DESC', 1, 25);
+$od2Numbers = array_column($od2Only->items, 'loan_account_number');
+check('facility_type=od2 returns the OD-2 account', in_array('OD2ACC001', $od2Numbers, true));
+check('facility_type=od2 excludes the KCC account', !in_array('KCCACC001', $od2Numbers, true));
 
 // The whole point of splitting them: each worklist holds its own facility and nothing
 // else. One combined list meant forty OD-2 renewals buried inside three hundred KCC ones.
