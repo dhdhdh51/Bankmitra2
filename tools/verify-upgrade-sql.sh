@@ -80,6 +80,7 @@ HEADINGS = [
     '### Making the field visit report match the printed form',
     '### Adding BC Basic Details to an existing install',
     '### Adding Address Details to an existing install',
+    "### Letting any Excel file's unmapped columns become custom fields",
 ]
 
 chunks = []
@@ -138,6 +139,10 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- Custom fields' manual-override flag did not exist before this release.
+ALTER TABLE `custom_field_values`
+  DROP COLUMN `is_manual_override`;
+
 -- Address Details: the new user columns did not exist before this release.
 ALTER TABLE `users`
   DROP COLUMN `addr_line`,

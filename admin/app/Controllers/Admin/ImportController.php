@@ -407,6 +407,24 @@ final class ImportController extends Controller
                 . '</code>.';
         }
 
+        // Columns the fixed vocabulary did not recognise, so nothing this file carried
+        // was thrown away - each became its own field on the loan account instead. Said
+        // out loud here for the same reason a created branch is: an operator watching an
+        // unfamiliar bank's export go in for the first time should see where those
+        // columns landed, not discover them later on the Custom Fields screen.
+        if (($result['unmapped_fields'] ?? []) !== []) {
+            $parts[] = sprintf(
+                '<strong>%d column(s) not in the fixed list became custom fields</strong> on the loan '
+                . 'account, so nothing in the file was dropped: <code>%s</code>%s '
+                . '<a href="%s">Review them</a> if you want to relabel one, mark it required, or show it '
+                . 'on the printed report.',
+                count($result['unmapped_fields']),
+                e(implode(', ', array_slice($result['unmapped_fields'], 0, 8))),
+                count($result['unmapped_fields']) > 8 ? ' and more.' : '',
+                e(url('/custom-fields'))
+            );
+        }
+
         // Figures a human corrected in the panel are left alone by the import. That is
         // the point of allowing the correction, but it has to be said out loud: an
         // override nobody remembers setting freezes a figure forever, and the operator

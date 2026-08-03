@@ -12,6 +12,7 @@ use App\Core\Logger;
 use App\Core\XlsxReader;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomField;
 use App\Models\Notification;
 use App\Models\Timeline;
 use App\Services\AssignmentService;
@@ -85,6 +86,12 @@ final class ImportService
 
         $detection = ColumnDetector::detect($headings, $rows, $overrides);
         $map = $detection['map'];
+
+        // Any column ColumnDetector could not place against the fixed vocabulary
+        // becomes a custom field instead of being dropped on the floor. See
+        // provisionUnmappedColumns() for why this makes "upload any bank's export,
+        // nothing is lost" true rather than aspirational.
+        $unmappedDefinitions = self::provisionUnmappedColumns($detection['unmapped'], $actorId);
 
         // Fail fast with a precise message rather than importing nonsense.
         if ($detection['missing_required'] !== []) {
@@ -309,6 +316,19 @@ final class ImportService
                             [$account]
                         );
 
+                        // Values for the columns nobody recognised, one per unmapped
+                        // column, written against whichever loan account this row ends
+                        // up as. Done after INSERT/UPDATE below so a brand-new row
+                        // already has an id to attach a value to.
+                        $unmappedValues = [];
+                        foreach ($unmappedDefinitions as $columnIndex => $definition) {
+                            $cell = trim((string) ($row[$columnIndex] ?? ''));
+                            $unmappedValues[] = [
+                                'definition' => $definition,
+                                'value'      => $cell === '' ? null : $cell,
+                            ];
+                        }
+
                         if ($existing !== null) {
                             // ---- UPDATE the existing customer + loan -------
                             $customerId = (int) $existing['customer_id'];
@@ -376,6 +396,8 @@ final class ImportService
 
                             $db->update('loan_accounts', $loanData, ['id' => (int) $existing['id']]);
 
+                            self::writeUnmappedValues((int) $existing['id'], $unmappedValues);
+
                             Timeline::record(
                                 (int) $existing['id'],
                                 'lead_updated',
@@ -424,6 +446,8 @@ final class ImportService
                             'remarks'             => self::nullable($values['remarks'], 1000),
                             'import_id'           => $importId,
                         ] + $fileColumns);
+
+                        self::writeUnmappedValues($loanId, $unmappedValues);
 
                         Timeline::record(
                             $loanId,
@@ -524,7 +548,107 @@ final class ImportService
             'distribution'       => $distributedCounts,
             'sheet'              => (string) ($parsed['sheet'] ?? ''),
             'mapping'            => self::describeMapping($headings, $detection),
+            // Labels of every column this run could not match to the fixed vocabulary
+            // and turned into a loan_account custom field instead - new ones AND ones
+            // reused from an earlier import. Reported so an operator sees where forty
+            // stray columns from an unfamiliar export actually went, rather than
+            // discovering them one at a time on the Custom Fields screen.
+            'unmapped_fields'    => array_map(
+                static fn (array $definition): string => (string) $definition['label'],
+                $unmappedDefinitions
+            ),
         ];
+    }
+
+    /**
+     * Turns every column ColumnDetector could not place into a `loan_account` custom
+     * field, creating the definition on first sight and reusing it on every import
+     * after that.
+     *
+     * WHY loan_account AND NOT customer. An unmapped column sits on the SAME row as
+     * every mapped one, one per loan account - a person can hold two accounts with two
+     * different answers to whatever that column is asking, and a `customer` field
+     * would force them to share one. Reusing an existing `customer` definition of the
+     * same key is deliberately not attempted for the same reason.
+     *
+     * WHY THE KEY IS DERIVED FROM THE HEADING AND REUSED, NOT RECREATED EVERY IMPORT.
+     * A field created on day one has to be the SAME field on day sixty, or "what an
+     * agent corrected last month" and "what this month's file calls the same column"
+     * would silently become two different answers to the same question the moment
+     * anybody's spelling of the header drifted by a character. Reuse is keyed on
+     * CustomField::keyFrom($heading) - the same normalisation the label went through
+     * when the field was first created - so "Crop Insurance No." and "crop insurance
+     * no" (same heading, re-typed) land on the same definition, while "Crop Insurance
+     * No." and "Insurance No." (genuinely different headings) do not collide into one.
+     *
+     * @param  array<int,string> $unmapped   column index => heading text
+     * @return array<int,array<string,mixed>> column index => the definition row
+     */
+    private static function provisionUnmappedColumns(array $unmapped, ?int $actorId): array
+    {
+        $definitions = [];
+
+        foreach ($unmapped as $columnIndex => $heading) {
+            $label = trim($heading);
+            if ($label === '') {
+                continue;
+            }
+
+            $key = CustomField::keyFrom($label);
+            $definition = CustomField::findByKey('loan_account', $key);
+
+            if ($definition === null) {
+                $id = CustomField::create([
+                    'entity'         => 'loan_account',
+                    'field_key'      => $key,
+                    // Kept exactly as the file wrote it, not title-cased or otherwise
+                    // reworded - the label is how an agent recognises it as "the same
+                    // column the bank's statement has", and a reworded label is a
+                    // column that LOOKS like it might be something else.
+                    'label'          => mb_substr($label, 0, 120),
+                    'field_type'     => 'text',
+                    'hint'           => 'Added automatically from a column in an imported file.',
+                    'is_required'    => 0,
+                    // Off by default, matching every other auto-provisioned field: an
+                    // agency importing its own internal tracking sheet should not have
+                    // fifteen new fields appear on the printed report the moment the
+                    // file lands, before anybody has looked at what they actually are.
+                    'show_in_report' => 0,
+                    // After every fixed field and every hand-added custom field, so a
+                    // spreadsheet with forty stray columns cannot bury the fields
+                    // somebody deliberately curated underneath them.
+                    'sort_order'     => 1000 + $columnIndex,
+                    'status'         => 'active',
+                    'created_by'     => $actorId,
+                ]);
+                $definition = CustomField::find($id);
+            }
+
+            if ($definition !== null) {
+                $definitions[$columnIndex] = $definition;
+            }
+        }
+
+        return $definitions;
+    }
+
+    /**
+     * Writes the unmapped-column values collected for one row against the loan
+     * account it ended up as - a fresh insert or an existing account being updated.
+     *
+     * @param list<array{definition:array<string,mixed>,value:?string}> $values
+     */
+    private static function writeUnmappedValues(int $loanAccountId, array $values): void
+    {
+        foreach ($values as $entry) {
+            CustomField::saveImportValue(
+                (int) $entry['definition']['id'],
+                'loan_account',
+                $loanAccountId,
+                (string) $entry['definition']['field_type'],
+                $entry['value']
+            );
+        }
     }
 
     /**

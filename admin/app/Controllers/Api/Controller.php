@@ -134,6 +134,88 @@ abstract class Controller
             'next_followup_date'  => $lead['next_followup_date'] === null ? null : (string) $lead['next_followup_date'],
             'remarks'             => $lead['remarks'] === null ? null : (string) $lead['remarks'],
             'created_at'          => (string) $lead['created_at'],
+
+            // ---- The rest of the core banking statement -----------------------
+            //
+            // Fetched by LoanAccount::LOAN_COLUMNS for years and never sent past this
+            // point: an agent standing at a doorstep could not see the sanction limit,
+            // the drawing power or the security value on the account they were asking
+            // about, even though the server had read every one of them off the same
+            // row. Sent here rather than added ad hoc to whichever screen asked first,
+            // so the list an agent SEES matches the list an agent can EDIT (see
+            // LoanAccount::MANUALLY_EDITABLE) without a second hand-written list to
+            // keep in step with it.
+            'cif_number'            => $lead['cif_number'] === null ? null : (string) $lead['cif_number'],
+            'sanction_date'         => $lead['sanction_date'] === null ? null : (string) $lead['sanction_date'],
+            'sanction_limit'        => $lead['sanction_limit'] === null ? null : round((float) $lead['sanction_limit'], 2),
+            'drawing_power'         => $lead['drawing_power'] === null ? null : round((float) $lead['drawing_power'], 2),
+            'interest_overdue'      => $lead['interest_overdue'] === null ? null : round((float) $lead['interest_overdue'], 2),
+            'ckcc_renewal_due_date' => $lead['ckcc_renewal_due_date'] === null ? null : (string) $lead['ckcc_renewal_due_date'],
+            'ots_eligible'          => $lead['ots_eligible'] === null ? null : (int) $lead['ots_eligible'] === 1,
+            'krm_eligible'          => $lead['krm_eligible'] === null ? null : (int) $lead['krm_eligible'] === 1,
+            'ots_amount'            => $lead['ots_amount'] === null ? null : round((float) $lead['ots_amount'], 2),
+            'deposit_amount'        => $lead['deposit_amount'] === null ? null : round((float) $lead['deposit_amount'], 2),
+            'closure_amount'        => $lead['closure_amount'] === null ? null : round((float) $lead['closure_amount'], 2),
+            'asset_classification'  => $lead['asset_classification'] === null ? null : (string) $lead['asset_classification'],
+            'interest_rate'         => $lead['interest_rate'] === null ? null : round((float) $lead['interest_rate'], 2),
+            'installment_amount'    => $lead['installment_amount'] === null ? null : round((float) $lead['installment_amount'], 2),
+            'last_payment_date'     => $lead['last_payment_date'] === null ? null : (string) $lead['last_payment_date'],
+            'last_payment_amount'   => $lead['last_payment_amount'] === null ? null : round((float) $lead['last_payment_amount'], 2),
+            'days_past_due'         => $lead['days_past_due'] === null ? null : (int) $lead['days_past_due'],
+            'security_value'        => $lead['security_value'] === null ? null : round((float) $lead['security_value'], 2),
+            'guarantor_name'        => $lead['guarantor_name'] === null ? null : (string) $lead['guarantor_name'],
+            'maturity_date'         => $lead['maturity_date'] === null ? null : (string) $lead['maturity_date'],
+            'purpose'               => $lead['purpose'] === null ? null : (string) $lead['purpose'],
+
+            // Which of the fields above (and the ones already at the top) a person has
+            // hand-corrected, so the app can mark them distinctly - a figure an agent
+            // themselves fixed reads differently from one the bank's own statement says,
+            // and both are different again from a blank the file never filled in.
+            'overridden_fields'     => \App\Models\LoanAccount::overriddenColumns($lead['manual_overrides'] ?? null),
+
+            // Every field the operator or an import added beyond the fixed vocabulary -
+            // on the borrower AND on this specific loan account - so the app can render
+            // "everything we know about this account", not "everything the schema
+            // happened to have a column for on day one".
+            'custom_fields'         => array_merge(
+                array_map(
+                    fn (array $d): array => $this->presentCustomField($d),
+                    \App\Models\CustomField::withValues('customer', (int) $lead['customer_id'])
+                ),
+                array_map(
+                    fn (array $d): array => $this->presentCustomField($d),
+                    \App\Models\CustomField::withValues('loan_account', (int) $lead['id'])
+                )
+            ),
+        ];
+    }
+
+    /**
+     * One custom field, definition and current answer together, ready for the app
+     * to render generically by field_type and write back through the edit endpoint.
+     *
+     * @param array<string,mixed> $definition
+     * @return array<string,mixed>
+     */
+    protected function presentCustomField(array $definition): array
+    {
+        return [
+            'id'         => (int) $definition['id'],
+            // Which record this field belongs to - a borrower or this specific loan
+            // account - so the app posts an edit back to the right one without having
+            // to guess from the field's entity type.
+            'entity'     => (string) $definition['entity'],
+            'key'        => (string) $definition['field_key'],
+            'label'      => (string) $definition['label'],
+            'field_type' => (string) $definition['field_type'],
+            'options'    => \App\Models\CustomField::optionsOf($definition),
+            'hint'       => $definition['hint'] === null ? null : (string) $definition['hint'],
+            'is_required' => (int) $definition['is_required'] === 1,
+            'value'      => $definition['value'] === null ? null : (string) $definition['value'],
+            // Formatted the way CustomField::display() would print it - Yes/No for a
+            // toggle, rupees for money, dd Mon yyyy for a date - so the app can show a
+            // read-only summary without duplicating that formatting itself.
+            'display_value' => \App\Models\CustomField::display($definition),
         ];
     }
 

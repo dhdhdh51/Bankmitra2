@@ -2222,6 +2222,47 @@ SELECT COLUMN_NAME FROM information_schema.COLUMNS
                         'addr_district','addr_state','addr_pin_code');
 ```
 
+### Letting any Excel file's unmapped columns become custom fields
+
+Uploading a spreadsheet whose headers ColumnDetector cannot place used to drop
+those columns silently. They now become `loan_account` custom fields
+automatically - the first import creates the definition, every later import
+(and the app's own edit screen) reuses it. A person's own correction is
+protected from being overwritten by the next import the same way a hand-edited
+loan figure already is, via a new column on `custom_field_values`.
+
+```sql
+ALTER TABLE `custom_field_values`
+  ADD COLUMN `is_manual_override` TINYINT(1) NOT NULL DEFAULT 0
+      COMMENT 'set when a person, not an import, typed this value' AFTER `value`;
+```
+
+Confirm it landed:
+
+```sql
+SELECT COLUMN_NAME FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'custom_field_values'
+   AND COLUMN_NAME = 'is_manual_override';
+```
+
+Nothing else is needed: every existing row in `custom_field_values` defaults to
+`0` (import-owned), which is the correct answer for values that already existed
+before this column did - they will simply be treated as ordinary imported data
+until somebody corrects one, at which point that answer becomes protected the
+same way a newly-imported one would be.
+
+### Editing loan and borrower details, and custom fields, from the app
+
+The Android app can now read the full core banking statement (sanction limit,
+drawing power, security value, days past due and the rest of
+`LoanAccount::MANUALLY_EDITABLE`) and every custom field on an account, and an
+agent can correct any of them from the profile screen - not only the fixed
+fields the earlier release already exposed. No schema change: this reuses the
+same columns, the same `LoanAccount::applyManualEdit()` and
+`CustomField::saveValues()` the admin panel's edit form already writes through,
+behind a new `PUT /api/v1/customers/{id}` route. An install only needs the code
+copied across; there is nothing to migrate.
+
 ### Renaming to D2 Recovery Solutions & Services on an existing install
 
 The product name is stored in the `settings` table, not in the code — that is the
