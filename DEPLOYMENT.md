@@ -2146,34 +2146,6 @@ Afterwards:
   for every case type. If your staff were trained to look for it inside the renewal block,
   tell them where it went.
 
-### Adding Address Details to an existing install
-
-BC agent accounts can now carry their own residential address - Address,
-Village, Block, Tehsil, District, State and Pincode - separate from the
-reporting-hierarchy `district` BC Basic Details already added, since a BC's
-home district and their reporting district are not always the same place.
-Every column is optional, so this is additive and safe on a populated table.
-
-```sql
-ALTER TABLE `users`
-  ADD COLUMN `addr_line`     VARCHAR(500) DEFAULT NULL COMMENT 'Address' AFTER `dra_name_id`,
-  ADD COLUMN `addr_village`  VARCHAR(150) DEFAULT NULL AFTER `addr_line`,
-  ADD COLUMN `addr_block`    VARCHAR(150) DEFAULT NULL AFTER `addr_village`,
-  ADD COLUMN `addr_tehsil`   VARCHAR(150) DEFAULT NULL AFTER `addr_block`,
-  ADD COLUMN `addr_district` VARCHAR(100) DEFAULT NULL AFTER `addr_tehsil`,
-  ADD COLUMN `addr_state`    VARCHAR(100) DEFAULT NULL AFTER `addr_district`,
-  ADD COLUMN `addr_pin_code` VARCHAR(10)  DEFAULT NULL AFTER `addr_state`;
-```
-
-Confirm it landed:
-
-```sql
-SELECT COLUMN_NAME FROM information_schema.COLUMNS
- WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
-   AND COLUMN_NAME IN ('addr_line','addr_village','addr_block','addr_tehsil',
-                        'addr_district','addr_state','addr_pin_code');
-```
-
 ### Adding BC Basic Details to an existing install
 
 New BC agent accounts now capture the bank's own reporting hierarchy and the
@@ -2218,6 +2190,37 @@ Aadhaar and PAN are encrypted at rest with the same AES-256-GCM scheme already
 used for a borrower's Aadhaar, so no new crypto key is needed - `data_key` in
 `config.php` already covers it. Existing BC accounts simply show these fields
 blank until somebody edits them in; nothing is backfilled or guessed.
+
+### Adding Address Details to an existing install
+
+BC agent accounts can now carry their own residential address - Address,
+Village, Block, Tehsil, District, State and Pincode - separate from the
+reporting-hierarchy `district` BC Basic Details already added, since a BC's
+home district and their reporting district are not always the same place.
+Every column is optional, so this is additive and safe on a populated table.
+
+Run this AFTER the BC Basic Details migration above - it anchors its first
+column with `AFTER dra_name_id`, a column that migration is what creates.
+
+```sql
+ALTER TABLE `users`
+  ADD COLUMN `addr_line`     VARCHAR(500) DEFAULT NULL COMMENT 'Address' AFTER `dra_name_id`,
+  ADD COLUMN `addr_village`  VARCHAR(150) DEFAULT NULL AFTER `addr_line`,
+  ADD COLUMN `addr_block`    VARCHAR(150) DEFAULT NULL AFTER `addr_village`,
+  ADD COLUMN `addr_tehsil`   VARCHAR(150) DEFAULT NULL AFTER `addr_block`,
+  ADD COLUMN `addr_district` VARCHAR(100) DEFAULT NULL AFTER `addr_tehsil`,
+  ADD COLUMN `addr_state`    VARCHAR(100) DEFAULT NULL AFTER `addr_district`,
+  ADD COLUMN `addr_pin_code` VARCHAR(10)  DEFAULT NULL AFTER `addr_state`;
+```
+
+Confirm it landed:
+
+```sql
+SELECT COLUMN_NAME FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+   AND COLUMN_NAME IN ('addr_line','addr_village','addr_block','addr_tehsil',
+                        'addr_district','addr_state','addr_pin_code');
+```
 
 ### Renaming to D2 Recovery Solutions & Services on an existing install
 
