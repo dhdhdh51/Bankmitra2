@@ -8,7 +8,9 @@ use App\Core\Auth;
 use App\Core\Logger;
 use App\Core\Request;
 use App\Core\Response;
+use App\Core\Validator;
 use App\Models\Customer;
+use App\Models\CustomField;
 use App\Models\LoanAccount;
 use App\Models\Promise;
 use App\Models\Timeline;
@@ -124,6 +126,234 @@ final class LeadController extends Controller
                 Customer::loanAccounts((int) $lead['customer_id'])
             ),
         ]);
+    }
+
+    /**
+     * Edits the borrower's details, the loan's core-banking figures, and any
+     * custom fields - from the app, mirroring what Admin\CustomerController::edit()
+     * already lets the web panel do.
+     *
+     * Every fixed column comes from LoanAccount::MANUALLY_EDITABLE, the same list the
+     * panel edit form is built from, so "what can an agent correct" can never drift
+     * between the two surfaces. A field absent from the request body is left
+     * untouched - this is a partial update, not a replace-the-whole-record PUT, which
+     * is what lets the app save just the field somebody tapped rather than resending
+     * everything else at the same time and risking a stale value winning a race.
+     */
+    public function update(Request $request): void
+    {
+        $user = $this->auth($request, 'customers.update');
+
+        $id = $request->paramInt('id');
+        $lead = LoanAccount::findWithPii($id);
+
+        if ($lead === null) {
+            Response::notFound('That loan account could not be found.');
+        }
+
+        $this->assertLeadAccess($lead, $user);
+
+        // Everything below is optional-if-absent (see the loop further down), but
+        // whatever IS present still has to be well-formed - a mobile number that is
+        // not ten digits should not silently become NULL.
+        $rules = [
+            'name'                  => 'nullable|max:150',
+            'father_husband_name'   => 'nullable|max:150',
+            'mobile'                => 'nullable|mobile',
+            'alt_mobile'            => 'nullable|mobile',
+            'alt_mobile_label'      => 'nullable|max:60',
+            'aadhaar'               => 'nullable|aadhaar',
+            'village'               => 'nullable|max:150',
+            'address'               => 'nullable|max:500',
+            'loan_type'             => 'nullable|max:80',
+            'outstanding_amount'    => 'nullable|numeric|min_value:0',
+            'overdue_amount'        => 'nullable|numeric|min_value:0',
+            'closure_amount'        => 'nullable|numeric|min_value:0',
+            'ots_amount'            => 'nullable|numeric|min_value:0',
+            'deposit_amount'        => 'nullable|numeric|min_value:0',
+            'npa_date'              => 'nullable|date',
+            'ckcc_renewal_due_date' => 'nullable|date',
+            'cif_number'            => 'nullable|max:40',
+            'asset_classification'  => 'nullable|max:40',
+            'interest_rate'         => 'nullable|numeric|min_value:0',
+            'installment_amount'    => 'nullable|numeric|min_value:0',
+            'last_payment_date'     => 'nullable|date',
+            'last_payment_amount'   => 'nullable|numeric|min_value:0',
+            'days_past_due'         => 'nullable|numeric|min_value:0',
+            'security_value'        => 'nullable|numeric|min_value:0',
+            'guarantor_name'        => 'nullable|max:150',
+            'maturity_date'         => 'nullable|date',
+            'purpose'               => 'nullable|max:150',
+            'facility_type'         => 'nullable|in:kcc,od2,other',
+            'sanction_date'         => 'nullable|date',
+            'sanction_limit'        => 'nullable|numeric|min_value:0',
+            'drawing_power'         => 'nullable|numeric|min_value:0',
+            'interest_overdue'      => 'nullable|numeric|min_value:0',
+            'remarks'               => 'nullable|max:1000',
+            'bc_code'               => 'nullable|max:40',
+            'next_followup_date'    => 'nullable|date',
+            'ots_eligible'          => 'nullable|in:0,1',
+            'krm_eligible'          => 'nullable|in:0,1',
+        ];
+
+        $validator = Validator::make($request->all(), $rules, [
+            'father_husband_name' => 'Father / husband name',
+            'ckcc_renewal_due_date' => 'CKCC renewal due date',
+            'alt_mobile'          => 'Second mobile',
+            'alt_mobile_label'    => 'Whose number it is',
+        ]);
+
+        if ($validator->fails()) {
+            Response::validationError($validator->errors(), $validator->firstError());
+        }
+
+        // ---- Borrower details -------------------------------------------------
+        // Written only when the request actually carries at least one of them - an
+        // agent correcting the outstanding amount must not blank the father's name
+        // because it happened not to be in the same request body.
+        $borrowerFields = ['name', 'father_husband_name', 'mobile', 'alt_mobile', 'alt_mobile_label', 'village', 'address', 'aadhaar'];
+        $hasBorrowerField = false;
+        foreach ($borrowerFields as $borrowerField) {
+            if ($request->has($borrowerField)) {
+                $hasBorrowerField = true;
+                break;
+            }
+        }
+        if ($hasBorrowerField) {
+            $customerUpdate = [];
+            if ($request->has('name')) {
+                $customerUpdate['name'] = mb_substr($request->str('name'), 0, 150);
+            }
+            if ($request->has('father_husband_name')) {
+                $customerUpdate['father_husband_name'] = $request->nullableStr('father_husband_name');
+            }
+            if ($request->has('village')) {
+                $customerUpdate['village'] = $request->nullableStr('village');
+            }
+            if ($request->has('address')) {
+                $customerUpdate['address'] = $request->nullableStr('address');
+            }
+            if ($request->has('alt_mobile') || $request->has('alt_mobile_label')) {
+                $customerUpdate += Customer::altMobileColumns(
+                    $request->nullableStr('alt_mobile'),
+                    $request->nullableStr('alt_mobile_label')
+                );
+            }
+
+            $mobile = $request->has('mobile') ? $request->nullableStr('mobile') : null;
+            $aadhaar = $request->has('aadhaar') ? $request->nullableStr('aadhaar') : null;
+            $touchPii = $request->has('mobile') || $request->has('aadhaar');
+
+            Customer::update((int) $lead['customer_id'], $customerUpdate, $mobile, $aadhaar, $touchPii);
+
+            Logger::audit(
+                'update',
+                'customer',
+                (int) $lead['customer_id'],
+                null,
+                array_keys($customerUpdate),
+                sprintf('Borrower details updated from the app for %s', (string) $lead['loan_account_number'])
+            );
+        }
+
+        // ---- Loan figures -------------------------------------------------------
+        // The exact list a person may correct by hand, shared with the panel's edit
+        // form - see LoanAccount::MANUALLY_EDITABLE for why each one is on it and,
+        // in a comment right below the list, exactly which columns are deliberately
+        // NOT (assignment, status, timestamps: all of those go through their own
+        // action so the timeline still says what happened).
+        $loanEdits = [];
+        foreach ([
+            'loan_type'             => 'str',
+            'cif_number'            => 'str',
+            'outstanding_amount'    => 'money',
+            'overdue_amount'        => 'money',
+            'closure_amount'        => 'money',
+            'ots_amount'            => 'money',
+            'deposit_amount'        => 'money',
+            'npa_date'              => 'date',
+            'ckcc_renewal_due_date' => 'date',
+            'asset_classification'  => 'str',
+            'interest_rate'         => 'money',
+            'installment_amount'    => 'money',
+            'last_payment_date'     => 'date',
+            'last_payment_amount'   => 'money',
+            'days_past_due'         => 'int',
+            'security_value'        => 'money',
+            'guarantor_name'        => 'str',
+            'maturity_date'         => 'date',
+            'purpose'               => 'str',
+            'facility_type'         => 'str',
+            'sanction_date'         => 'date',
+            'sanction_limit'        => 'money',
+            'drawing_power'         => 'money',
+            'interest_overdue'      => 'money',
+            'remarks'               => 'str',
+            'bc_code'               => 'str',
+            'next_followup_date'    => 'date',
+            'ots_eligible'          => 'flag',
+            'krm_eligible'          => 'flag',
+        ] as $column => $kind) {
+            if (!$request->has($column)) {
+                continue;
+            }
+
+            $loanEdits[$column] = match ($kind) {
+                'flag'  => $request->nullableStr($column) === null ? null : ($request->str($column) === '1' ? 1 : 0),
+                'money' => $request->nullableStr($column) === null ? null : round($request->float($column), 2),
+                'int'   => $request->nullableStr($column) === null ? null : max(0, (int) $request->float($column)),
+                'date'  => $request->nullableStr($column),
+                default => $request->nullableStr($column),
+            };
+        }
+
+        $loanChanged = LoanAccount::applyManualEdit($id, $loanEdits, Auth::id());
+
+        if ($loanChanged !== []) {
+            Logger::audit(
+                'update',
+                'loan_account',
+                $id,
+                null,
+                $loanChanged,
+                sprintf(
+                    'Hand-edited %s from the app on %s; the import will not overwrite these again',
+                    implode(', ', array_keys($loanChanged)),
+                    (string) $lead['loan_account_number']
+                )
+            );
+        }
+
+        // ---- Custom fields --------------------------------------------------
+        // Same call the panel's edit form makes - CustomField::saveValues() matches
+        // submitted keys against each entity's active definitions and ignores
+        // anything else in the request body, so an app that also posts loan
+        // columns in the same call cannot accidentally create a stray field.
+        $customChanged = array_merge(
+            CustomField::saveValues('customer', (int) $lead['customer_id'], $request->all(), Auth::id()),
+            CustomField::saveValues('loan_account', $id, $request->all(), Auth::id())
+        );
+
+        if ($customChanged !== []) {
+            Logger::audit(
+                'update',
+                'loan_account',
+                $id,
+                null,
+                ['custom_fields' => $customChanged],
+                sprintf('Updated custom field(s) from the app: %s', implode(', ', $customChanged))
+            );
+        }
+
+        $fresh = LoanAccount::findWithPii($id);
+        if ($fresh === null) {
+            Response::notFound('That loan account could not be found.');
+        }
+
+        Response::success(
+            $this->presentLead($fresh, true),
+            'Saved.'
+        );
     }
 
     /** Timeline only, for the app's "Visit History" screen. */

@@ -43,6 +43,7 @@ class CustomerProfileActivity : BaseActivity() {
     private lateinit var timelineAdapter: TimelineAdapter
     private lateinit var promiseAdapter: PromiseAdapter
     private lateinit var mediaAdapter: MediaAdapter
+    private lateinit var editableFieldAdapter: EditableFieldAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +88,13 @@ class CustomerProfileActivity : BaseActivity() {
             adapter = mediaAdapter
         }
 
+        editableFieldAdapter = EditableFieldAdapter { field, newValue -> saveField(field, newValue) }
+        binding.recyclerAdditionalDetails.apply {
+            layoutManager = LinearLayoutManager(this@CustomerProfileActivity)
+            adapter = editableFieldAdapter
+            isNestedScrollingEnabled = false
+        }
+
         binding.swipeRefresh.setOnRefreshListener { load() }
 
         binding.buttonNewVisit.setOnClickListener { startVisitReport() }
@@ -94,6 +102,7 @@ class CustomerProfileActivity : BaseActivity() {
         binding.buttonFullHistory.setOnClickListener {
             startActivity(VisitHistoryActivity.intent(this, leadId))
         }
+        binding.buttonEditDetails.setOnClickListener { toggleEditing() }
 
         load()
     }
@@ -207,6 +216,63 @@ class CustomerProfileActivity : BaseActivity() {
         binding.textOtherAccounts.text = others.joinToString("\n") { other ->
             "${other.loanAccountNumber} · ${Formatters.orDash(other.loanType)} · " +
                 Formatters.rupees(other.outstandingAmount, decimals = false)
+        }
+
+        // ---- Additional details: everything the fixed schema and this account's
+        // custom fields carry beyond the summary cards above, editable in place. ----
+        val additionalFields = lead.toAdditionalFields()
+        editableFieldAdapter.submitList(additionalFields)
+        val hasAdditionalFields = additionalFields.isNotEmpty()
+        binding.cardAdditionalDetails.visibility = if (hasAdditionalFields) View.VISIBLE else View.GONE
+        binding.textNoAdditionalDetails.visibility = if (hasAdditionalFields) View.GONE else View.VISIBLE
+        binding.buttonEditDetails.visibility = if (hasAdditionalFields) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Flips the "Additional details" list between showing values and offering an
+     * input per row. Exits edit mode automatically on navigating away (a fresh
+     * [render] after [load] always rebuilds the adapter in read mode), so an agent
+     * can never leave the screen mid-edit and come back to find it still open.
+     */
+    private fun toggleEditing() {
+        editableFieldAdapter.editing = !editableFieldAdapter.editing
+        binding.buttonEditDetails.setText(
+            if (editableFieldAdapter.editing) R.string.profile_edit_done else R.string.profile_edit,
+        )
+    }
+
+    /**
+     * Saves one field the moment it changes - not batched behind a screen-wide
+     * Save button, so losing forty unsaved edits to a screen rotation or a
+     * dropped connection is never possible; the cost is one small request per
+     * correction, which is what an agent standing at a doorstep is actually doing
+     * anyway: fixing one wrong number, not filling out a form.
+     */
+    private fun saveField(field: EditableField, newValue: String?) {
+        editableFieldAdapter.markSaving(field.key, true)
+
+        lifecycleScope.launch {
+            val result = repository.updateCustomer(leadId, mapOf(field.key to (newValue ?: "")))
+            editableFieldAdapter.markSaving(field.key, false)
+
+            when (result) {
+                is ApiResult.Success -> {
+                    payload = payload?.copy(lead = result.data)
+                    editableFieldAdapter.submitList(result.data.toAdditionalFields())
+                    showMessage(R.string.profile_field_saved, binding.root)
+                }
+
+                else -> {
+                    if (handleFailure(result, binding.root)) return@launch
+                    showMessage(
+                        getString(R.string.profile_field_save_failed, field.label.lowercase()),
+                        binding.root,
+                    )
+                    // Reverts the row to what the server still has, rather than
+                    // leaving the input showing a value that never actually saved.
+                    payload?.lead?.let { editableFieldAdapter.submitList(it.toAdditionalFields()) }
+                }
+            }
         }
     }
 

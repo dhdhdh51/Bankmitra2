@@ -7,6 +7,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -73,6 +74,17 @@ interface ApiService {
 
     @GET("customers/{id}/history")
     suspend fun customerHistory(@Path("id") id: Int): Response<ApiEnvelope<HistoryPayload>>
+
+    /**
+     * Saves a correction to the borrower's details, a loan figure, or a custom
+     * field. Partial: only the keys present in [body] are touched server-side, so
+     * saving one field never resends - and risks overwriting - every other one.
+     */
+    @PUT("customers/{id}")
+    suspend fun updateCustomer(
+        @Path("id") id: Int,
+        @Body body: CustomerUpdateRequest,
+    ): Response<ApiEnvelope<LeadDto>>
 
     // ---------------- Visits ----------------
 

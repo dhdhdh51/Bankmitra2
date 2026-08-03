@@ -165,6 +165,72 @@ data class LeadDto(
     @SerializedName("next_followup_date") val nextFollowupDate: String? = null,
     @SerializedName("remarks") val remarks: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
+
+    // ---- The rest of the core banking statement ----------------------------
+    //
+    // Read off the same loan_accounts row as everything above, but only sent to
+    // the app once presentLead() was widened to carry it - see
+    // LoanAccount::MANUALLY_EDITABLE server-side for the exact list an agent may
+    // correct, which is this same list.
+    @SerializedName("cif_number") val cifNumber: String? = null,
+    @SerializedName("sanction_date") val sanctionDate: String? = null,
+    @SerializedName("sanction_limit") val sanctionLimit: Double? = null,
+    @SerializedName("drawing_power") val drawingPower: Double? = null,
+    @SerializedName("interest_overdue") val interestOverdue: Double? = null,
+    @SerializedName("ckcc_renewal_due_date") val ckccRenewalDueDate: String? = null,
+    @SerializedName("ots_eligible") val otsEligible: Boolean? = null,
+    @SerializedName("krm_eligible") val krmEligible: Boolean? = null,
+    @SerializedName("ots_amount") val otsAmount: Double? = null,
+    @SerializedName("deposit_amount") val depositAmount: Double? = null,
+    @SerializedName("closure_amount") val closureAmount: Double? = null,
+    @SerializedName("asset_classification") val assetClassification: String? = null,
+    @SerializedName("interest_rate") val interestRate: Double? = null,
+    @SerializedName("installment_amount") val installmentAmount: Double? = null,
+    @SerializedName("last_payment_date") val lastPaymentDate: String? = null,
+    @SerializedName("last_payment_amount") val lastPaymentAmount: Double? = null,
+    @SerializedName("days_past_due") val daysPastDue: Int? = null,
+    @SerializedName("security_value") val securityValue: Double? = null,
+    @SerializedName("guarantor_name") val guarantorName: String? = null,
+    @SerializedName("maturity_date") val maturityDate: String? = null,
+    @SerializedName("purpose") val purpose: String? = null,
+
+    /** Which of the fields above (or above that) a person has hand-corrected. */
+    @SerializedName("overridden_fields") val overriddenFields: List<String> = emptyList(),
+
+    /**
+     * Every field the operator or an import added beyond the fixed vocabulary - on
+     * the borrower AND on this loan account - so the profile screen can show
+     * "everything we know about this account" rather than only what the schema
+     * happened to have a column for on day one. Includes fields auto-created from a
+     * spreadsheet column ColumnDetector could not place, so uploading any bank's
+     * export loses nothing: an unrecognised column becomes one of these instead of
+     * being dropped.
+     */
+    @SerializedName("custom_fields") val customFields: List<CustomFieldDto> = emptyList(),
+)
+
+/**
+ * One custom field's definition and current answer, together.
+ *
+ * [entity] and [key] are exactly what the edit endpoint reads a submitted value
+ * back by - CustomField::saveValues() on the server matches submitted request keys
+ * against each entity's field_key, so writing an edit is just posting
+ * `mapOf(field.key to newValue)` back to PUT /customers/{id}, the same shape a
+ * fixed field's edit takes.
+ */
+data class CustomFieldDto(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("entity") val entity: String = "loan_account",
+    @SerializedName("key") val key: String = "",
+    @SerializedName("label") val label: String = "",
+    /** text | textarea | number | money | date | select | toggle */
+    @SerializedName("field_type") val fieldType: String = "text",
+    @SerializedName("options") val options: List<String> = emptyList(),
+    @SerializedName("hint") val hint: String? = null,
+    @SerializedName("is_required") val isRequired: Boolean = false,
+    @SerializedName("value") val value: String? = null,
+    /** Formatted for read-only display - Yes/No, rupees, dd Mon yyyy - as the server would print it. */
+    @SerializedName("display_value") val displayValue: String = "",
 )
 
 data class CustomerProfilePayload(
@@ -176,6 +242,25 @@ data class CustomerProfilePayload(
     @SerializedName("documents") val documents: List<MediaDto> = emptyList(),
     @SerializedName("other_accounts") val otherAccounts: List<OtherAccountDto> = emptyList(),
 )
+
+/**
+ * A partial edit posted to `PUT /customers/{id}`.
+ *
+ * A plain string map, not a data class with a fixed set of properties: the
+ * fields an agent may correct span fixed loan/borrower columns AND an arbitrary
+ * number of custom fields keyed by their own field_key, and the server already
+ * reads exactly this shape - Request::all() merged with whatever was submitted,
+ * matched by key. A fixed DTO here would need a property per custom field, which
+ * cannot exist at compile time for a field an operator adds after this APK ships.
+ *
+ * Every value is a String (or absent) because that is what every input widget on
+ * the edit screen actually produces - a date picker's ISO string, a switch's "1"
+ * or "0", a money field's typed digits - and it is what the server's own
+ * Request::nullableStr()/float()/int() coercions already expect on the wire.
+ * Omitting a key, rather than sending it as null, is what makes this a PARTIAL
+ * update: the server only touches columns present in the body.
+ */
+typealias CustomerUpdateRequest = Map<String, String>
 
 data class OtherAccountDto(
     @SerializedName("id") val id: Int = 0,

@@ -13,6 +13,7 @@ import com.lrms.recovery.data.remote.AgentDashboardPayload
 import com.lrms.recovery.data.remote.AuthPayload
 import com.lrms.recovery.data.remote.ChangePasswordRequest
 import com.lrms.recovery.data.remote.CustomerProfilePayload
+import com.lrms.recovery.data.remote.CustomerUpdateRequest
 import com.lrms.recovery.data.remote.DeviceTokenRequest
 import com.lrms.recovery.data.remote.ForgotPasswordRequest
 import com.lrms.recovery.data.remote.FormOptionsPayload
@@ -221,6 +222,20 @@ class LrmsRepository(context: Context) {
 
     suspend fun customerHistory(id: Int): ApiResult<HistoryPayload> =
         call { api.customerHistory(id) }
+
+    /**
+     * Saves a correction to the borrower's details, a loan figure, or a custom
+     * field's value.
+     *
+     * [edits] carries only what actually changed - see [CustomerUpdateRequest] for
+     * why a plain string map, rather than a fixed DTO, is what a partial edit that
+     * may include an arbitrary custom field's key has to be. The server returns the
+     * lead exactly as GET /customers/{id} would present it, so the caller can
+     * replace its cached copy with the response rather than refetching the whole
+     * profile just to see the figure it itself just saved.
+     */
+    suspend fun updateCustomer(id: Int, edits: CustomerUpdateRequest): ApiResult<LeadDto> =
+        call { api.updateCustomer(id, edits) }
 
     // =======================================================================
     // Visits

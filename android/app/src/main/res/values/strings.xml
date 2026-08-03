@@ -93,6 +93,17 @@
     <string name="profile_no_visits">No visits recorded yet.</string>
     <string name="profile_other_accounts">Other accounts</string>
 
+    <!-- Every fixed field beyond the summary card, plus any custom field an
+         import or the panel added - shown together so an agent sees everything
+         known about the account, and can correct any of it. -->
+    <string name="profile_additional_details">Additional details</string>
+    <string name="profile_edit">Edit</string>
+    <string name="profile_edit_done">Done</string>
+    <string name="profile_field_saved">Saved.</string>
+    <string name="profile_field_save_failed">Could not save %1$s.</string>
+    <string name="profile_field_hand_corrected">Hand-corrected</string>
+    <string name="profile_no_additional_details">Nothing more is recorded for this account.</string>
+
     <!-- Field labels -->
     <string name="label_customer_name">Customer name</string>
     <string name="label_father_husband">Father / husband name</string>
@@ -243,6 +254,7 @@
     <string name="error_unknown">Something went wrong. Please try again.</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
+    <string name="not_stated">Not stated</string>
     <string name="not_available" translatable="false">—</string>
     <string name="npa_badge" translatable="false">NPA</string>
     <string name="required_marker" translatable="false">*</string>

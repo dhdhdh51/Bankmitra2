@@ -120,6 +120,22 @@ final class CustomField
         ) ?? 0) > 0;
     }
 
+    /**
+     * A definition by its exact key, or null.
+     *
+     * Used before creating one automatically (from an import's unmapped columns) to
+     * decide whether that field already exists rather than creating a duplicate.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function findByKey(string $entity, string $key): ?array
+    {
+        return Database::instance()->first(
+            'SELECT * FROM custom_field_definitions WHERE entity = ? AND field_key = ? LIMIT 1',
+            [$entity, $key]
+        );
+    }
+
     /** @param array<string,mixed> $data */
     public static function create(array $data): int
     {
@@ -251,16 +267,70 @@ final class CustomField
             }
 
             // Upsert on the unique key: a double-submitted form must not give one
-            // field two answers.
+            // field two answers. is_manual_override is always 1 here - this method is
+            // only ever called from a person typing into the admin panel or the app's
+            // edit screen, never from the importer (see saveImportValue() below), so
+            // every row this writes is exactly the kind the next import must protect.
             $db->query(
-                'INSERT INTO custom_field_values (definition_id, entity, entity_id, value, updated_by)
-                 VALUES (?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)',
+                'INSERT INTO custom_field_values (definition_id, entity, entity_id, value, is_manual_override, updated_by)
+                 VALUES (?, ?, ?, ?, 1, ?)
+                 ON DUPLICATE KEY UPDATE value = VALUES(value), is_manual_override = 1, updated_by = VALUES(updated_by)',
                 [(int) $definition['id'], $entity, $entityId, $value, $userId]
             );
         }
 
         return $changed;
+    }
+
+    /**
+     * Writes one column's value during an Excel import, unless a person has since
+     * hand-corrected that exact answer.
+     *
+     * The counterpart to LoanAccount's manual_overrides for the fixed columns: a custom
+     * field auto-created from an unmapped spreadsheet column behaves like any other
+     * imported figure right up until somebody corrects it from the app or the panel, at
+     * which point the correction has to survive the next import the same way a corrected
+     * outstanding balance does. Without this, "any column becomes an editable field" and
+     * "the import is the source of truth" could not both be true - fixing a wrong answer
+     * would work for exactly as long as it took the next file to come in.
+     *
+     * @return bool true if written, false if skipped because a person's answer is
+     *              protected
+     */
+    public static function saveImportValue(
+        int $definitionId,
+        string $entity,
+        int $entityId,
+        string $fieldType,
+        ?string $rawValue
+    ): bool {
+        $db = Database::instance();
+
+        $existing = $db->first(
+            'SELECT is_manual_override FROM custom_field_values WHERE definition_id = ? AND entity_id = ? LIMIT 1',
+            [$definitionId, $entityId]
+        );
+        if ($existing !== null && (int) $existing['is_manual_override'] === 1) {
+            return false;
+        }
+
+        $value = self::normalise($fieldType, $rawValue);
+
+        if ($value === null) {
+            if ($existing !== null) {
+                $db->delete('custom_field_values', ['definition_id' => $definitionId, 'entity_id' => $entityId]);
+            }
+            return true;
+        }
+
+        $db->query(
+            'INSERT INTO custom_field_values (definition_id, entity, entity_id, value, is_manual_override, updated_by)
+             VALUES (?, ?, ?, ?, 0, NULL)
+             ON DUPLICATE KEY UPDATE value = VALUES(value), is_manual_override = 0, updated_by = NULL',
+            [$definitionId, $entity, $entityId, $value]
+        );
+
+        return true;
     }
 
     /**

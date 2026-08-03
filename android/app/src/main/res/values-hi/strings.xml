@@ -86,6 +86,13 @@
     <string name="profile_no_promises">कोई वादा दर्ज नहीं है।</string>
     <string name="profile_no_visits">अभी कोई विज़िट दर्ज नहीं है।</string>
     <string name="profile_other_accounts">अन्य खाते</string>
+    <string name="profile_additional_details">अतिरिक्त विवरण</string>
+    <string name="profile_edit">संपादित करें</string>
+    <string name="profile_edit_done">पूर्ण</string>
+    <string name="profile_field_saved">सेव हो गया।</string>
+    <string name="profile_field_save_failed">%1$s सेव नहीं हो सका।</string>
+    <string name="profile_field_hand_corrected">हाथ से सुधारा गया</string>
+    <string name="profile_no_additional_details">इस खाते के लिए कुछ और दर्ज नहीं है।</string>
     <string name="label_customer_name">ग्राहक का नाम</string>
     <string name="label_father_husband">पिता / पति का नाम</string>
     <string name="label_mobile">मोबाइल</string>
@@ -406,4 +413,5 @@
     <string name="account_language_hindi">हिन्दी</string>
     <string name="account_language_system">फ़ोन की भाषा</string>
     <string name="account_language_hint">ऐप की भाषा। रिपोर्ट के फ़ॉर्म के शब्द वही रहते हैं जो छपी प्रति पर हैं।</string>
+    <string name="not_stated">दर्ज नहीं</string>
 </resources>

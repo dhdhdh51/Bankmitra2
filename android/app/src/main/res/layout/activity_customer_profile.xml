@@ -408,6 +408,57 @@
                             </LinearLayout>
                         </com.google.android.material.card.MaterialCardView>
 
+                        <!-- Additional details: the rest of the core banking statement, plus
+                             any custom field an import or the panel added. Editable in place. -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
+                            android:layout_marginBottom="6dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/profile_additional_details"
+                                android:textAppearance="@style/TextAppearance.LRMS.SectionLabel" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/buttonEditDetails"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/profile_edit" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/textNoAdditionalDetails"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/profile_no_additional_details"
+                            android:textColor="@color/lrms_muted"
+                            android:textSize="13sp"
+                            android:visibility="gone" />
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:id="@+id/cardAdditionalDetails"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:visibility="gone"
+                            tools:visibility="visible">
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/recyclerAdditionalDetails"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:clipToPadding="false"
+                                android:padding="14dp"
+                                tools:itemCount="3"
+                                tools:listitem="@layout/item_editable_field" />
+                        </com.google.android.material.card.MaterialCardView>
+
                         <!-- Other accounts -->
                         <LinearLayout
                             android:id="@+id/groupOtherAccounts"

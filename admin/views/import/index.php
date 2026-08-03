@@ -359,7 +359,17 @@
 
                         <?php if ($result['unmapped'] !== []): ?>
                             <p class="text-muted mb-2" style="font-size:.8125rem">
-                                Ignored columns:
+                                <?php
+                                /*
+                                 * Nothing here is actually dropped any more. A column that
+                                 * does not match the fixed vocabulary becomes its own custom
+                                 * field on the loan account the moment the real import runs -
+                                 * this dry run only shows what those columns are, since it
+                                 * writes nothing itself.
+                                 */
+                                ?>
+                                Columns not in the fixed list &mdash; each becomes its own field on
+                                the loan account when you import (see <a href="<?= e(url('/custom-fields')) ?>">Custom Fields</a>):
                                 <code><?= e(implode(', ', array_slice($result['unmapped'], 0, 12))) ?></code>
                             </p>
                         <?php endif; ?>

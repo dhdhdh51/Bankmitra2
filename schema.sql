@@ -1181,6 +1181,14 @@ CREATE TABLE `custom_field_values` (
   -- typed column per type would mean seven mostly-null columns and a CASE in every
   -- query. Dates are ISO, money is a decimal string, toggles are '1' or '0'.
   `value`         TEXT         DEFAULT NULL,
+  -- Set when a person - an agent in the app, or an admin in the panel - typed this
+  -- value themselves, as opposed to it arriving from an Excel import (which happens
+  -- for a custom field auto-created from a column the importer did not recognise).
+  -- The next import checks this before overwriting: without it, a correction an
+  -- agent made at a doorstep would be silently undone the next time the same
+  -- spreadsheet column came through, exactly the failure loan_accounts.manual_overrides
+  -- exists to prevent for the fixed columns.
+  `is_manual_override` TINYINT(1) NOT NULL DEFAULT 0,
   `updated_by`    INT UNSIGNED DEFAULT NULL,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
