@@ -84,4 +84,15 @@ class AppLanguageTest {
         // empty everywhere - in preferences, in the locale list, and in the check above.
         assertEquals("", AppLanguage.tagFor(AppLanguage.SYSTEM))
     }
+
+    @Test
+    fun `the app's own default is English, not the phone's language`() {
+        // What SessionStore hands back before an agent has ever opened Account ->
+        // Language. Deliberately NOT SYSTEM: the app's language is meant to be
+        // independent of whatever the device happens to be set to, and "follow the
+        // phone" as the untouched default would make that untrue for every install
+        // nobody has configured yet.
+        assertEquals(AppLanguage.ENGLISH, AppLanguage.DEFAULT)
+        assertTrue(AppLanguage.DEFAULT in AppLanguage.CHOICES)
+    }
 }

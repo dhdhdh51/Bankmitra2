@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
 import com.lrms.recovery.data.remote.UserDto
+import com.lrms.recovery.util.AppLanguage
 
 /**
  * Persistent session state: tokens, the signed-in user and the server address.
@@ -150,12 +151,25 @@ class SessionStore(context: Context) {
     /**
      * The chosen app language as a BCP-47 tag, or "" to follow the phone.
      *
+     * Defaults to English ("en"), NOT "" (follow the phone). The app's language is
+     * deliberately independent of whatever the device is set to: an agent's phone may be
+     * in any of a dozen system languages the app does not carry a translation for, and
+     * defaulting to "follow the phone" there is not "no choice made" - it is Android
+     * silently picking English anyway (Hindi being the one language other than English
+     * this app ships) while the Account screen keeps showing "Phone's language" as if
+     * something had been decided. Starting from a named, fixed choice means the row
+     * always names the language actually in force, and an agent who never opens Settings
+     * still gets a language this app was built to speak.
+     *
+     * "Phone's language" is still offered on the Account screen for whoever wants it -
+     * this only changes what an agent who has never touched the setting starts on.
+     *
      * Kept OUTSIDE the block that clear() wipes on sign-out: a language is a property of
      * the person holding the phone, not of the session. Signing out and back in should not
      * put an agent who reads Hindi back into English.
      */
     var languageTag: String
-        get() = prefs.getString(KEY_LANGUAGE, "") ?: ""
+        get() = prefs.getString(KEY_LANGUAGE, AppLanguage.DEFAULT.tag) ?: AppLanguage.DEFAULT.tag
         set(value) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
 
     // ---- Daily report reminder ---------------------------------------------
