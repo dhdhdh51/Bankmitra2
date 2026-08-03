@@ -151,26 +151,45 @@ class SessionStore(context: Context) {
     /**
      * The chosen app language as a BCP-47 tag, or "" to follow the phone.
      *
-     * Defaults to English ("en"), NOT "" (follow the phone). The app's language is
-     * deliberately independent of whatever the device is set to: an agent's phone may be
-     * in any of a dozen system languages the app does not carry a translation for, and
+     * Defaults to English ("en"), NOT "" (follow the phone), and stays English until an
+     * agent has ACTUALLY opened Account -> Language and picked something - tracked by
+     * [KEY_LANGUAGE_CHOSEN], set only from this property's own setter. The app's
+     * language is deliberately independent of whatever the device is set to: an agent's
+     * phone may be in any system language the app does not carry a translation for, and
      * defaulting to "follow the phone" there is not "no choice made" - it is Android
-     * silently picking English anyway (Hindi being the one language other than English
-     * this app ships) while the Account screen keeps showing "Phone's language" as if
-     * something had been decided. Starting from a named, fixed choice means the row
-     * always names the language actually in force, and an agent who never opens Settings
-     * still gets a language this app was built to speak.
+     * silently picking whatever the device is in while the Account screen looks like a
+     * decision was made.
+     *
+     * The explicit flag, not just a changed default value, matters because this app is
+     * installed as an UPDATE over the previous build, never a fresh install - the
+     * distribution note on every release says exactly that, so nothing is ever cleared
+     * between builds. A phone that had this row opened even once before this flag
+     * existed - to see what the switcher did, or by an accidental tap - already has an
+     * explicit "" (follow the phone) sitting in preferences. Only changing what a bare
+     * `getString(KEY_LANGUAGE, default)` falls back to cannot reach that phone, because
+     * for it the key is not absent: raising the default only helps an install that has
+     * never touched this key at all. The flag does: on a phone with no recorded CHOICE
+     * (regardless of what leftover value the key happens to hold), the language is
+     * ENGLISH, full stop, until this setter runs from an actual tap in the dialog.
      *
      * "Phone's language" is still offered on the Account screen for whoever wants it -
-     * this only changes what an agent who has never touched the setting starts on.
+     * this only changes what an agent who has never deliberately chosen it starts on,
+     * and repairs a phone that was defaulted onto it by accident before this existed.
      *
      * Kept OUTSIDE the block that clear() wipes on sign-out: a language is a property of
      * the person holding the phone, not of the session. Signing out and back in should not
      * put an agent who reads Hindi back into English.
      */
     var languageTag: String
-        get() = prefs.getString(KEY_LANGUAGE, AppLanguage.DEFAULT.tag) ?: AppLanguage.DEFAULT.tag
-        set(value) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
+        get() = if (prefs.getBoolean(KEY_LANGUAGE_CHOSEN, false)) {
+            prefs.getString(KEY_LANGUAGE, AppLanguage.DEFAULT.tag) ?: AppLanguage.DEFAULT.tag
+        } else {
+            AppLanguage.DEFAULT.tag
+        }
+        set(value) = prefs.edit()
+            .putString(KEY_LANGUAGE, value)
+            .putBoolean(KEY_LANGUAGE_CHOSEN, true)
+            .apply()
 
     // ---- Daily report reminder ---------------------------------------------
 
@@ -269,6 +288,7 @@ class SessionStore(context: Context) {
         private const val KEY_THEME = "theme_mode"
         private const val KEY_REMEMBER = "remember_me"
         private const val KEY_LANGUAGE = "app_language"
+        private const val KEY_LANGUAGE_CHOSEN = "app_language_chosen"
         private const val KEY_LAST_CODE = "last_employee_code"
         private const val KEY_DEVICE_TOKEN = "device_token"
         private const val KEY_REPORT_DUE = "report_due_time"
