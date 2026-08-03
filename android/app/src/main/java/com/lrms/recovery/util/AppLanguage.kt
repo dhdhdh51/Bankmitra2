@@ -39,8 +39,8 @@ enum class AppLanguage(
     /**
      * Whatever the phone is set to.
      *
-     * The default, and it stays the default: an agent handed a phone already in Hindi
-     * should not have to find a setting to be spoken to in Hindi.
+     * Offered as a choice, but deliberately NOT the default any more - see [DEFAULT] on
+     * why the app no longer starts here for an agent who has not touched the setting.
      */
     SYSTEM(""),
     ENGLISH("en"),
@@ -85,6 +85,20 @@ enum class AppLanguage(
 
         /** The order the choices are offered in, English first because the code is. */
         val CHOICES: List<AppLanguage> = listOf(ENGLISH, HINDI, SYSTEM)
+
+        /**
+         * What a fresh install starts on, before anybody has opened Account -> Language.
+         *
+         * NOT [SYSTEM]. The app's language is meant to be independent of the phone's -
+         * that is the whole point of shipping a switcher instead of just relying on
+         * Android's own per-app locale picker - and starting from "follow the phone"
+         * undermines that on every install nobody has configured yet: two agents with
+         * identically set-up phones would see two different app languages purely because
+         * of what their phones happened to ship in. A fixed default means the app speaks
+         * the same language on every install until an agent deliberately changes it,
+         * which is the one thing "independent of the device" has to mean in practice.
+         */
+        val DEFAULT: AppLanguage = ENGLISH
 
         /** Applies a choice. Safe to call with the value already in force - it is a no-op. */
         fun apply(language: AppLanguage) {
