@@ -62,6 +62,10 @@ return static function (Router $router): void {
     $router->get($prefix . '/customers/{id}/history', [LeadController::class, 'history']);
     // The printable data sheet an agent carries into the field.
     $router->get($prefix . '/customers/{id}/sheet', [LeadController::class, 'sheet']);
+    // Correcting a borrower's details, a loan figure, or a custom field from the
+    // app - the same edits Admin\CustomerController::edit() lets the panel make.
+    // PUT because it is a partial update of one existing record, never a create.
+    $router->put($prefix . '/customers/{id}', [LeadController::class, 'update']);
 
     // ---- Visits ----------------------------------------------------------
     $router->get($prefix . '/visits', [VisitController::class, 'index']);
