@@ -162,8 +162,14 @@ interface ApiService {
      * The server only issues this for a lead assigned to the calling agent, which
      * is stricter than the rest of the lead API: the sheet leaves the device as a
      * file and can be forwarded on from there.
+     *
+     * @param lang "en" or "hi" - the field labels print in this language; a
+     * borrower's own name, address and figures print as recorded either way.
      */
     @Streaming
     @GET("customers/{id}/sheet")
-    suspend fun customerSheet(@Path("id") id: Long): Response<ResponseBody>
+    suspend fun customerSheet(
+        @Path("id") id: Long,
+        @Query("lang") lang: String,
+    ): Response<ResponseBody>
 }

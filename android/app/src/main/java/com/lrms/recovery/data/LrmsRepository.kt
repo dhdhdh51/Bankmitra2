@@ -43,6 +43,7 @@ import com.lrms.recovery.data.remote.LocationPointDto
 import com.lrms.recovery.data.remote.LocationUploadPayload
 import com.lrms.recovery.domain.VisitFormData
 import com.lrms.recovery.location.DutyLocationService
+import androidx.appcompat.app.AppCompatDelegate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -259,6 +260,23 @@ class LrmsRepository(context: Context) {
         return call { api.submitVisit(fields, files) }
     }
 
+    /**
+     * "en" or "hi", resolved from whatever language the app is actually displaying
+     * right now.
+     *
+     * An explicit per-app choice (English or Hindi) always wins. When the agent
+     * has left it on "follow the phone" - [AppLanguage.SYSTEM], an empty locale
+     * list - AppCompatDelegate reports no override, so the phone's own current
+     * locale is what is actually in force and is read instead; sending the empty
+     * tag itself, or defaulting to English regardless of what the phone is set
+     * to, would both misreport what the agent is reading the app in.
+     */
+    private fun sheetLanguageTag(): String {
+        val applied = AppCompatDelegate.getApplicationLocales()
+        val tag = if (!applied.isEmpty) applied[0]?.language else java.util.Locale.getDefault().language
+        return if (tag == "hi") "hi" else "en"
+    }
+
     private fun filePart(field: String, file: File, mime: String): MultipartBody.Part =
         MultipartBody.Part.createFormData(
             field,
@@ -321,11 +339,18 @@ class LrmsRepository(context: Context) {
      * borrower's contact details and the branch's settlement figures, so it should
      * not outlive the agent's use of it. The cache is what FileProvider is allowed
      * to share, and the OS reclaims it.
+     *
+     * Sent in the language the agent has the app in right now - AppCompatDelegate's
+     * resolved locale, not [AppLanguage.SYSTEM]'s empty tag, so "follow the phone"
+     * still asks the server for whichever language that resolves to rather than
+     * literally sending nothing. The server prints the sheet's field labels in that
+     * language; a borrower's own name, address and figures print as recorded
+     * regardless, since those are data rather than UI strings.
      */
     suspend fun downloadCustomerSheet(loanAccountId: Long, accountNumber: String): ApiResult<File> =
         withContext(Dispatchers.IO) {
             try {
-                val response = api.customerSheet(loanAccountId)
+                val response = api.customerSheet(loanAccountId, sheetLanguageTag())
 
                 if (!response.isSuccessful) {
                     return@withContext toFailure(response, null)

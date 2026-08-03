@@ -4,20 +4,45 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use App\Core\Fonts\Devanagari;
+use App\Core\Fonts\DevanagariMetricsBold;
+use App\Core\Fonts\DevanagariMetricsRegular;
+
 /**
  * Minimal PDF 1.4 generator: no FPDF, no Composer.
  *
  * Scope is deliberately narrow - what the report exports and the visit report
  * printout need:
  *   - A4 portrait or landscape
- *   - Helvetica core fonts (no embedding, so files stay small)
+ *   - Helvetica core fonts for Latin text (no embedding needed, so files stay
+ *     small), plus an embedded Devanagari subset for Hindi
  *   - a branded header band, page numbers, repeated table headers
  *   - automatic column fitting, text truncation and page breaks
  *   - key/value detail blocks
  *
- * WinAnsi (cp1252) is the text encoding. Characters outside it (for example
- * Devanagari names) are transliterated or replaced rather than emitting broken
- * glyphs, and the rupee sign is written as "Rs." for the same reason.
+ * TEXT AND FONTS
+ *
+ * Latin text is drawn with the two standard Type1 fonts (Helvetica /
+ * Helvetica-Bold) under WinAnsi (cp1252) encoding, same as before - no glyph
+ * outlines to carry, and every viewer already has them.
+ *
+ * Hindi text is drawn with an embedded, subsetted Devanagari font (Noto Sans
+ * Devanagari Regular/Bold, SIL OFL 1.1 - see admin/app/Resources/fonts) as a
+ * Type0/CIDFontType2 font with an Identity-H CMap, because WinAnsi has no
+ * Devanagari code points to encode and the 14 standard PDF fonts do not carry
+ * Devanagari glyphs at all. Only the run of Devanagari characters in a string
+ * switches font; Latin words mixed into the same value (an account number, a
+ * BC code) still draw with Helvetica, which is both correct and the reason a
+ * single line can carry both scripts without either one being replaced with
+ * "?".
+ *
+ * A rupee sign has no glyph in either font here, so it is still written as
+ * "Rs." rather than emitted as a character that would print as a box.
+ *
+ * See App\Core\Fonts\Devanagari for what shaping this implementation does and
+ * does not do - it draws Devanagari as separate glyphs rather than the
+ * ligated conjuncts a full OpenType shaping engine would produce, which is
+ * legible but not what a properly shaped renderer looks like.
  */
 final class Pdf
 {
@@ -65,6 +90,16 @@ final class Pdf
 
     /** Absolute path (plus mtime) to image name, so the same file embeds once. */
     private array $imageKeys = [];
+
+    /**
+     * Whether any Devanagari text was actually drawn.
+     *
+     * The embedded font (and its FontFile2 stream, easily the largest single
+     * object in the file) is only written into the PDF when this is true -
+     * every report and export that has no Hindi in it still produces exactly
+     * the small, Helvetica-only file this class always has.
+     */
+    private bool $usesDevanagari = false;
 
     public function __construct(
         string $title,
@@ -1308,6 +1343,19 @@ final class Pdf
     // Primitives
     // -----------------------------------------------------------------------
 
+    /**
+     * Draws one line of text at (x, y), switching fonts mid-line wherever the
+     * script changes.
+     *
+     * A single label routinely mixes scripts - "बकाया राशि: 45,000", a Hindi
+     * name next to a Latin BC code - and a line can only carry one /Tf (font)
+     * operator at a time in a `Tj` show-text call, so this walks the string in
+     * runs of one script, closing and reopening the text object per run at an
+     * advancing x position. Each run is measured and encoded with whichever
+     * font actually draws it: Helvetica/WinAnsi for a Latin run, the embedded
+     * Devanagari CID font (via its own Identity-H byte encoding) for a
+     * Devanagari run.
+     */
     private function textAt(
         string $text,
         float $x,
@@ -1332,19 +1380,101 @@ final class Pdf
         }
 
         [$r, $g, $b] = self::hexToRgb($colorHex);
-        $font = $bold ? '/F2' : '/F1';
 
-        $this->buffer .= sprintf(
-            "BT %s %.2F Tf %.3F %.3F %.3F rg %.2F %.2F Td (%s) Tj ET\n",
-            $font,
-            $size,
-            $r,
-            $g,
-            $b,
-            $x,
-            $y,
-            self::escape($text)
-        );
+        foreach (self::scriptRuns($text) as [$runText, $isDevanagari]) {
+            if ($isDevanagari) {
+                $this->usesDevanagari = true;
+                $font = $bold ? '/FH2' : '/FH1';
+                $codepoints = Devanagari::reorderMatraI(Devanagari::codepoints($runText));
+                $encoded = self::encodeCid($codepoints, $bold);
+
+                $this->buffer .= sprintf(
+                    "BT %s %.2F Tf %.3F %.3F %.3F rg %.2F %.2F Td <%s> Tj ET\n",
+                    $font,
+                    $size,
+                    $r,
+                    $g,
+                    $b,
+                    $x,
+                    $y,
+                    $encoded
+                );
+            } else {
+                $font = $bold ? '/F2' : '/F1';
+
+                $this->buffer .= sprintf(
+                    "BT %s %.2F Tf %.3F %.3F %.3F rg %.2F %.2F Td (%s) Tj ET\n",
+                    $font,
+                    $size,
+                    $r,
+                    $g,
+                    $b,
+                    $x,
+                    $y,
+                    self::escape(self::toWinAnsi($runText))
+                );
+            }
+
+            $x += self::stringWidth($runText, $size, $bold);
+        }
+    }
+
+    /**
+     * Splits a string into consecutive runs of Devanagari vs. everything
+     * else, in order.
+     *
+     * @return list<array{0:string,1:bool}> [text, isDevanagari] pairs
+     */
+    private static function scriptRuns(string $text): array
+    {
+        $runs = [];
+        $currentChars = [];
+        $currentIsDevanagari = null;
+
+        foreach (Devanagari::codepoints($text) as $codepoint) {
+            $isDevanagari = Devanagari::isDevanagariCodepoint($codepoint);
+
+            if ($currentIsDevanagari === null) {
+                $currentIsDevanagari = $isDevanagari;
+            } elseif ($isDevanagari !== $currentIsDevanagari) {
+                $runs[] = [Devanagari::fromCodepoints($currentChars), $currentIsDevanagari];
+                $currentChars = [];
+                $currentIsDevanagari = $isDevanagari;
+            }
+
+            $currentChars[] = $codepoint;
+        }
+
+        if ($currentChars !== []) {
+            $runs[] = [Devanagari::fromCodepoints($currentChars), (bool) $currentIsDevanagari];
+        }
+
+        return $runs;
+    }
+
+    /**
+     * Encodes a run of codepoints as the 2-byte-per-glyph hex string an
+     * Identity-H CIDFontType2 `Tj` operator expects: each codepoint is looked
+     * up in the embedded subset's cmap to get a glyph ID, and the glyph ID
+     * (not the Unicode codepoint) is what gets written, one 4-hex-digit
+     * big-endian pair per glyph.
+     *
+     * A codepoint with no glyph in the subset (should not happen for anything
+     * `Devanagari::isDevanagariCodepoint()` accepts, since the subset covers
+     * the whole block - see tools/build-devanagari-font-subset.py) falls back
+     * to glyph 0, `.notdef`, rather than skipping the character outright.
+     */
+    private static function encodeCid(array $codepoints, bool $bold): string
+    {
+        $cmap = $bold ? DevanagariMetricsBold::CMAP : DevanagariMetricsRegular::CMAP;
+
+        $hex = '';
+        foreach ($codepoints as $codepoint) {
+            $gid = $cmap[$codepoint] ?? 0;
+            $hex .= sprintf('%04X', $gid);
+        }
+
+        return $hex;
     }
 
     private function rect(float $x, float $y, float $width, float $height, string $colorHex, bool $filled): void
@@ -1397,10 +1527,16 @@ final class Pdf
         //   2 Pages
         //   3 Font Helvetica
         //   4 Font Helvetica-Bold
-        //   5..                       Image XObjects
-        //   5+imageCount..            Page objects
-        //   5+imageCount+pageCount..  Content streams
-        $imageObjectStart = 5;
+        //   5..10  Devanagari fonts (Type0 + CIDFontType2 + FontDescriptor + FontFile2,
+        //          one triple per weight), ONLY when Hindi text was actually drawn -
+        //          the whole point of tracking usesDevanagari is that a report with no
+        //          Hindi in it never carries the embedded font stream at all.
+        //   next.. Image XObjects
+        //   next.. Page objects
+        //   next.. Content streams
+        $fontObjectStart = 5;
+        $fontObjectCount = $this->usesDevanagari ? 6 : 0;
+        $imageObjectStart = $fontObjectStart + $fontObjectCount;
         $pageObjectStart = $imageObjectStart + $imageCount;
         $contentObjectStart = $pageObjectStart + $pageCount;
 
@@ -1430,6 +1566,32 @@ final class Pdf
         $objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
         $objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
 
+        $fontResourceEntries = '/F1 3 0 R /F2 4 0 R';
+
+        if ($this->usesDevanagari) {
+            // Regular: Type0 (5), CIDFontType2 (6), FontDescriptor (7), FontFile2 (8).
+            // Bold:    Type0 (9), CIDFontType2 (10)... reusing the SAME FontDescriptor/
+            // FontFile2 object numbers would be wrong (different metrics, different
+            // outline data), so bold gets its own pair too - hence 6 objects, not 4.
+            [$regularObjects, $regularType0Num] = self::buildDevanagariFontObjects(
+                $fontObjectStart,
+                false
+            );
+            [$boldObjects, $boldType0Num] = self::buildDevanagariFontObjects(
+                $fontObjectStart + 3,
+                true
+            );
+
+            foreach ($regularObjects as $num => $body) {
+                $objects[$num] = $body;
+            }
+            foreach ($boldObjects as $num => $body) {
+                $objects[$num] = $body;
+            }
+
+            $fontResourceEntries .= sprintf(' /FH1 %d 0 R /FH2 %d 0 R', $regularType0Num, $boldType0Num);
+        }
+
         foreach ($imageNames as $index => $name) {
             $image = $this->images[$name];
 
@@ -1448,9 +1610,10 @@ final class Pdf
         for ($i = 0; $i < $pageCount; $i++) {
             $objects[$pageObjectStart + $i] = sprintf(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2F %.2F] "
-                . "/Resources << /Font << /F1 3 0 R /F2 4 0 R >>%s >> /Contents %d 0 R >>",
+                . "/Resources << /Font << %s >>%s >> /Contents %d 0 R >>",
                 $this->pageWidth,
                 $this->pageHeight,
+                $fontResourceEntries,
                 $xobjectDict,
                 $contentObjectStart + $i
             );
@@ -1490,6 +1653,117 @@ final class Pdf
         return $pdf;
     }
 
+    /**
+     * Builds the four PDF objects one embedded Devanagari weight needs: a
+     * Type0 composite font, the CIDFontType2 descendant it wraps, that
+     * font's FontDescriptor, and the FontFile2 stream carrying the actual
+     * TrueType outline data.
+     *
+     * Identity-H is used for both the composite font's /Encoding and its
+     * /CIDToGIDMap: the codes textAt() writes into the `Tj` string ARE
+     * already glyph IDs (encodeCid() looked them up via the subset's cmap),
+     * so no further code-to-CID or CID-to-GID mapping is needed - "Identity"
+     * on both counts is not a placeholder here, it is the correct value.
+     *
+     * @return array{0:array<int,string>,1:int} [objectNumber => body, Type0's own object number]
+     */
+    private static function buildDevanagariFontObjects(int $startNumber, bool $bold): array
+    {
+        $type0Num = $startNumber;
+        $cidFontNum = $startNumber + 1;
+        $descriptorNum = $startNumber + 2;
+        $fontFileNum = $startNumber + 3;
+
+        $unitsPerEm = $bold ? DevanagariMetricsBold::UNITS_PER_EM : DevanagariMetricsRegular::UNITS_PER_EM;
+        $ascent = $bold ? DevanagariMetricsBold::ASCENT : DevanagariMetricsRegular::ASCENT;
+        $descent = $bold ? DevanagariMetricsBold::DESCENT : DevanagariMetricsRegular::DESCENT;
+        $capHeight = $bold ? DevanagariMetricsBold::CAP_HEIGHT : DevanagariMetricsRegular::CAP_HEIGHT;
+        $bbox = $bold ? DevanagariMetricsBold::BBOX : DevanagariMetricsRegular::BBOX;
+        $widths = $bold ? DevanagariMetricsBold::WIDTHS : DevanagariMetricsRegular::WIDTHS;
+        $numGlyphs = $bold ? DevanagariMetricsBold::NUM_GLYPHS : DevanagariMetricsRegular::NUM_GLYPHS;
+        $baseName = $bold ? 'NotoSansDevanagari-Bold' : 'NotoSansDevanagari-Regular';
+
+        $scale = 1000.0 / $unitsPerEm;
+        $fontData = self::loadDevanagariFontFile($bold);
+
+        // /W (per-glyph widths, scaled to the standard 1000-unit em every other width
+        // in this class is already expressed in) - written as consecutive single-glyph
+        // entries. A subset of ~136 glyphs makes the array cheap; a run-length format
+        // would only be worth it for a much larger glyph count.
+        $wEntries = [];
+        for ($gid = 0; $gid < $numGlyphs; $gid++) {
+            $width1000 = round(($widths[$gid] ?? 500) * $scale);
+            $wEntries[] = sprintf('%d [%d]', $gid, (int) $width1000);
+        }
+        $wArray = '[' . implode(' ', $wEntries) . ']';
+
+        $objects = [];
+
+        $objects[$type0Num] = sprintf(
+            "<< /Type /Font /Subtype /Type0 /BaseFont /%s /Encoding /Identity-H "
+            . "/DescendantFonts [%d 0 R] >>",
+            $baseName,
+            $cidFontNum
+        );
+
+        $objects[$cidFontNum] = sprintf(
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /%s "
+            . "/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            . "/FontDescriptor %d 0 R /CIDToGIDMap /Identity /DW 500 /W %s >>",
+            $baseName,
+            $descriptorNum,
+            $wArray
+        );
+
+        $objects[$descriptorNum] = sprintf(
+            "<< /Type /FontDescriptor /FontName /%s /Flags 0 "
+            . "/FontBBox [%d %d %d %d] /ItalicAngle 0 /Ascent %d /Descent %d /CapHeight %d "
+            . "/StemV 80 /FontFile2 %d 0 R >>",
+            $baseName,
+            (int) round($bbox[0] * $scale),
+            (int) round($bbox[1] * $scale),
+            (int) round($bbox[2] * $scale),
+            (int) round($bbox[3] * $scale),
+            (int) round($ascent * $scale),
+            (int) round($descent * $scale),
+            (int) round($capHeight * $scale),
+            $fontFileNum
+        );
+
+        $objects[$fontFileNum] = sprintf(
+            "<< /Length %d /Length1 %d >>\nstream\n%s\nendstream",
+            strlen($fontData),
+            strlen($fontData),
+            $fontData
+        );
+
+        return [$objects, $type0Num];
+    }
+
+    /** @var array<string,string> Cache so a multi-page report reads each font file once. */
+    private static array $fontFileCache = [];
+
+    private static function loadDevanagariFontFile(bool $bold): string
+    {
+        $key = $bold ? 'bold' : 'regular';
+        if (isset(self::$fontFileCache[$key])) {
+            return self::$fontFileCache[$key];
+        }
+
+        $filename = $bold ? 'NotoSansDevanagari-Bold.ttf' : 'NotoSansDevanagari-Regular.ttf';
+        $path = dirname(__DIR__) . '/Resources/fonts/' . $filename;
+
+        $data = @file_get_contents($path);
+        if ($data === false) {
+            // Should not happen outside a broken install - the subset ships in the
+            // repo. An empty FontFile2 would produce a corrupt PDF, so fail loudly
+            // rather than emit a file that opens broken in every viewer.
+            throw new \RuntimeException("Devanagari font file missing: {$path}");
+        }
+
+        return self::$fontFileCache[$key] = $data;
+    }
+
     // -----------------------------------------------------------------------
     // Text metrics and encoding
     // -----------------------------------------------------------------------
@@ -1525,26 +1799,68 @@ final class Pdf
         return self::$widths = $table;
     }
 
-    /** Width of a WinAnsi string at the given point size. */
+    /**
+     * Width of a UTF-8 string at the given point size, script-aware.
+     *
+     * Each character is measured with whichever font would actually draw it -
+     * the Devanagari metrics for a Devanagari character, Helvetica's for
+     * everything else - so a mixed label like "बकाया राशि: 45,000" is not
+     * measured as if every character were Latin-width, which is what made
+     * Hindi text overflow its cell and truncate mid-word before this class
+     * knew Devanagari existed.
+     */
     public static function stringWidth(string $text, float $size, bool $bold = false): float
     {
-        $table = self::widthTable();
-        $total = 0;
-        $length = strlen($text);
-
-        for ($i = 0; $i < $length; $i++) {
-            $code = ord($text[$i]);
-            $total += $table[$code] ?? 556;
+        if ($text === '') {
+            return 0.0;
         }
 
-        // Helvetica-Bold is marginally wider; approximate rather than ship a
-        // second full metrics table, which is plenty for layout purposes.
-        $factor = $bold ? 1.045 : 1.0;
+        $total = 0.0;
+        foreach (Devanagari::codepoints($text) as $codepoint) {
+            $total += self::glyphWidthUnits($codepoint, $bold);
+        }
 
-        return ($total / 1000.0) * $size * $factor;
+        return ($total / 1000.0) * $size;
     }
 
-    /** Truncates with an ellipsis so a long value can never overflow its cell. */
+    /**
+     * A single codepoint's advance width in 1000-unit-em terms, from whichever
+     * font actually draws it.
+     */
+    private static function glyphWidthUnits(int $codepoint, bool $bold): float
+    {
+        if (Devanagari::isDevanagariCodepoint($codepoint)) {
+            $cmap = $bold ? DevanagariMetricsBold::CMAP : DevanagariMetricsRegular::CMAP;
+            $widths = $bold ? DevanagariMetricsBold::WIDTHS : DevanagariMetricsRegular::WIDTHS;
+            $unitsPerEm = $bold ? DevanagariMetricsBold::UNITS_PER_EM : DevanagariMetricsRegular::UNITS_PER_EM;
+
+            $gid = $cmap[$codepoint] ?? null;
+            if ($gid === null) {
+                return 556.0; // no glyph for this codepoint in the subset - a defensible average.
+            }
+
+            return ($widths[$gid] ?? 500) * (1000.0 / $unitsPerEm);
+        }
+
+        $table = self::widthTable();
+        // Only the printable ASCII range (32-126) has real Helvetica metrics; anything
+        // outside it (an unhandled symbol) falls back to the same average as before.
+        $base = $codepoint >= 32 && $codepoint <= 126 ? ($table[$codepoint] ?? 556) : 556;
+
+        // Helvetica-Bold is marginally wider; approximated the same way this class
+        // always has rather than shipping a second full metrics table.
+        return $bold ? $base * 1.045 : (float) $base;
+    }
+
+    /**
+     * Truncates with an ellipsis so a long value can never overflow its cell.
+     *
+     * Walks whole Unicode characters, not bytes: a byte-at-a-time truncation
+     * of a UTF-8 string can stop mid-character, and for a three-byte
+     * Devanagari codepoint that is a mangled trailing character rather than a
+     * clean cut - the earlier byte-oriented version of this method could
+     * never have handled Hindi text even once encoding stopped destroying it.
+     */
     public static function fit(string $text, float $maxWidth, float $size, bool $bold): string
     {
         if ($maxWidth <= 0 || $text === '') {
@@ -1560,27 +1876,36 @@ final class Pdf
             return '';
         }
 
-        $result = '';
-        $length = strlen($text);
-        for ($i = 0; $i < $length; $i++) {
-            $candidate = $result . $text[$i];
-            if (self::stringWidth($candidate, $size, $bold) > $budget) {
+        $codepoints = Devanagari::codepoints($text);
+        $kept = [];
+        $width = 0.0;
+        foreach ($codepoints as $codepoint) {
+            $charWidth = self::glyphWidthUnits($codepoint, $bold) / 1000.0 * $size;
+            if ($width + $charWidth > $budget) {
                 break;
             }
-            $result = $candidate;
+            $kept[] = $codepoint;
+            $width += $charWidth;
         }
 
-        return rtrim($result) . $ellipsis;
+        return rtrim(Devanagari::fromCodepoints($kept)) . $ellipsis;
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     *
+     * Splits on whitespace using a Unicode-aware regex (the previous `\s+`
+     * pattern with no `u` modifier read a multi-byte UTF-8 space-adjacent
+     * character as a run of Latin-1 bytes) and measures/hard-splits by
+     * character rather than by byte for the same reason `fit()` does.
+     */
     public static function wrap(string $text, float $maxWidth, float $size, bool $bold): array
     {
         $text = str_replace(["\r\n", "\r"], "\n", $text);
         $lines = [];
 
         foreach (explode("\n", $text) as $paragraph) {
-            $words = preg_split('/\s+/', trim($paragraph)) ?: [];
+            $words = preg_split('/\s+/u', trim($paragraph)) ?: [];
             $current = '';
 
             foreach ($words as $word) {
@@ -1592,17 +1917,23 @@ final class Pdf
                 if ($current !== '') {
                     $lines[] = $current;
                 }
-                // A single word longer than the line gets hard-split.
-                while (self::stringWidth($word, $size, $bold) > $maxWidth && $word !== '') {
-                    $chunk = '';
-                    while ($word !== '' && self::stringWidth($chunk . $word[0], $size, $bold) <= $maxWidth) {
-                        $chunk .= $word[0];
-                        $word = substr($word, 1);
+                // A single word longer than the line gets hard-split, one character
+                // (not one byte) at a time.
+                if (self::stringWidth($word, $size, $bold) > $maxWidth && $word !== '') {
+                    $wordCodepoints = Devanagari::codepoints($word);
+                    $chunk = [];
+                    $chunkWidth = 0.0;
+                    foreach ($wordCodepoints as $codepoint) {
+                        $charWidth = self::glyphWidthUnits($codepoint, $bold) / 1000.0 * $size;
+                        if ($chunkWidth + $charWidth > $maxWidth && $chunk !== []) {
+                            $lines[] = Devanagari::fromCodepoints($chunk);
+                            $chunk = [];
+                            $chunkWidth = 0.0;
+                        }
+                        $chunk[] = $codepoint;
+                        $chunkWidth += $charWidth;
                     }
-                    if ($chunk === '') {
-                        break;
-                    }
-                    $lines[] = $chunk;
+                    $word = Devanagari::fromCodepoints($chunk);
                 }
                 $current = $word;
             }
@@ -1614,7 +1945,16 @@ final class Pdf
     }
 
     /**
-     * Converts UTF-8 to WinAnsi, replacing what cannot be represented.
+     * Normalises a value for drawing, keeping Devanagari characters intact.
+     *
+     * Used to convert straight to WinAnsi, which erased every Devanagari
+     * character on the way in - by the time textAt() saw the string there was
+     * nothing left to route to the embedded Hindi font. Now it only replaces
+     * the handful of symbols neither font here carries a glyph for (curly
+     * quotes, en/em dash, the rupee sign) and drops control characters, and
+     * leaves Devanagari and ASCII untouched in UTF-8. The WinAnsi conversion
+     * happens per-run in textAt(), only for the Latin stretches of the string,
+     * once it is known which glyphs are actually being drawn with which font.
      */
     public static function text(mixed $value): string
     {
@@ -1626,20 +1966,13 @@ final class Pdf
             return '';
         }
 
-        // Common symbols that would otherwise become '?'.
+        // Symbols neither font carries a glyph for, replaced with something
+        // WinAnsi (or the Devanagari subset, which also lacks them) can draw.
         $string = str_replace(
             ['₹', '—', '–', '“', '”', '‘', '’', '…', '•', '→', '≥', '≤', '₨'],
             ['Rs.', '-', '-', '"', '"', "'", "'", '...', '-', '->', '>=', '<=', 'Rs.'],
             $string
         );
-
-        $converted = @iconv('UTF-8', 'CP1252//TRANSLIT', $string);
-        if ($converted === false) {
-            $converted = @iconv('UTF-8', 'ASCII//TRANSLIT', $string);
-        }
-        if ($converted === false) {
-            $converted = preg_replace('/[^\x20-\x7E]/', '?', $string) ?? '';
-        }
 
         // Drop control characters and stray transliteration artefacts - but NOT the
         // newline, which is the one control character that carries meaning here.
@@ -1650,7 +1983,31 @@ final class Pdf
         // unbroken run and printed as "Suresh YadavBC000726.912400, 75.787300". Every
         // test passed, because each phrase was individually present in the bytes.
         // Callers that draw a single line are protected in escape() instead.
-        return preg_replace('/[\x00-\x09\x0B-\x1F\x7F]/', '', $converted) ?? '';
+        return preg_replace('/[\x00-\x09\x0B-\x1F\x7F]/u', '', $string) ?? '';
+    }
+
+    /**
+     * WinAnsi fallback for a run of text that turned out to have no Devanagari
+     * in it (or for a caller that never sees a mixed string, e.g. a numeric
+     * label). Transliterates what CP1252 can approximate and replaces the
+     * rest with '?', which was this class's entire encoding strategy before
+     * Devanagari support existed.
+     */
+    private static function toWinAnsi(string $utf8): string
+    {
+        if ($utf8 === '') {
+            return '';
+        }
+
+        $converted = @iconv('UTF-8', 'CP1252//TRANSLIT', $utf8);
+        if ($converted === false) {
+            $converted = @iconv('UTF-8', 'ASCII//TRANSLIT', $utf8);
+        }
+        if ($converted === false) {
+            $converted = preg_replace('/[^\x20-\x7E]/', '?', $utf8) ?? '';
+        }
+
+        return $converted;
     }
 
     private static function escape(string $text): string

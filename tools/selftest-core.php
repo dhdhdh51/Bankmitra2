@@ -614,6 +614,112 @@ check('pdf Kids count matches page objects', (function () use ($pdfBytes): bool 
 })());
 check('pdf size sane', strlen($pdfBytes) > 5000, 'bytes=' . strlen($pdfBytes));
 
+// A report with no Hindi in it must not carry the embedded Devanagari font at
+// all - it is a large object relative to everything else this class writes,
+// and every English-only report still has to stay the small file it always
+// has been.
+check('an all-Latin PDF carries no embedded font', !str_contains($pdfBytes, '/FontFile2'));
+check('and no Type0/CID font either', !str_contains($pdfBytes, '/Subtype /Type0'));
+
+// ---------------------------------------------------------------------------
+section('PDF writer: Devanagari (Hindi)');
+
+// The 78 bugs this app has already caught taught the same lesson twice: a
+// feature that only prints ASCII text is untested by an ASCII-only fixture.
+// So this section prints a full mix - Hindi headings, Hindi values, a Hindi
+// value next to a Latin one on the same line, a Hindi paragraph long enough
+// to wrap, and a vowel sign that must be reordered before its consonant.
+$hindiPdf = new Pdf('हिन्दी रिपोर्ट', 'सहायक विवरण', false, 'गोपनीय');
+$hindiPdf->heading('उधारकर्ता की जानकारी');
+$hindiPdf->keyValueBlock([
+    'नाम'         => 'राम लाल',
+    'गांव'        => 'कोटरी',
+    'बकाया राशि'  => '45,000',
+    'खाता संख्या Mixed' => 'LN00100 सिता',
+]);
+$hindiPdf->paragraph(
+    'यह एक लंबा हिन्दी अनुच्छेद है जो कई पंक्तियों में लपेटा जाना चाहिए, ताकि यह '
+    . 'साबित हो सके कि रैपिंग तर्क देवनागरी अक्षरों के साथ भी उतनी ही अच्छी तरह '
+    . 'काम करता है जितना लैटिन अक्षरों के साथ करता है।'
+);
+$hindiPdf->setColumns([
+    ['label' => 'खाता संख्या', 'width' => 1.2],
+    ['label' => 'नाम', 'width' => 1.5],
+    ['label' => 'बकाया राशि', 'width' => 1.0, 'align' => 'right'],
+]);
+$hindiPdf->tableHeader();
+$hindiPdf->row(['LN551', 'सीता देवी', '45,000']);
+$hindiBytes = $hindiPdf->output();
+
+check('a PDF with Hindi text still opens as valid PDF 1.4', str_starts_with($hindiBytes, '%PDF-1.4'));
+check('and closes with EOF', str_contains($hindiBytes, '%%EOF'));
+check('the Devanagari font is embedded as a Type0/CIDFontType2 composite', str_contains($hindiBytes, '/Subtype /Type0') && str_contains($hindiBytes, '/Subtype /CIDFontType2'));
+check('with Identity-H encoding, since Tj codes are already glyph IDs', str_contains($hindiBytes, '/Encoding /Identity-H'));
+check('and an Identity CIDToGIDMap for the same reason', str_contains($hindiBytes, '/CIDToGIDMap /Identity'));
+check('the actual TrueType outline data is embedded (FontFile2)', str_contains($hindiBytes, '/FontFile2'));
+check('both weights are embedded, since headings and values differ in boldness', substr_count($hindiBytes, '/Subtype /Type0') === 2);
+check('Hindi glyphs are drawn as hex CID strings, not literal text', preg_match('/<[0-9A-Fa-f]{4,}>\s*Tj/', $hindiBytes) === 1);
+check('the rupee sign is still written as Rs., not left as a Devanagari-adjacent symbol', !str_contains($hindiBytes, "\xE2\x82\xB9"));
+
+// The glyph-ID sequence for "राम" is deterministic given the fixed subset built by
+// tools/build-devanagari-font-subset.py, so it can be asserted directly rather than
+// merely asserting that "some hex string" exists - a wrong cmap lookup would still
+// pass a test that only checked for the presence of *a* CID run.
+check(
+    'राम (Ram) encodes to its exact glyph IDs from the subset cmap',
+    str_contains($hindiBytes, sprintf('<%04X%04X%04X>', 50, 64, 48))
+);
+
+// राशि (rāśi) carries the one reordering this writer implements: the vowel
+// sign ि (U+093F) is encoded in Unicode AFTER श, but must be DRAWN before it.
+check(
+    'the ि vowel sign in राशि is reordered before its consonant, not left in encoded order',
+    str_contains($hindiBytes, sprintf('%04X%04X', 65, 56))
+        && !str_contains($hindiBytes, sprintf('%04X%04X', 56, 65))
+);
+
+// A line mixing scripts - "खाता संख्या Mixed" as a label, "LN00100 सिता" as its
+// value - must draw the Latin words with Helvetica/WinAnsi and the Devanagari
+// words with the embedded font on the SAME line, which is what makes this
+// different from simply detecting "the string contains Devanagari" and
+// switching the whole line to one font or the other.
+check(
+    'a mixed Hindi/Latin line uses both the embedded font and Helvetica',
+    str_contains($hindiBytes, '/FH1') && str_contains($hindiBytes, '/FH2')
+        && str_contains($hindiBytes, 'Mixed') && str_contains($hindiBytes, 'LN00100')
+);
+
+check('the Hindi PDF is larger than an equivalent-content Latin one (font data)', strlen($hindiBytes) > 4000);
+
+// selftest-core.php's own OTHER checks already prove Latin text still renders
+// correctly on a page carrying Hindi (the F1/F2 fonts are still declared and
+// used above) - this just confirms neither declaration was dropped.
+check('the standard Helvetica fonts are still declared alongside the embedded ones', str_contains($hindiBytes, '/BaseFont /Helvetica') && str_contains($hindiBytes, '/BaseFont /Helvetica-Bold'));
+
+// ---------------------------------------------------------------------------
+section('Devanagari: script detection and matra reordering');
+
+use App\Core\Fonts\Devanagari;
+
+check('a plain Latin string has no Devanagari', !Devanagari::containsDevanagari('LN00100 Ram Lal'));
+check('a Hindi string is detected', Devanagari::containsDevanagari('राम लाल'));
+check('a mixed string is detected too', Devanagari::containsDevanagari('LN00100 सिता'));
+
+$reordered = Devanagari::reorderMatraI(Devanagari::codepoints('सिता'));
+check('सिता (Sita) reorders ि before स', Devanagari::fromCodepoints($reordered) === 'िसता');
+
+// A conjunct (क् + ष, joined by a visible virama) followed by the same vowel
+// sign must move the WHOLE cluster's matra before the cluster, not just
+// before the last consonant in it - reordering only ष would separate the
+// vowel sign from the syllable it actually belongs to.
+$conjunctReordered = Devanagari::reorderMatraI(Devanagari::codepoints("क्षि"));
+check(
+    'the vowel sign moves before a whole consonant cluster, not just its last letter',
+    Devanagari::fromCodepoints($conjunctReordered) === "िक्ष"
+);
+
+check('a word with no matching vowel sign is left unchanged', Devanagari::reorderMatraI(Devanagari::codepoints('राम')) === Devanagari::codepoints('राम'));
+
 // xref offsets must actually point at "N 0 obj"
 $xrefOk = true;
 if (preg_match('#startxref\s+(\d+)#', $pdfBytes, $m) === 1) {

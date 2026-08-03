@@ -589,6 +589,22 @@ if (preg_match_all('/\(((?:[^()\\\\]|\\\\.)*)\)\s*Tj/', $plainText, $sh2) !== fa
 }
 check('no settlement section when the branch said nothing', !str_contains($plainShown, 'Settlement Position'));
 
+// The same sheet, in Hindi. The API's ?lang=hi passes through to this second
+// argument, and the borrower's own name and account number must still print
+// exactly as recorded - only the field labels translate.
+$hindiSheet = App\Services\CustomerSheetService::render((int) $sheetLead['id'], 'hi');
+check('a Hindi sheet is still a valid PDF', str_starts_with($hindiSheet['bytes'], '%PDF-'));
+check('the Devanagari font is embedded in the Hindi sheet', str_contains($hindiSheet['bytes'], '/FontFile2'));
+check('the borrower\'s own name is unchanged by the language switch', str_contains($hindiSheet['bytes'], 'Shivam Verma') || str_contains($hindiSheet['bytes'], $sheet['customer']));
+check('the account number is unchanged by the language switch', str_contains($hindiSheet['filename'], 'LNOTS001'));
+
+// An unrecognised language code must fall back to English rather than error -
+// the same defence Settings::get()'s callers apply to every other user-supplied
+// enum in this codebase.
+$fallbackSheet = App\Services\CustomerSheetService::render((int) $sheetLead['id'], 'fr');
+check('an unrecognised language falls back to English rather than failing', str_starts_with($fallbackSheet['bytes'], '%PDF-'));
+check('and does not embed the Devanagari font it does not need', !str_contains($fallbackSheet['bytes'], '/FontFile2'));
+
 // ---------------------------------------------------------------------------
 section('BC targets, achievement rollup and escalating warnings');
 // ---------------------------------------------------------------------------

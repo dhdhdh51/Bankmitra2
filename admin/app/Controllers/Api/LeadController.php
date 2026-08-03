@@ -259,6 +259,13 @@ final class LeadController extends Controller
      * lead actually assigned to them - not for any lead that merely happens to sit
      * in their branch. It is also audited, because the sheet carries a borrower's
      * contact details and the branch's settlement figures.
+     *
+     * `?lang=hi` prints the sheet's labels in Hindi - the same choice the app's
+     * own account screen offers for the UI, so an agent who has switched the app
+     * to Hindi can hand a borrower a sheet in the language they read it in,
+     * rather than the sheet always following the phone's underlying locale. A
+     * borrower's own name, address and figures print exactly as recorded either
+     * way; only the field labels translate.
      */
     public function sheet(Request $request): void
     {
@@ -280,8 +287,13 @@ final class LeadController extends Controller
             Auth::assertBranchAccess((int) $lead['branch_id']);
         }
 
+        $language = $request->str('lang', 'en');
+        if (!in_array($language, CustomerSheetService::languages(), true)) {
+            $language = 'en';
+        }
+
         try {
-            $sheet = CustomerSheetService::render($id);
+            $sheet = CustomerSheetService::render($id, $language);
         } catch (\Throwable $e) {
             Response::error('The data sheet could not be produced: ' . $e->getMessage(), 500);
         }
