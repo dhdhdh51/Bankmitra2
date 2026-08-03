@@ -194,8 +194,21 @@ class AccountFragment : BaseFragment() {
         val labels = choices.map { languageLabel(it) }.toTypedArray()
         val current = choices.indexOf(currentLanguage()).coerceAtLeast(0)
 
+        // setMessage() is deliberately NOT used here. AlertDialog.Builder only has one
+        // content-view slot below the title: setSingleChoiceItems() fills it with the
+        // radio list, and calling setMessage() afterwards - or before, order does not
+        // matter - REPLACES that content view with a plain TextView showing only the
+        // message. The dialog still builds and shows without error, so this shipped
+        // once as "Language" + the hint text + a Cancel button and no way to actually
+        // choose a language - broken, but nothing about it threw.
+        //
+        // The hint now runs as the dialog's title, alongside the row's own label, so an
+        // agent still knows what the choice affects without costing the list.
         AlertDialog.Builder(requireContext())
-            .setTitle(R.string.account_language)
+            .setTitle(
+                getString(R.string.account_language) + "\n\n" +
+                    getString(R.string.account_language_hint),
+            )
             .setSingleChoiceItems(labels, current) { dialog, which ->
                 dialog.dismiss()
 
@@ -210,7 +223,6 @@ class AccountFragment : BaseFragment() {
                 AppLanguage.apply(picked)
             }
             .setNegativeButton(R.string.action_cancel, null)
-            .setMessage(R.string.account_language_hint)
             .show()
     }
 

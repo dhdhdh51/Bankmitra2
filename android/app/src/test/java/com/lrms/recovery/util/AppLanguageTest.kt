@@ -150,6 +150,34 @@ class AppLanguageTest {
     }
 
     @Test
+    fun `the language dialog does not combine setSingleChoiceItems with setMessage`() {
+        // AlertDialog.Builder has exactly one content-view slot below the title.
+        // setSingleChoiceItems() fills it with the radio list; a later setMessage() -
+        // regardless of call order - REPLACES that view with a plain TextView, so the
+        // dialog still builds and shows with no exception while silently dropping every
+        // choice. That is exactly what shipped once: "Language" title, the hint text,
+        // a Cancel button, and no way to pick anything.
+        val fragmentSource = File(
+            "src/main/java/com/lrms/recovery/ui/account/AccountFragment.kt",
+        ).readText()
+        val chooseLanguage = fragmentSource
+            .substringAfter("private fun chooseLanguage()")
+            .substringBefore("\n    private fun confirmSignOut")
+        assertTrue(
+            "chooseLanguage() must still show the choice list",
+            chooseLanguage.contains("setSingleChoiceItems"),
+        )
+        assertFalse(
+            "setMessage() on the same builder as setSingleChoiceItems() silently " +
+                "replaces the choice list with the message and hides every option",
+            // Matches an actual builder call (".setMessage("), not this test's own
+            // explanatory comment or the source file's, both of which say the words
+            // "setMessage()" on purpose.
+            chooseLanguage.contains(".setMessage("),
+        )
+    }
+
+    @Test
     fun `nothing outside AccountFragment's dialog writes languageTag`() {
         // The one and only place a real choice happens. Anything else assigning to
         // languageTag would mark an agent as having chosen a language they never
