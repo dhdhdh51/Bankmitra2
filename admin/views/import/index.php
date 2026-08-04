@@ -223,6 +223,12 @@
                                                     matched on the shape of the data, not the heading
                                                     &mdash; please confirm
                                                 </div>
+                                            <?php elseif ($source === 'learned'): ?>
+                                                <div class="text-success" style="font-size:.6875rem">
+                                                    <?= icon('check') ?>
+                                                    remembered from an earlier file &mdash; change the
+                                                    column below to teach it differently
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         <td>
@@ -470,6 +476,48 @@
                 (amounts, NPA date, contact details); a new one is inserted. Nothing is duplicated.
             </div>
         </div>
+
+        <?php if ($taughtAliases !== []): ?>
+            <div class="lrms-card mb-3">
+                <div class="lrms-card-head">
+                    <div>
+                        <h2><?= icon('check') ?> Taught column mappings</h2>
+                        <p>
+                            Headings the confirm screen has already resolved &mdash; the next file
+                            using any of these maps automatically
+                        </p>
+                    </div>
+                </div>
+                <div class="lrms-table-wrap">
+                    <table class="lrms-table">
+                        <thead><tr><th>Column heading</th><th>Maps to</th><th></th></tr></thead>
+                        <tbody>
+                            <?php foreach ($taughtAliases as $alias): ?>
+                                <tr>
+                                    <td class="font-mono" style="font-size:.75rem">
+                                        <?= e((string) $alias['original_heading']) ?>
+                                    </td>
+                                    <td style="font-size:.8125rem">
+                                        <?= e($fields[$alias['field']]['label'] ?? (string) $alias['field']) ?>
+                                    </td>
+                                    <td>
+                                        <form method="post"
+                                              action="<?= e(url('/import/aliases/' . $alias['id'] . '/delete')) ?>"
+                                              onsubmit="return confirm('Forget this mapping? A future file with this heading will go back to being detected or asked about.');">
+                                            <?= csrf_field() ?>
+                                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                    title="Forget this mapping">
+                                                <?= icon('trash') ?>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <div class="lrms-card">
             <div class="lrms-card-head"><h2>Notes</h2></div>

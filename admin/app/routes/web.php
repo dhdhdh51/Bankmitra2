@@ -80,6 +80,10 @@ return static function (Router $router): void {
     $router->get('/import/history', [ImportController::class, 'history']);
     $router->get('/import/template', [ImportController::class, 'template']);
     $router->get('/import/{id}/errors', [ImportController::class, 'errors']);
+    // Registered before /import/{id}/assign's literal-adjacent pattern so a taught
+    // mapping's id is never confused with a past import's id - they are different
+    // tables, so it matters that the right controller method reads it.
+    $router->post('/import/aliases/{id}/delete', [ImportController::class, 'deleteAlias']);
     // Assigning a past batch again. Registered after the literal segments above so a
     // path is never read as an id.
     $router->post('/import/{id}/assign', [ImportController::class, 'assignBatch']);

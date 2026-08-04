@@ -2251,6 +2251,40 @@ before this column did - they will simply be treated as ordinary imported data
 until somebody corrects one, at which point that answer becomes protected the
 same way a newly-imported one would be.
 
+### Remembering a corrected column mapping across files
+
+The import screen's confirm step let an operator fix a wrong column guess -
+but only for that one file. A bank exporting `ADRESS` with village names in it
+(not a street address at all) needed the same correction every single month.
+Every mapping the confirm step submits is now taught to a new table and
+recalled automatically on the next file carrying the same heading.
+
+```sql
+CREATE TABLE `column_header_aliases` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `heading_key`      VARCHAR(120) NOT NULL,
+  `field`            VARCHAR(60)  NOT NULL,
+  `original_heading` VARCHAR(150) NOT NULL,
+  `created_by`       INT UNSIGNED DEFAULT NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_column_alias_heading` (`heading_key`),
+  CONSTRAINT `fk_column_alias_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+Confirm it landed:
+
+```sql
+SELECT COUNT(*) FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'column_header_aliases';
+```
+
+A missing table does not break an import: `ColumnDetector` catches the lookup
+failing and falls back to detecting with no memory, exactly as it always has.
+The **Excel Import** screen shows a **Taught column mappings** panel once at
+least one exists, with a button to forget a wrong lesson.
+
 ### Editing loan and borrower details, and custom fields, from the app
 
 The Android app can now read the full core banking statement (sanction limit,
