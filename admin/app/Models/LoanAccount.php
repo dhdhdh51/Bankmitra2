@@ -253,8 +253,14 @@ final class LoanAccount
         }
 
         if (!empty($filters['agent_id'])) {
-            $where[] = 'la.assigned_agent_id = ?';
-            $params[] = (int) $filters['agent_id'];
+            // If include_unassigned is true, show both assigned to agent AND unassigned in same branch
+            if (!empty($filters['include_unassigned'])) {
+                $where[] = '(la.assigned_agent_id = ? OR la.assigned_agent_id IS NULL)';
+                $params[] = (int) $filters['agent_id'];
+            } else {
+                $where[] = 'la.assigned_agent_id = ?';
+                $params[] = (int) $filters['agent_id'];
+            }
         }
 
         if (!empty($filters['unassigned'])) {

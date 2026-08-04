@@ -39,6 +39,14 @@ final class LeadController extends Controller
         $withPii = Auth::can('customers.view_pii') || Auth::isAgent();
         $items = $withPii ? LoanAccount::attachMobiles($page->items) : $page->items;
 
+        // Debug: Log response to check data
+        Logger::info('API Lead List Response', [
+            'user_id' => $user['id'],
+            'filters' => $filters,
+            'item_count' => count($items),
+            'page' => $page->meta(),
+        ]);
+
         Response::success(
             array_map(fn (array $lead): array => $this->presentLead($lead, $withPii), $items),
             '',
@@ -461,8 +469,13 @@ final class LeadController extends Controller
 
         if (Auth::isAgent()) {
             // Hard scope: an agent only ever sees leads assigned to them.
+            // But also show unassigned leads in their branch for better visibility
             $filters['agent_id'] = (int) $user['id'];
             $filters['branch_id'] = $user['branch_id'] === null ? null : (int) $user['branch_id'];
+            
+            // Allow agents to see unassigned leads in their branch
+            $filters['include_unassigned'] = true;
+            
             return $filters;
         }
 
