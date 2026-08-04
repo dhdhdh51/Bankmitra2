@@ -409,7 +409,7 @@
                                     <thead>
                                         <tr>
                                             <th>Row</th><th>Account</th><th>Customer</th>
-                                            <th>Village</th><th class="text-end">Outstanding</th><th>Action</th>
+                                            <th>Address</th><th class="text-end">Outstanding</th><th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -418,7 +418,7 @@
                                                 <td class="text-muted" style="font-size:.75rem"><?= e($row['row']) ?></td>
                                                 <td class="font-mono" style="font-size:.75rem"><?= e($row['account']) ?></td>
                                                 <td style="font-size:.8125rem"><?= e($row['name']) ?></td>
-                                                <td style="font-size:.8125rem"><?= e($row['village']) ?></td>
+                                                <td style="font-size:.8125rem"><?= e($row['address']) ?></td>
                                                 <td class="num"><?= e($row['outstanding']) ?></td>
                                                 <td>
                                                     <span class="lrms-badge <?= $row['action'] === 'New' ? 'badge-visited' : 'badge-promise' ?>">

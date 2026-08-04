@@ -70,7 +70,7 @@ echo "\n";
 // 4. Config file
 // ---------------------------------------------------------------------------
 echo "--- Configuration ---\n";
-$configPath = $rootPath . '/config.php';
+$configPath = $rootPath . '/config/config.php';
 echo "  config.php exists: " . (file_exists($configPath) ? 'YES [OK]' : 'NO [FAIL]') . "\n\n";
 
 // ---------------------------------------------------------------------------
