@@ -156,6 +156,19 @@
                     <form method="post" action="<?= e(url('/import')) ?>" data-no-double-submit>
                         <?= csrf_field() ?>
                         <input type="hidden" name="use_previewed_file" value="1">
+                        <?php
+                        // The branch and agent the operator chose on the upload form -
+                        // without these the confirm POST has no context and every row
+                        // is skipped because no branch resolves.
+                        $previewedBranch = $preview['default_branch_id'] ?? null;
+                        $previewedAgent  = $preview['default_agent_id'] ?? null;
+                        ?>
+                        <?php if ($previewedBranch !== null && $previewedBranch !== ''): ?>
+                            <input type="hidden" name="default_branch_id" value="<?= e((string) $previewedBranch) ?>">
+                        <?php endif; ?>
+                        <?php if ($previewedAgent !== null && $previewedAgent !== ''): ?>
+                            <input type="hidden" name="default_agent_id" value="<?= e((string) $previewedAgent) ?>">
+                        <?php endif; ?>
                         <?php if (($preview['result']['sheet'] ?? '') !== ''): ?>
                             <input type="hidden" name="__sheet" value="<?= e((string) $result['sheet']) ?>">
                         <?php endif; ?>

@@ -84,9 +84,14 @@ final class ImportController extends Controller
         // Held in the session so the result survives the redirect. stored_path
         // stays server-side: the confirm step posts only a flag, never a path.
         Session::set('_import_preview', [
-            'filename'    => (string) ($_FILES['lead_file']['name'] ?? 'upload'),
-            'stored_path' => (string) ($result['stored_path'] ?? ''),
-            'result'      => $result,
+            'filename'           => (string) ($_FILES['lead_file']['name'] ?? 'upload'),
+            'stored_path'        => (string) ($result['stored_path'] ?? ''),
+            'result'             => $result,
+            // Carried forward so the confirm form can pass them back in hidden fields:
+            // without these the "Import with this mapping" POST has no branch/agent
+            // context, and every row gets skipped because no branch resolves.
+            'default_branch_id'  => $request->nullableStr('default_branch_id'),
+            'default_agent_id'   => $request->nullableStr('default_agent_id'),
         ]);
 
         $this->back(
