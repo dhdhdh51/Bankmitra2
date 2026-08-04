@@ -183,96 +183,94 @@
                             </span>
                         </div>
 
+                        <p class="text-muted mb-2" style="font-size:.8125rem">
+                            Each column in your file is shown below. Choose which field it should go into.
+                            Auto-detected mappings are pre-selected &mdash; change any that are wrong.
+                        </p>
+
+                        <?php
+                        /*
+                         * Column-first mapping: one row per file column, with a
+                         * dropdown of fields to assign it to. This is the reverse of
+                         * the original field-first view, and is more intuitive for
+                         * operators who think "this COLUMN means X" rather than "field
+                         * X lives in column Y".
+                         *
+                         * The form still submits column_map[field] = column_index
+                         * exactly as before, so columnOverrides() and everything
+                         * downstream does not change at all.
+                         */
+                        $fields = \App\Core\ColumnDetector::fields();
+                        $detected = $result['detection'] ?? [];
+                        $columnSamples = $result['samples_by_column'] ?? [];
+
+                        // Build reverse map: column index -> field (from detection)
+                        $reverseMap = [];
+                        foreach ($detected as $field => $hit) {
+                            $reverseMap[(int) $hit['index']] = [
+                                'field'      => $field,
+                                'confidence' => (int) $hit['confidence'],
+                                'source'     => (string) $hit['source'],
+                            ];
+                        }
+                        ?>
+
                         <div class="lrms-table-wrap mb-3">
                             <table class="lrms-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:34%">Field</th>
-                                        <th style="width:32%">Column in your file</th>
+                                        <th style="width:20%">Column in file</th>
+                                        <th style="width:32%">Assign to field</th>
                                         <th>Example values</th>
+                                        <th style="width:10%">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                <?php
-                                /*
-                                 * Split before rendering: the rows that matter first.
-                                 *
-                                 * Detection knows 35 columns, and a real file carries eight
-                                 * or ten of them. Listing every field in one table meant
-                                 * twenty-five consecutive rows reading "not in this file",
-                                 * and the two or three that actually needed checking were
-                                 * lost somewhere in the middle of it. The full list is still
-                                 * reachable - manual mapping is the entire point of this
-                                 * screen - it is just no longer the first thing you wade
-                                 * through.
-                                 */
-                                $mappedFields = [];
-                                $unmappedFields = [];
-                                foreach ($fields as $field => $meta) {
-                                    if (isset($detected[$field])
-                                        || in_array($field, $result['missing_required'], true)) {
-                                        $mappedFields[$field] = $meta;
-                                        continue;
-                                    }
-                                    $unmappedFields[$field] = $meta;
-                                }
-                                ?>
-                                <?php foreach ($mappedFields as $field => $meta): ?>
+                                <?php foreach ($result['headings'] as $colIndex => $heading): ?>
                                     <?php
-                                    $hit = $detected[$field] ?? null;
-                                    $chosenIndex = $hit === null ? null : (int) $hit['index'];
-                                    $confidence = $hit === null ? 0 : (int) $hit['confidence'];
-                                    $source = $hit === null ? '' : (string) $hit['source'];
-                                    $isMissing = in_array($field, $result['missing_required'], true);
+                                    if (trim($heading) === '') continue;
+                                    $assignedField = $reverseMap[$colIndex]['field'] ?? null;
+                                    $confidence = $reverseMap[$colIndex]['confidence'] ?? 0;
+                                    $source = $reverseMap[$colIndex]['source'] ?? '';
+                                    $samples = $columnSamples[$colIndex] ?? [];
                                     ?>
-                                    <tr<?= $isMissing ? ' class="table-danger"' : '' ?>>
+                                    <tr>
                                         <td>
-                                            <strong><?= e($meta['label']) ?></strong>
-                                            <?php if ($meta['required']): ?>
-                                                <span class="badge bg-danger-subtle text-danger-emphasis">Required</span>
-                                            <?php endif; ?>
-                                            <?php if ($source === 'values'): ?>
-                                                <div class="text-muted" style="font-size:.6875rem">
-                                                    matched on the shape of the data, not the heading
-                                                    &mdash; please confirm
-                                                </div>
-                                            <?php elseif ($source === 'learned'): ?>
-                                                <div class="text-success" style="font-size:.6875rem">
-                                                    <?= icon('check') ?>
-                                                    remembered from an earlier file &mdash; change the
-                                                    column below to teach it differently
-                                                </div>
-                                            <?php endif; ?>
+                                            <strong class="font-mono" style="font-size:.8125rem"><?= e($heading) ?></strong>
                                         </td>
                                         <td>
-                                            <select class="form-select form-select-sm"
-                                                    name="column_map[<?= e($field) ?>]">
-                                                <option value="-1"<?= $chosenIndex === null ? ' selected' : '' ?>>
-                                                    not in this file
-                                                </option>
-                                                <?php foreach ($result['headings'] as $index => $heading): ?>
-                                                    <option value="<?= e((string) $index) ?>"
-                                                        <?= $chosenIndex === $index ? ' selected' : '' ?>>
-                                                        <?= e(trim($heading) === ''
-                                                            ? 'Column ' . ($index + 1)
-                                                            : $heading) ?>
+                                            <select class="form-select form-select-sm lrms-column-assign"
+                                                    data-col-index="<?= e((string) $colIndex) ?>">
+                                                <option value="">— skip this column —</option>
+                                                <?php foreach ($fields as $fieldKey => $meta): ?>
+                                                    <option value="<?= e($fieldKey) ?>"
+                                                        <?= $assignedField === $fieldKey ? ' selected' : '' ?>>
+                                                        <?= e($meta['label']) ?>
+                                                        <?= $meta['required'] ? ' *' : '' ?>
                                                     </option>
                                                 <?php endforeach; ?>
+                                                <option value="__custom" <?= ($assignedField === null && trim($heading) !== '') ? '' : '' ?>>
+                                                    ➕ Save as custom field
+                                                </option>
                                             </select>
-                                            <?php if ($chosenIndex !== null && $confidence < 80): ?>
-                                                <div class="text-warning-emphasis" style="font-size:.6875rem">
-                                                    <?= e((string) $confidence) ?>% confident
-                                                </div>
-                                            <?php endif; ?>
                                         </td>
                                         <td class="text-muted" style="font-size:.75rem">
-                                            <?php if ($chosenIndex !== null && ($columnSamples[$chosenIndex] ?? []) !== []): ?>
+                                            <?php if ($samples !== []): ?>
                                                 <?= e(implode(', ', array_map(
                                                     static fn (string $v): string => mb_substr($v, 0, 24),
-                                                    $columnSamples[$chosenIndex]
+                                                    array_slice($samples, 0, 4)
                                                 ))) ?>
-                                            <?php elseif ($isMissing): ?>
-                                                <span class="text-danger">pick the column above</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if ($source === 'learned'): ?>
+                                                <span class="badge bg-success-subtle text-success-emphasis" style="font-size:.6875rem">Remembered</span>
+                                            <?php elseif ($source === 'values'): ?>
+                                                <span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:.6875rem">Guessed</span>
+                                            <?php elseif ($assignedField !== null): ?>
+                                                <span class="badge bg-primary-subtle text-primary-emphasis" style="font-size:.6875rem">Auto</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-secondary-subtle text-secondary-emphasis" style="font-size:.6875rem">Unmapped</span>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
@@ -281,60 +279,54 @@
                             </table>
                         </div>
 
-                        <?php if ($unmappedFields !== []): ?>
-                            <?php
-                            /*
-                             * The columns this file does not have.
-                             *
-                             * Closed by default and counted in the summary, because the
-                             * answer for every one of them is the same and an operator
-                             * does not need to read it twenty-five times. Still a real
-                             * form: anything picked in here maps exactly as it would
-                             * above, which matters when a heading is too unusual for
-                             * detection to recognise.
-                             */
-                            ?>
-                            <details class="mb-3">
-                                <summary style="cursor:pointer;font-size:.8125rem;color:var(--lrms-primary)">
-                                    <?= e((string) count($unmappedFields)) ?>
-                                    more field<?= count($unmappedFields) === 1 ? '' : 's' ?>
-                                    are not in this file &mdash; open to map one by hand
-                                </summary>
-
-                                <div class="lrms-table-wrap mt-2">
-                                    <table class="lrms-table">
-                                        <thead>
-                                            <tr>
-                                                <th style="width:40%">Field</th>
-                                                <th>Column in your file</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                        <?php foreach ($unmappedFields as $field => $meta): ?>
-                                            <tr>
-                                                <td><strong><?= e($meta['label']) ?></strong></td>
-                                                <td>
-                                                    <select class="form-select form-select-sm"
-                                                            name="column_map[<?= e($field) ?>]">
-                                                        <option value="-1" selected>
-                                                            not in this file
-                                                        </option>
-                                                        <?php foreach ($result['headings'] as $index => $heading): ?>
-                                                            <option value="<?= e((string) $index) ?>">
-                                                                <?= e(trim($heading) === ''
-                                                                    ? 'Column ' . ($index + 1)
-                                                                    : $heading) ?>
-                                                            </option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </details>
+                        <?php if ($result['missing_required'] !== []): ?>
+                            <div class="alert alert-danger mb-3">
+                                <?= icon('alert') ?>
+                                <strong>Required field(s) not assigned:</strong>
+                                <?= e(implode(', ', array_map(
+                                    static fn (string $c): string => ucwords(str_replace('_', ' ', $c)),
+                                    $result['missing_required']
+                                ))) ?>.
+                                Pick the right column above.
+                            </div>
                         <?php endif; ?>
+
+                        <!--
+                            Hidden inputs that carry the actual column_map[field]=index
+                            values. Built by JS from the dropdowns above on submit, so
+                            the server receives the same shape it always has.
+                        -->
+                        <div id="columnMapHidden"></div>
+
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            var form = document.querySelector('form[data-no-double-submit]');
+                            if (!form) return;
+                            // On form submit, build hidden inputs from the column-first dropdowns
+                            form.addEventListener('submit', function() {
+                                var container = document.getElementById('columnMapHidden');
+                                container.innerHTML = '';
+                                var selects = form.querySelectorAll('.lrms-column-assign');
+                                // field -> column index (last one wins if duplicate)
+                                var map = {};
+                                selects.forEach(function(sel) {
+                                    var colIndex = sel.getAttribute('data-col-index');
+                                    var field = sel.value;
+                                    if (field && field !== '__custom' && field !== '') {
+                                        map[field] = colIndex;
+                                    }
+                                });
+                                // Create hidden inputs as column_map[field] = index
+                                for (var field in map) {
+                                    var input = document.createElement('input');
+                                    input.type = 'hidden';
+                                    input.name = 'column_map[' + field + ']';
+                                    input.value = map[field];
+                                    container.appendChild(input);
+                                }
+                            });
+                        });
+                        </script>
 
                         <?php if (($result['branches_to_create'] ?? []) !== []): ?>
                             <div class="alert alert-info">
