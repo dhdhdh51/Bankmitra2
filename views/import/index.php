@@ -303,7 +303,10 @@
                             var form = document.querySelector('form[data-no-double-submit]');
                             if (!form) return;
                             // On form submit, build hidden inputs from the column-first dropdowns
-                            form.addEventListener('submit', function() {
+                            form.addEventListener('submit', function(e) {
+                                // Prevent default submission temporarily
+                                e.preventDefault();
+                                
                                 var container = document.getElementById('columnMapHidden');
                                 container.innerHTML = '';
                                 var selects = form.querySelectorAll('.lrms-column-assign');
@@ -316,6 +319,7 @@
                                         map[field] = colIndex;
                                     }
                                 });
+                                
                                 // Create hidden inputs as column_map[field] = index
                                 for (var field in map) {
                                     var input = document.createElement('input');
@@ -324,6 +328,15 @@
                                     input.value = map[field];
                                     container.appendChild(input);
                                 }
+                                
+                                // Debug: log the mapping being sent
+                                console.log('Column mapping being sent:', map);
+                                console.log('Hidden inputs created:', container.innerHTML);
+                                
+                                // Now submit the form
+                                // Remove this listener to avoid infinite loop
+                                form.removeEventListener('submit', arguments.callee);
+                                form.submit();
                             });
                         });
                         </script>
@@ -342,9 +355,14 @@
                         <?php endif; ?>
 
                         <?php if ($canUpload): ?>
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary" id="confirmImportBtn">
                                 <?= icon('check') ?> Import with this mapping
                             </button>
+                            <noscript>
+                                <div class="alert alert-warning mt-2">
+                                    JavaScript is disabled. The mapping may not work correctly.
+                                </div>
+                            </noscript>
                         <?php endif; ?>
                     </form>
 

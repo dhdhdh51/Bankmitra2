@@ -549,7 +549,15 @@ final class ImportController extends Controller
     private function columnOverrides(Request $request): array
     {
         $raw = $_POST['column_map'] ?? null;
+        
+        // Debug logging
+        Logger::info('Column mapping received', [
+            'raw_post' => $_POST,
+            'column_map' => $raw,
+        ]);
+        
         if (!is_array($raw)) {
+            Logger::warning('column_map is not an array', ['type' => gettype($raw)]);
             return [];
         }
 
@@ -557,6 +565,13 @@ final class ImportController extends Controller
         $overrides = [];
         foreach ($raw as $field => $index) {
             if (!is_string($field) || !isset($fields[$field]) || !is_scalar($index)) {
+                Logger::warning('Invalid column mapping entry', [
+                    'field' => $field,
+                    'index' => $index,
+                    'field_is_string' => is_string($field),
+                    'field_exists' => isset($fields[$field]),
+                    'index_is_scalar' => is_scalar($index),
+                ]);
                 continue;
             }
             $value = (string) $index;
@@ -564,10 +579,13 @@ final class ImportController extends Controller
                 continue;   // "detect automatically"
             }
             if (!is_numeric($value)) {
+                Logger::warning('Column index is not numeric', ['field' => $field, 'value' => $value]);
                 continue;
             }
             $overrides[$field] = (int) $value;
         }
+        
+        Logger::info('Column overrides processed', ['overrides' => $overrides]);
 
         return $overrides;
     }
