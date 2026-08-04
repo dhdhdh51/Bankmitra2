@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Column Mapping Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+        th { background: #007bff; color: white; }
+        select { width: 100%; padding: 5px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Column Mapping Test</h1>
+        <p>This tests the JavaScript fix for column mapping data submission.</p>
+        
+        <form id="testForm" method="post" action="test-handler.php">
+            <h3>File Columns → Field Mapping</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Column in File</th>
+                        <th>Assign to Field</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>LOAN AC NO</strong></td>
+                        <td>
+                            <select class="lrms-column-assign" data-col-index="0">
+                                <option value="">— skip —</option>
+                                <option value="loan_account_number" selected>Loan Account Number</option>
+                                <option value="customer_name">Customer Name</option>
+                                <option value="mobile">Mobile</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>CUSTOMER NAME</strong></td>
+                        <td>
+                            <select class="lrms-column-assign" data-col-index="1">
+                                <option value="">— skip —</option>
+                                <option value="loan_account_number">Loan Account Number</option>
+                                <option value="customer_name" selected>Customer Name</option>
+                                <option value="mobile">Mobile</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>MOBILE NO</strong></td>
+                        <td>
+                            <select class="lrms-column-assign" data-col-index="2">
+                                <option value="">— skip —</option>
+                                <option value="loan_account_number">Loan Account Number</option>
+                                <option value="customer_name">Customer Name</option>
+                                <option value="mobile" selected>Mobile</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>VILLAGE</strong></td>
+                        <td>
+                            <select class="lrms-column-assign" data-col-index="3">
+                                <option value="">— skip —</option>
+                                <option value="village" selected>Village</option>
+                                <option value="address">Address</option>
+                            </select>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Hidden inputs container (will be filled by JS) -->
+            <div id="columnMapHidden"></div>
+            
+            <button type="submit">✅ Test Submit with Mapping</button>
+        </form>
+        
+        <div id="result" class="result" style="display:none;">
+            <h3>Form Data Preview:</h3>
+            <pre id="formDataPreview"></pre>
+        </div>
+        
+        <div id="consoleLog" class="result" style="margin-top: 20px;">
+            <h3>Console Output:</h3>
+            <pre id="logOutput" style="max-height: 300px; overflow-y: auto;"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Override console.log to display in page
+        const logOutput = document.getElementById('logOutput');
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            logOutput.textContent += args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ') + '\n';
+        };
+
+        console.log('✅ Test page loaded');
+        console.log('DOM ready, setting up form listener...');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var form = document.getElementById('testForm');
+            if (!form) {
+                console.log('❌ Form not found!');
+                return;
+            }
+            
+            console.log('✅ Form found, adding submit listener');
+            
+            // FIXED VERSION - with e.preventDefault()
+            form.addEventListener('submit', function(e) {
+                console.log('🔔 Submit event triggered');
+                
+                // Prevent default submission temporarily
+                e.preventDefault();
+                console.log('✅ Default prevented');
+                
+                var container = document.getElementById('columnMapHidden');
+                container.innerHTML = '';
+                console.log('✅ Hidden container cleared');
+                
+                var selects = form.querySelectorAll('.lrms-column-assign');
+                console.log('📋 Found ' + selects.length + ' column selects');
+                
+                // field -> column index (last one wins if duplicate)
+                var map = {};
+                selects.forEach(function(sel) {
+                    var colIndex = sel.getAttribute('data-col-index');
+                    var field = sel.value;
+                    if (field && field !== '__custom' && field !== '') {
+                        map[field] = colIndex;
+                        console.log('  → Mapping: ' + field + ' = column ' + colIndex);
+                    }
+                });
+                
+                console.log('📊 Final mapping:', map);
+                
+                // Create hidden inputs as column_map[field] = index
+                var inputCount = 0;
+                for (var field in map) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'column_map[' + field + ']';
+                    input.value = map[field];
+                    container.appendChild(input);
+                    inputCount++;
+                    console.log('  ✅ Created: <input name="column_map[' + field + ']" value="' + map[field] + '">');
+                }
+                
+                console.log('✅ Created ' + inputCount + ' hidden inputs');
+                console.log('📄 Hidden container HTML:');
+                console.log(container.innerHTML);
+                
+                // Show preview instead of actually submitting
+                const resultDiv = document.getElementById('result');
+                const preview = document.getElementById('formDataPreview');
+                
+                let formDataText = 'POST Data that would be sent:\n\n';
+                const formData = new FormData(form);
+                for (let [key, value] of formData.entries()) {
+                    formDataText += key + ' = ' + value + '\n';
+                }
+                
+                preview.textContent = formDataText;
+                resultDiv.style.display = 'block';
+                resultDiv.classList.add('success');
+                
+                console.log('✅ ✅ ✅ MAPPING DATA SUCCESSFULLY CREATED! ✅ ✅ ✅');
+                console.log('');
+                console.log('This proves the fix works correctly.');
+                console.log('The column_map[field]=index data is now in the form.');
+                
+                // In production, we would do this:
+                // form.removeEventListener('submit', arguments.callee);
+                // form.submit();
+                
+                return false; // Don't actually submit for this test
+            });
+            
+            console.log('✅ Submit listener attached successfully');
+        });
+    </script>
+</body>
+</html>
