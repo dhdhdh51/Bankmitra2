@@ -81,6 +81,7 @@ HEADINGS = [
     '### Adding BC Basic Details to an existing install',
     '### Adding Address Details to an existing install',
     "### Letting any Excel file's unmapped columns become custom fields",
+    '### Remembering a corrected column mapping across files',
 ]
 
 chunks = []
@@ -139,6 +140,9 @@ db lrms_upg < "$ROOT/schema.sql"
 db lrms_upg <<'SQL'
 -- Undo of the newest release, applied first because it is the newest.
 --
+-- The taught-mapping memory did not exist before this release.
+DROP TABLE IF EXISTS `column_header_aliases`;
+
 -- Custom fields' manual-override flag did not exist before this release.
 ALTER TABLE `custom_field_values`
   DROP COLUMN `is_manual_override`;

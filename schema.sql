@@ -1139,6 +1139,39 @@ CREATE TABLE `visit_report_revisions` (
 -- built to answer once.
 -- ============================================================================
 
+-- Remembers a column mapping an operator corrected by hand on the import
+-- screen, keyed on the heading's normalised text - so the next file that
+-- uses the same heading (a different month's export from the same bank,
+-- typically) maps automatically instead of asking the same question again.
+-- See ColumnDetector::LEARNED_ALIAS_CONFIDENCE for where this sits in the
+-- detection order relative to a built-in alias and a value-shape guess.
+DROP TABLE IF EXISTS `column_header_aliases`;
+CREATE TABLE `column_header_aliases` (
+  `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  -- ColumnDetector::normalise() of the heading exactly as the file spelled it -
+  -- lowercased, non-alphanumerics stripped. The same normalisation a built-in
+  -- alias is matched against, so "CC_OD_DL", "cc-od-dl" and "CC OD DL" are all
+  -- the one row, and a heading already recognised by a built-in alias or a
+  -- fixed field name can never need one - see the CHECK below.
+  `heading_key`      VARCHAR(120) NOT NULL,
+  -- One of ColumnDetector::fields()'s keys, e.g. 'outstanding_amount'.
+  `field`            VARCHAR(60)  NOT NULL,
+  -- The heading exactly as it was written, purely so the settings screen can
+  -- show a person what they taught rather than an unreadable normalised key.
+  `original_heading` VARCHAR(150) NOT NULL,
+  `created_by`       INT UNSIGNED DEFAULT NULL,
+  `created_at`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  -- One taught mapping per heading. Re-teaching the same heading to a
+  -- different field (a correction to an earlier correction) updates this row
+  -- rather than leaving two contradictory ones, which is why writing one is
+  -- always an upsert - see ColumnDetector::learnAlias().
+  UNIQUE KEY `uq_column_alias_heading` (`heading_key`),
+  CONSTRAINT `fk_column_alias_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+
 DROP TABLE IF EXISTS `custom_field_definitions`;
 CREATE TABLE `custom_field_definitions` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
