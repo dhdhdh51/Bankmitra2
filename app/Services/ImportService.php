@@ -171,7 +171,12 @@ final class ImportService
                 // By reference, or the appends below land in a local array that dies
                 // with the closure and every import reports "nothing skipped" while
                 // silently declining to update overridden columns - the worst of both.
-                &$skippedOverrides
+                &$skippedOverrides,
+                // The definitions provisioned from this file's unmapped columns, so
+                // each row's leftover values can be written against whichever loan
+                // account it becomes - by value, not by reference: nothing in here
+                // reassigns it, only reads it, and every row needs the SAME map.
+                $unmappedDefinitions
             ): void {
                 foreach ($rows as $index => $row) {
                     $lineNumber = $firstDataLine + $index;
