@@ -771,7 +771,7 @@ final class CustomerController extends Controller
 
         $headings = [
             'Loan Account Number', 'Customer Name', 'Father/Husband Name', 'Mobile', 'Aadhaar',
-            'Village', 'Branch', 'BC Code', 'Loan Type', 'Outstanding', 'Overdue',
+            'Address', 'Branch', 'BC Code', 'Loan Type', 'Outstanding', 'Overdue',
             'NPA Date', 'Status', 'Assigned Agent', 'Visits', 'Last Visit',
         ];
 
@@ -783,7 +783,7 @@ final class CustomerController extends Controller
                 (string) ($lead['father_husband_name'] ?? ''),
                 (string) ($lead['mobile_masked'] ?? ''),
                 (string) ($lead['aadhaar_masked'] ?? ''),
-                (string) ($lead['village'] ?? ''),
+                (string) ($lead['address'] ?? ''),
                 (string) $lead['branch_name'],
                 (string) ($lead['bc_code'] ?? ''),
                 (string) ($lead['loan_type'] ?? ''),
