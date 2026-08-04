@@ -37,7 +37,7 @@ $action = url('/customers/create') . ($existing !== null ? '?customer_id=' . (in
         <?php else: ?>
             <p>
                 A second account for <strong><?= e((string) $existing['name']) ?></strong>
-                <?php if (!empty($existing['village'])): ?> &middot; <?= e((string) $existing['village']) ?><?php endif; ?>
+                <?php if (!empty($existing['address'])): ?> &middot; <?= e((string) $existing['address']) ?><?php endif; ?>
             </p>
         <?php endif; ?>
     </div>
@@ -125,14 +125,6 @@ $action = url('/customers/create') . ($existing !== null ? '?customer_id=' . (in
                                 <div class="form-text">Stored encrypted and shown masked.</div>
                             </div>
 
-                            <div class="col-md-6">
-                                <label class="form-label" for="village">Village</label>
-                                <input type="text" class="form-control<?= has_error($errors, 'village') ?>"
-                                       id="village" name="village" maxlength="150"
-                                       value="<?= $value('village') ?>">
-                                <?= field_error($errors, 'village') ?>
-                            </div>
-
                             <div class="col-12">
                                 <label class="form-label" for="address">Address</label>
                                 <textarea class="form-control<?= has_error($errors, 'address') ?>"
@@ -152,7 +144,7 @@ $action = url('/customers/create') . ($existing !== null ? '?customer_id=' . (in
                                 C/o <?= e((string) $existing['father_husband_name']) ?> &middot;
                             <?php endif; ?>
                             <?= e((string) ($existing['branch_name'] ?? '')) ?>
-                            <?php if (!empty($existing['village'])): ?> &middot; <?= e((string) $existing['village']) ?><?php endif; ?>
+                            <?php if (!empty($existing['address'])): ?> &middot; <?= e((string) $existing['address']) ?><?php endif; ?>
                         </p>
                         <p class="text-muted mb-0 mt-2" style="font-size:.75rem">
                             Their details are not asked for again here. Correct them from the

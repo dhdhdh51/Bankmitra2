@@ -60,7 +60,7 @@ $bankName = Settings::get('bank_name', '');
             <ul class="lrms-auth-points">
                 <li><?= icon('check') ?> Digital BC field visit reports</li>
                 <li><?= icon('check') ?> Append-only visit history and audit trail</li>
-                <li><?= icon('check') ?> Branch, village and agent-wise reporting</li>
+                <li><?= icon('check') ?> Branch, address and agent-wise reporting</li>
                 <li><?= icon('check') ?> Encrypted borrower mobile and Aadhaar</li>
             </ul>
         </div>

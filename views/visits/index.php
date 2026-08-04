@@ -4,7 +4,6 @@
  * @var array<string,mixed>       $filters
  * @var list<array<string,mixed>> $branches
  * @var list<array<string,mixed>> $agents
- * @var list<string>              $villages
  * @var list<string>              $loanTypes
  */
 ?>
@@ -23,7 +22,7 @@
                 <div>
                     <label class="form-label" for="v-search">Search</label>
                     <input type="search" class="form-control" id="v-search" name="search"
-                           value="<?= e($filters['search']) ?>" placeholder="Account no, customer, village">
+                           value="<?= e($filters['search']) ?>" placeholder="Account no, customer, address">
                 </div>
 
                 <?php if (count($branches) > 1): ?>
@@ -66,18 +65,6 @@
                            value="<?= e($filters['date_to']) ?>">
                 </div>
 
-                <div>
-                    <label class="form-label" for="v-village">Village</label>
-                    <select class="form-select" id="v-village" name="village" data-auto-submit>
-                        <option value="">All villages</option>
-                        <?php foreach ($villages as $village): ?>
-                            <option value="<?= e($village) ?>" <?= $filters['village'] === $village ? 'selected' : '' ?>>
-                                <?= e($village) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
                 <div class="filter-actions">
                     <button type="submit" class="btn btn-primary"><?= icon('filter') ?> Filter</button>
                     <a href="<?= e(url('/visits')) ?>" class="btn btn-outline-secondary">Reset</a>
@@ -102,7 +89,7 @@
                         <th>Visit date</th>
                         <th>Loan account</th>
                         <th>Customer</th>
-                        <th>Village</th>
+                        <th>Address</th>
                         <th>Agent</th>
                         <th>Contact</th>
                         <th class="text-end">Promise</th>
@@ -129,7 +116,7 @@
                                 </div>
                             </td>
                             <td style="font-weight:550"><?= e($visit['customer_name']) ?></td>
-                            <td style="font-size:.8125rem"><?= nullable($visit['village']) ?></td>
+                            <td style="font-size:.8125rem"><?= nullable($visit['address']) ?></td>
                             <td style="font-size:.8125rem"><?= e($visit['agent_name']) ?></td>
                             <td>
                                 <?php if ((int) $visit['customer_met'] === 1): ?>

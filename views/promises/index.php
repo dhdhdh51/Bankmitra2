@@ -134,7 +134,7 @@ $chips = [
                     <tr>
                         <th>Loan account</th>
                         <th>Customer</th>
-                        <th>Village</th>
+                        <th>Address</th>
                         <th>Agent</th>
                         <th class="text-end">Promise</th>
                         <th>Due date</th>
@@ -159,7 +159,7 @@ $chips = [
                                     <?= e($promise['mobile_masked'] ?? '') ?>
                                 </span>
                             </td>
-                            <td style="font-size:.8125rem"><?= nullable($promise['village']) ?></td>
+                            <td style="font-size:.8125rem"><?= nullable($promise['address']) ?></td>
                             <td style="font-size:.8125rem"><?= e($promise['agent_name']) ?></td>
                             <td class="num" style="font-weight:620"><?= e(money($promise['promise_amount'])) ?></td>
                             <td class="nowrap" style="font-size:.8125rem">

@@ -42,7 +42,7 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
             <a href="#" data-copy="<?= e($lead['loan_account_number']) ?>" class="text-muted ms-1"
                title="Copy account number" data-bs-toggle="tooltip">⧉</a>
             · <?= e($lead['branch_name']) ?>
-            <?php if (!empty($lead['village'])): ?> · <?= e($lead['village']) ?><?php endif; ?>
+            <?php if (!empty($lead['address'])): ?> · <?= e($lead['address']) ?><?php endif; ?>
         </p>
     </div>
 
@@ -240,10 +240,6 @@ $aadhaar = $showPii ? ($lead['aadhaar'] ?? null) : null;
                                 ? e(trim(chunk_split($aadhaar, 4, ' ')))
                                 : nullable($lead['aadhaar_masked']) ?>
                         </dd>
-                    </div>
-                    <div>
-                        <dt>Village</dt>
-                        <dd><?= nullable($lead['village']) ?></dd>
                     </div>
                     <div style="grid-column:1/-1">
                         <dt>Address</dt>

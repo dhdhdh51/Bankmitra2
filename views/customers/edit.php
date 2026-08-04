@@ -140,13 +140,6 @@ $value = static function (string $key, mixed $fallback = '') use ($old, $lead): 
                             <?= field_error($errors, 'aadhaar') ?>
                         </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label" for="village">Village</label>
-                            <input type="text" class="form-control<?= has_error($errors, 'village') ?>"
-                                   id="village" name="village" value="<?= $value('village') ?>" maxlength="150">
-                            <?= field_error($errors, 'village') ?>
-                        </div>
-
                         <div class="col-12">
                             <label class="form-label" for="address">Address</label>
                             <textarea class="form-control<?= has_error($errors, 'address') ?>" id="address"

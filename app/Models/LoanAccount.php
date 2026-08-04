@@ -223,7 +223,7 @@ final class LoanAccount
             $conditions = [
                 'la.loan_account_number LIKE ?',
                 'c.name LIKE ?',
-                'c.village LIKE ?',
+                'c.address LIKE ?',
                 'c.father_husband_name LIKE ?',
                 'la.bc_code LIKE ?',
             ];

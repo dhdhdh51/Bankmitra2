@@ -50,7 +50,6 @@ final class VisitController extends Controller
             'agent_id'  => $this->agentFilter($request),
             'date_from' => $request->str('date_from'),
             'date_to'   => $request->str('date_to'),
-            'village'   => $request->str('village'),
             'loan_type' => $request->str('loan_type'),
             'search'    => $request->str('search'),
         ];
@@ -63,7 +62,6 @@ final class VisitController extends Controller
             'filters'   => $filters,
             'branches'  => Branch::options($scoped),
             'agents'    => User::agents($scoped ?? ($filters['branch_id'] ?? null)),
-            'villages'  => LoanAccount::villages($scoped),
             'loanTypes' => LoanAccount::loanTypes($scoped),
         ]);
     }

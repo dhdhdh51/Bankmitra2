@@ -25,7 +25,7 @@ final class CustomerController extends Controller
 {
     /**
      * Leads list: searchable by loan account number, name, mobile, Aadhaar and
-     * village, filterable by branch/agent/status, with bulk actions.
+     * address, filterable by branch/agent/status, with bulk actions.
      */
     public function index(Request $request): void
     {
@@ -49,7 +49,6 @@ final class CustomerController extends Controller
             'sortDir'    => $sortDir,
             'branches'   => Branch::options($scoped),
             'agents'     => User::agents($scoped ?? ($filters['branch_id'] ?? null)),
-            'villages'   => LoanAccount::villages($scoped),
             'loanTypes'  => LoanAccount::loanTypes($scoped),
             'canAssign'  => Auth::can('leads.assign'),
             'canTransfer' => Auth::can('leads.transfer'),
@@ -196,7 +195,6 @@ final class CustomerController extends Controller
                 'alt_mobile'          => 'nullable|mobile',
                 'alt_mobile_label'    => 'nullable|max:60',
                 'aadhaar'             => 'nullable|aadhaar',
-                'village'             => 'nullable|max:150',
                 'address'             => 'nullable|max:500',
             ];
         }
@@ -273,7 +271,6 @@ final class CustomerController extends Controller
                             'branch_id'           => $branchId,
                             'name'                => mb_substr($request->str('name'), 0, 150),
                             'father_husband_name' => $request->nullableStr('father_husband_name'),
-                            'village'             => $request->nullableStr('village'),
                             'address'             => $request->nullableStr('address'),
                         ] + Customer::altMobileColumns(
                             $request->nullableStr('alt_mobile'),
@@ -444,7 +441,6 @@ final class CustomerController extends Controller
             'alt_mobile'          => 'nullable|mobile',
             'alt_mobile_label'    => 'nullable|max:60',
             'aadhaar'             => 'nullable|aadhaar',
-            'village'             => 'nullable|max:150',
             'address'             => 'nullable|max:500',
             // Loan figures. Editable now, with the override recorded so the next
             // import leaves them alone - see LoanAccount::applyManualEdit().
@@ -504,7 +500,6 @@ final class CustomerController extends Controller
         $before = [
             'name'                => $lead['customer_name'],
             'father_husband_name' => $lead['father_husband_name'],
-            'village'             => $lead['village'],
             'address'             => $lead['address'],
             // The masked form, not the number: an audit row is read by people who may not
             // hold customers.view_pii, and a diff that spells out a phone number hands it
@@ -522,7 +517,6 @@ final class CustomerController extends Controller
         $after = [
             'name'                => $request->str('name'),
             'father_husband_name' => $request->nullableStr('father_husband_name'),
-            'village'             => $request->nullableStr('village'),
             'address'             => $request->nullableStr('address'),
             'alt_mobile'          => $altColumns['alt_mobile_masked'],
             'alt_mobile_label'    => $altColumns['alt_mobile_label'],
@@ -536,7 +530,6 @@ final class CustomerController extends Controller
             [
                 'name'                => $after['name'],
                 'father_husband_name' => $after['father_husband_name'],
-                'village'             => $after['village'],
                 'address'             => $after['address'],
             ] + $altColumns,
             $mobile,

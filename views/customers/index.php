@@ -9,7 +9,6 @@
  * @var string                    $sortDir
  * @var list<array<string,mixed>> $branches
  * @var list<array<string,mixed>> $agents
- * @var list<string>              $villages
  * @var list<string>              $loanTypes
  * @var bool                      $canAssign
  * @var bool                      $canTransfer
@@ -35,7 +34,7 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
 <div class="lrms-page-head">
     <div>
         <h1>Customers &amp; Leads</h1>
-        <p>Search by loan account number, customer name, mobile, Aadhaar or village</p>
+        <p>Search by loan account number, customer name, mobile, Aadhaar or address</p>
     </div>
     <div class="d-flex gap-2">
         <?php if (can('reports.export')): ?>
@@ -86,7 +85,7 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                     <label class="form-label" for="f-search">Search</label>
                     <input type="search" class="form-control" id="f-search" name="search"
                            value="<?= e($filters['search']) ?>"
-                           placeholder="Account no, name, mobile, Aadhaar, village">
+                           placeholder="Account no, name, mobile, Aadhaar, address">
                 </div>
 
                 <?php if (count($branches) > 1): ?>
@@ -112,18 +111,6 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                             <option value="<?= e((string) $agent['id']) ?>"
                                 <?= ($filters['agent_id'] ?? null) === (int) $agent['id'] ? 'selected' : '' ?>>
                                 <?= e($agent['name']) ?> (<?= e($agent['employee_code']) ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="form-label" for="f-village">Village</label>
-                    <select class="form-select" id="f-village" name="village" data-auto-submit>
-                        <option value="">All villages</option>
-                        <?php foreach ($villages as $village): ?>
-                            <option value="<?= e($village) ?>" <?= $filters['village'] === $village ? 'selected' : '' ?>>
-                                <?= e($village) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -199,7 +186,7 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
             <?= \App\Core\View::partial('partials/empty', [
                 'heading'     => 'No leads found',
                 'message'     => $filters['search'] !== ''
-                    ? 'Nothing matched "' . $filters['search'] . '". Try a different account number, name, mobile or village.'
+                    ? 'Nothing matched "' . $filters['search'] . '". Try a different account number, name, mobile or address.'
                     : 'Import a lead file to get started, or clear the filters.',
                 'iconName'    => 'customers',
                 'actionLabel' => can('import.upload') ? 'Import leads' : null,
@@ -218,7 +205,7 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                             <?php endif; ?>
                             <th><?= sort_link('Loan Account', 'loan_account_number', $sortBy, $sortDir) ?></th>
                             <th><?= sort_link('Customer', 'customer_name', $sortBy, $sortDir) ?></th>
-                            <th><?= sort_link('Village', 'village', $sortBy, $sortDir) ?></th>
+                            <th>Address</th>
                             <th>Contact</th>
                             <th class="text-end"><?= sort_link('Outstanding', 'outstanding_amount', $sortBy, $sortDir) ?></th>
                             <th class="text-end"><?= sort_link('Overdue', 'overdue_amount', $sortBy, $sortDir) ?></th>
@@ -261,7 +248,7 @@ $hasBulk = $canAssign || $canTransfer || $canClose;
                                     <?php endif; ?>
                                 </td>
 
-                                <td style="font-size:.8125rem"><?= nullable($lead['village']) ?></td>
+                                <td style="font-size:.8125rem"><?= nullable($lead['address']) ?></td>
 
                                 <td class="nowrap" style="font-size:.75rem">
                                     <span class="font-mono"><?= nullable($lead['mobile_masked']) ?></span>

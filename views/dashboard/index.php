@@ -464,7 +464,7 @@ $totalLeads = max(1, (int) $cards['total_leads']);
                                     <td>
                                         <span class="d-block" style="font-weight:550"><?= e($visit['customer_name']) ?></span>
                                         <span class="d-block text-muted" style="font-size:.6875rem">
-                                            <?= e($visit['village'] ?? '') ?>
+                                            <?= e($visit['address'] ?? '') ?>
                                         </span>
                                     </td>
                                     <td style="font-size:.8125rem"><?= e($visit['agent_name']) ?></td>
