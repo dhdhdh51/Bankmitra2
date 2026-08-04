@@ -131,6 +131,11 @@ final class ImportService
         $workloadByBranch = [];
         $distributedCounts = [];
 
+        // Pre-loaded lookup of all active agents keyed by normalised bc_code, bc_name
+        // and name. Used to auto-assign a lead when the file's BC NAME column matches
+        // a registered agent and no explicit assignment was made.
+        $agentLookup = self::buildAgentLookup();
+
         $inserted = 0;
         $updated = 0;
         $skipped = 0;
@@ -176,7 +181,10 @@ final class ImportService
                 // each row's leftover values can be written against whichever loan
                 // account it becomes - by value, not by reference: nothing in here
                 // reassigns it, only reads it, and every row needs the SAME map.
-                $unmappedDefinitions
+                $unmappedDefinitions,
+                // Pre-built lookup so auto-assignment by BC code does not hit the DB
+                // on every row. Keyed by normalised name/code variants.
+                $agentLookup
             ): void {
                 foreach ($rows as $index => $row) {
                     $lineNumber = $firstDataLine + $index;
@@ -257,6 +265,19 @@ final class ImportService
                                 $distributedCounts[$agentForRow] =
                                     ($distributedCounts[$agentForRow] ?? 0) + 1;
                             }
+                        }
+
+                        // Auto-assign by BC code/name: if no agent was picked by
+                        // explicit selection or distribution, match the file's BC NAME
+                        // column against registered agents. This is what makes "just
+                        // upload the file and each BC's leads land on their login"
+                        // work without anybody selecting an agent manually.
+                        if ($agentForRow === null && trim($values['bc_code']) !== '') {
+                            $agentForRow = self::findAgentByBcCode(
+                                trim($values['bc_code']),
+                                $agentLookup,
+                                $branchId
+                            );
                         }
 
                         $mobile = self::cleanDigits($values['mobile'], 10, 13);
@@ -894,6 +915,100 @@ final class ImportService
             }
         }
         return $cache;
+    }
+
+    // -----------------------------------------------------------------------
+    // Agent auto-assignment by BC code/name
+    // -----------------------------------------------------------------------
+
+    /**
+     * Loads all active agents into a lookup structure for BC code/name matching.
+     *
+     * Each agent is indexed by every normalised variant of their bc_code, bc_name
+     * and display name, so any of them can match the file's BC NAME column without
+     * a per-row query. Priority is encoded by insertion order: bc_code entries are
+     * inserted first, so they take precedence when the same normalised key appears
+     * in more than one field.
+     *
+     * @return array<string,array{id:int,branch_id:int|null}>
+     */
+    private static function buildAgentLookup(): array
+    {
+        $db = Database::instance();
+        $agents = $db->all(
+            "SELECT u.id, u.branch_id, u.bc_code, u.bc_name, u.name
+               FROM users u JOIN roles r ON r.id = u.role_id
+              WHERE r.slug = 'agent' AND u.status = 'active'"
+        );
+
+        $lookup = [];
+
+        // Pass 1: bc_code (highest priority - exact internal code)
+        foreach ($agents as $agent) {
+            $code = ColumnDetector::normalise((string) $agent['bc_code']);
+            if ($code !== '' && !isset($lookup[$code])) {
+                $lookup[$code] = [
+                    'id'        => (int) $agent['id'],
+                    'branch_id' => $agent['branch_id'] === null ? null : (int) $agent['branch_id'],
+                ];
+            }
+        }
+
+        // Pass 2: bc_name (the BC point's registered name)
+        foreach ($agents as $agent) {
+            $bcName = ColumnDetector::normalise((string) $agent['bc_name']);
+            if ($bcName !== '' && !isset($lookup[$bcName])) {
+                $lookup[$bcName] = [
+                    'id'        => (int) $agent['id'],
+                    'branch_id' => $agent['branch_id'] === null ? null : (int) $agent['branch_id'],
+                ];
+            }
+        }
+
+        // Pass 3: display name (lowest priority, widest net)
+        foreach ($agents as $agent) {
+            $name = ColumnDetector::normalise((string) $agent['name']);
+            if ($name !== '' && !isset($lookup[$name])) {
+                $lookup[$name] = [
+                    'id'        => (int) $agent['id'],
+                    'branch_id' => $agent['branch_id'] === null ? null : (int) $agent['branch_id'],
+                ];
+            }
+        }
+
+        return $lookup;
+    }
+
+    /**
+     * Finds an agent for the given BC code/name value from the file.
+     *
+     * Returns the agent's user ID if a match is found and the agent belongs to
+     * the same branch as the row (or has no branch restriction), null otherwise.
+     * Branch enforcement prevents a typo from sending leads across branches.
+     *
+     * @param string $bcCodeFromFile  The BC NAME/code value from the Excel row
+     * @param array<string,array{id:int,branch_id:int|null}> $lookup
+     * @param int    $rowBranchId     The resolved branch for this row
+     */
+    private static function findAgentByBcCode(string $bcCodeFromFile, array $lookup, int $rowBranchId): ?int
+    {
+        $key = ColumnDetector::normalise($bcCodeFromFile);
+        if ($key === '') {
+            return null;
+        }
+
+        if (!isset($lookup[$key])) {
+            return null;
+        }
+
+        $agent = $lookup[$key];
+
+        // An agent tied to a different branch must not receive leads from this row.
+        if ($agent['branch_id'] !== null && $agent['branch_id'] !== $rowBranchId) {
+            return null;
+        }
+
+        return $agent['id'];
     }
 
     /**
