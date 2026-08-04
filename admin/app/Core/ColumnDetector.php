@@ -204,7 +204,13 @@ final class ColumnDetector
                 'outstanding amount', 'outstanding', 'principal outstanding', 'balance',
                 'outstanding balance', 'os amount', 'os', 'total outstanding',
                 'ledger balance', 'book balance', 'closing balance', 'principal balance',
-                'loan outstanding', 'total dues', 'बकाया', 'बकाया राशि', 'शेष राशि',
+                'loan outstanding', 'total dues',
+                // A core banking export's own facility-code shorthand for the combined
+                // Cash Credit / Overdraft / Demand Loan outstanding figure - not an
+                // English phrase, so no amount of paraphrasing "outstanding" would ever
+                // have matched it. Seen verbatim on a real bank's statement.
+                'cc od dl', 'cc/od/dl', 'ccoddl', 'cc od dl os', 'cc od dl outstanding',
+                'बकाया', 'बकाया राशि', 'शेष राशि',
             ],
             'overdue_amount' => [
                 'overdue amount', 'overdue', 'od amount', 'arrears', 'overdue amt',
