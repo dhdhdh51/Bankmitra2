@@ -31,14 +31,31 @@ final class ImportController extends Controller
         $scoped = Auth::scopedBranchId();
 
         $this->view($request, 'import/index', [
-            'title'     => 'Excel Import',
-            'branches'  => Branch::options($scoped),
-            'agents'    => User::agents($scoped),
-            'recent'    => $this->recentImports(3),
-            'preview'   => Session::get('_import_preview'),
-            'columns'   => $this->expectedColumns(),
-            'canUpload' => Auth::can('import.upload'),
+            'title'         => 'Excel Import',
+            'branches'      => Branch::options($scoped),
+            'agents'        => User::agents($scoped),
+            'recent'        => $this->recentImports(3),
+            'preview'       => Session::get('_import_preview'),
+            'columns'       => $this->expectedColumns(),
+            'canUpload'     => Auth::can('import.upload'),
+            'fields'        => ColumnDetector::fields(),
+            // Every heading a past import has taught ColumnDetector to resolve
+            // automatically - shown so an operator can see what "learned" means
+            // on the mapping screen, and undo a wrong lesson without a database
+            // console.
+            'taughtAliases' => ColumnDetector::learnedAliases(),
         ]);
+    }
+
+    /** Undoes a taught mapping - a mis-click, or a heading that means something
+     *  different on a later export from the same template. */
+    public function deleteAlias(Request $request): void
+    {
+        $this->guard($request, 'import.upload');
+
+        ColumnDetector::forgetAlias($request->paramInt('id'));
+
+        $this->back('/import', 'success', 'Forgotten. The next matching file will be detected or asked about again.');
     }
 
     /**
@@ -373,6 +390,13 @@ final class ImportController extends Controller
             $this->back('/import', 'danger', 'Import failed: ' . e($e->getMessage()));
         }
 
+        // Every mapping THIS run actually used (detection plus whatever the confirm
+        // screen overrode), not just what the operator's dropdowns changed - so a
+        // heading detection already got right is remembered too, and the next file
+        // from the same source maps the same way even if nobody ever touches a
+        // dropdown for it again.
+        $this->rememberChosenAliases((array) ($result['headings'] ?? []), (array) ($result['map'] ?? []), (int) $user['id']);
+
         Session::forget('_import_preview');
 
         $parts = [sprintf(
@@ -541,5 +565,39 @@ final class ImportController extends Controller
         }
 
         return $overrides;
+    }
+
+    /**
+     * Teaches ColumnDetector every mapping this run actually used, so the next
+     * file carrying the same heading - a different month's export from the
+     * same bank, typically - maps automatically instead of asking the same
+     * question a second time.
+     *
+     * $map is ImportService::run()'s resolved mapping (field => column index),
+     * not just what the confirm screen's dropdowns changed - detection getting
+     * a heading right on its own is remembered exactly like a correction is.
+     * Harmless either way: learnAlias() upserts on the heading's normalised
+     * text, so re-teaching a mapping that was already right just writes the
+     * same row again. What actually matters - "ADRESS now means Village on
+     * this file" - gets remembered the same way a mapping that needed no
+     * correction does.
+     *
+     * A field absent from $map (the operator marked it "not in this file", or
+     * detection found nothing) is not taught: forgetting a field is not the
+     * same claim as a heading meaning something, and would need its own kind
+     * of memory ("this heading is never anything") that nothing here needs yet.
+     */
+    private function rememberChosenAliases(array $headings, array $map, int $actorId): void
+    {
+        foreach ($map as $field => $index) {
+            if (!is_int($index) || $index < 0 || !isset($headings[$index])) {
+                continue;
+            }
+            $heading = trim((string) $headings[$index]);
+            if ($heading === '') {
+                continue;
+            }
+            ColumnDetector::learnAlias($heading, (string) $field, $actorId);
+        }
     }
 }

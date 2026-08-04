@@ -553,6 +553,10 @@ final class ImportService
             'distribution'       => $distributedCounts,
             'sheet'              => (string) ($parsed['sheet'] ?? ''),
             'mapping'            => self::describeMapping($headings, $detection),
+            // Handed back so the caller can teach ColumnDetector every mapping this
+            // run actually used - see ImportController::rememberChosenAliases().
+            'headings'           => $headings,
+            'map'                => $map,
             // Labels of every column this run could not match to the fixed vocabulary
             // and turned into a loan_account custom field instead - new ones AND ones
             // reused from an earlier import. Reported so an operator sees where forty

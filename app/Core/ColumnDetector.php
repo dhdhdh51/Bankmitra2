@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use PDOException;
+
 /**
  * Works out which spreadsheet column is which, so any bank's export can be
  * imported without anyone reformatting it into our template first.
@@ -514,6 +516,24 @@ final class ColumnDetector
         $fields = self::fields();
 
         // ---------------------------------------------------------------
+        // Stage 0: what an operator has already taught this exact heading to
+        // mean, on some earlier file. Scored above every built-in alias (which
+        // caps at 100) so a heading a person deliberately corrected once - "on
+        // THIS bank's export, ADRESS means Village, not Address" - never has to
+        // be corrected a second time. See learnedAliasesFor() and learnAlias().
+        //
+        // Folded into $overrides rather than kept as its own stage: $overrides
+        // already IS "whatever the caller says the mapping is", and a learned
+        // alias is exactly that, just supplied by a past decision instead of
+        // this request's form post. Explicit overrides passed alongside it -
+        // this request's own dropdown choices - still take precedence for any
+        // field they name, via array_merge()'s "later wins" rule below.
+        // ---------------------------------------------------------------
+        $learned = self::learnedAliasesFor($headings);
+        $overrides = array_merge($learned, $overrides);
+        $learnedFields = array_keys($learned);
+
+        // ---------------------------------------------------------------
         // Stage 1: header text, assigned globally by best score.
         // ---------------------------------------------------------------
         $candidates = [];
@@ -606,7 +626,11 @@ final class ColumnDetector
             }
             $map[$field] = $index;
             $confidence[$field] = 100;
-            $source[$field] = 'chosen';
+            // Distinguishes "an operator taught this heading to mean this, on an
+            // earlier file" from "an operator just chose this on THIS screen" - the
+            // mapping table shows the two differently, so it is obvious which
+            // rows are running on autopilot versus which were just decided.
+            $source[$field] = in_array($field, $learnedFields, true) ? 'learned' : 'chosen';
         }
 
         $used = array_values($map);
@@ -624,6 +648,125 @@ final class ColumnDetector
             'unmapped'         => $unmapped,
             'missing_required' => array_values(array_diff(self::required(), array_keys($map))),
         ];
+    }
+
+    /**
+     * Every heading in this file that an operator has already taught a mapping
+     * for, as field => column index - ready to be merged straight into
+     * detect()'s $overrides.
+     *
+     * Reads `column_header_aliases`, keyed on the SAME normalised heading text
+     * scoreHeading() would compare against a built-in alias, so "CC_OD_DL",
+     * "cc-od-dl" and "CC OD DL" all resolve to whatever a person taught any one
+     * spelling of that heading to mean.
+     *
+     * Silently returns [] if the table cannot be reached (no database
+     * configured, e.g. tools/selftest-core.php's pure in-memory checks) -
+     * learning is an enhancement to detection, and detection has always had to
+     * keep working with no database behind it at all.
+     *
+     * @param list<string> $headings
+     * @return array<string,int> field => column index
+     */
+    private static function learnedAliasesFor(array $headings): array
+    {
+        $byKey = [];
+        foreach ($headings as $index => $heading) {
+            $key = self::normalise($heading);
+            if ($key !== '') {
+                // Earlier columns win a duplicate heading, same as everywhere
+                // else a first-match-wins rule already governs this file.
+                $byKey[$key] ??= $index;
+            }
+        }
+
+        if ($byKey === []) {
+            return [];
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($byKey), '?'));
+            $rows = Database::instance()->all(
+                "SELECT heading_key, field FROM column_header_aliases WHERE heading_key IN ({$placeholders})",
+                array_keys($byKey)
+            );
+        } catch (\Throwable $e) {
+            // No database reachable (or the migration has not run yet on an
+            // older install) - fall back to detection with no memory, rather
+            // than failing an import over a feature that is purely additive.
+            return [];
+        }
+
+        $overrides = [];
+        foreach ($rows as $row) {
+            $field = (string) $row['field'];
+            $index = $byKey[(string) $row['heading_key']] ?? null;
+            if ($index !== null && isset(self::fields()[$field])) {
+                $overrides[$field] = $index;
+            }
+        }
+
+        return $overrides;
+    }
+
+    /**
+     * Records that a heading means a field, so the next file carrying the same
+     * heading maps automatically - the memory learnedAliasesFor() reads back.
+     *
+     * Called from the import screen's confirm step for every column_map entry
+     * the operator actually changed by hand (see
+     * ImportController::columnOverrides() and rememberChosenAliases()) - NOT
+     * for every field detection already got right, which would just be
+     * memorising the built-in alias list back into the database for no reason.
+     *
+     * Upserts on heading_key: teaching the same heading to a different field
+     * later (a correction to an earlier correction) replaces the row rather
+     * than leaving two contradictory ones.
+     */
+    public static function learnAlias(string $heading, string $field, ?int $actorId): void
+    {
+        $key = self::normalise($heading);
+        if ($key === '' || !isset(self::fields()[$field])) {
+            return;
+        }
+
+        try {
+            Database::instance()->query(
+                'INSERT INTO column_header_aliases (heading_key, field, original_heading, created_by)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE field = VALUES(field), original_heading = VALUES(original_heading),
+                                         created_by = VALUES(created_by)',
+                [$key, $field, mb_substr(trim($heading), 0, 150), $actorId]
+            );
+        } catch (PDOException $e) {
+            // Learning is additive, never load-bearing: a table that has not
+            // migrated yet, or a transient write failure, must not turn a
+            // successful import into a failed one. The mapping the operator
+            // just chose still applies to THIS file either way - only the
+            // memory for the NEXT one is lost.
+            error_log('[D2R] column_header_aliases write failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Forgets a taught mapping, so a wrong lesson (a mis-click, or a heading
+     * that means something different on a later export from the same
+     * template) can be undone without a database console.
+     */
+    public static function forgetAlias(int $id): void
+    {
+        Database::instance()->delete('column_header_aliases', ['id' => $id]);
+    }
+
+    /** Every taught mapping, most recent first - for a settings/review screen. */
+    public static function learnedAliases(): array
+    {
+        return Database::instance()->all(
+            'SELECT caa.*, u.name AS created_by_name, u.employee_code
+               FROM column_header_aliases caa
+               LEFT JOIN users u ON u.id = caa.created_by
+              ORDER BY caa.created_at DESC'
+        );
     }
 
     /**
