@@ -79,7 +79,7 @@ echo "  config.php exists: " . (file_exists($configPath) ? 'YES [OK]' : 'NO [FAI
 echo "--- Database ---\n";
 if (file_exists($configPath)) {
     $config = require $configPath;
-    $dbConfig = $config['database'] ?? [];
+    $dbConfig = $config['db'] ?? [];
     $host = $dbConfig['host'] ?? '127.0.0.1';
     $port = $dbConfig['port'] ?? 3306;
     $name = $dbConfig['name'] ?? '';
