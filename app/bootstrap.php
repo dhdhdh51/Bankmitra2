@@ -196,7 +196,14 @@ $logDir = \App\Core\Config::get('paths.storage', ROOT_PATH . '/storage') . '/log
 if (!is_dir($logDir)) {
     @mkdir($logDir, 0755, true);
 }
-ini_set('error_log', $logDir . '/php-error.log');
+// Fallback: if the storage/logs directory still does not exist or is not writable,
+// use the system temp directory so errors are never silently lost on production.
+if (!is_dir($logDir) || !is_writable($logDir)) {
+    $logDir = sys_get_temp_dir();
+    ini_set('error_log', $logDir . '/d2r-error.log');
+} else {
+    ini_set('error_log', $logDir . '/php-error.log');
+}
 
 date_default_timezone_set((string) \App\Core\Config::get('app.timezone', 'Asia/Kolkata'));
 
