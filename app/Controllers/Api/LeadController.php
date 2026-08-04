@@ -50,7 +50,7 @@ final class LeadController extends Controller
     }
 
     /**
-     * Customer search by loan account number, name, mobile, Aadhaar or village.
+     * Customer search by loan account number, name, mobile or Aadhaar.
      * Mobile and Aadhaar match exactly through their HMAC columns.
      */
     public function search(Request $request): void
@@ -163,7 +163,6 @@ final class LeadController extends Controller
             'alt_mobile'            => 'nullable|mobile',
             'alt_mobile_label'      => 'nullable|max:60',
             'aadhaar'               => 'nullable|aadhaar',
-            'village'               => 'nullable|max:150',
             'address'               => 'nullable|max:500',
             'loan_type'             => 'nullable|max:80',
             'outstanding_amount'    => 'nullable|numeric|min_value:0',
@@ -211,7 +210,7 @@ final class LeadController extends Controller
         // Written only when the request actually carries at least one of them - an
         // agent correcting the outstanding amount must not blank the father's name
         // because it happened not to be in the same request body.
-        $borrowerFields = ['name', 'father_husband_name', 'mobile', 'alt_mobile', 'alt_mobile_label', 'village', 'address', 'aadhaar'];
+        $borrowerFields = ['name', 'father_husband_name', 'mobile', 'alt_mobile', 'alt_mobile_label', 'address', 'aadhaar'];
         $hasBorrowerField = false;
         foreach ($borrowerFields as $borrowerField) {
             if ($request->has($borrowerField)) {
@@ -226,9 +225,6 @@ final class LeadController extends Controller
             }
             if ($request->has('father_husband_name')) {
                 $customerUpdate['father_husband_name'] = $request->nullableStr('father_husband_name');
-            }
-            if ($request->has('village')) {
-                $customerUpdate['village'] = $request->nullableStr('village');
             }
             if ($request->has('address')) {
                 $customerUpdate['address'] = $request->nullableStr('address');
@@ -447,7 +443,6 @@ final class LeadController extends Controller
         $filters = [
             'search'        => $request->str('search', $request->str('q')),
             'status'        => $request->str('status'),
-            'village'       => $request->str('village'),
             'loan_type'     => $request->str('loan_type'),
             // KCC and OD-2 are worked as two separate renewal queues on the reports
             // side (see ReportService::renewalWorklist()); the same enum lets the app's

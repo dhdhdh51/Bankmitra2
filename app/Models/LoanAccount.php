@@ -15,7 +15,7 @@ use App\Core\Paginator;
 final class LoanAccount
 {
     public const SORTABLE = [
-        'loan_account_number', 'customer_name', 'village', 'outstanding_amount',
+        'loan_account_number', 'customer_name', 'outstanding_amount',
         'overdue_amount', 'npa_date', 'current_status', 'last_visit_at', 'created_at',
     ];
 
@@ -109,7 +109,7 @@ final class LoanAccount
      *
      * @param array{
      *   search?:string, branch_id?:int|null, agent_id?:int|null, status?:string,
-     *   village?:string, loan_type?:string, npa_only?:bool, unassigned?:bool,
+     *   loan_type?:string, npa_only?:bool, unassigned?:bool,
      *   date_from?:string, date_to?:string
      * } $filters
      */
@@ -182,10 +182,9 @@ final class LoanAccount
         $orderColumn = in_array($sortBy, self::SORTABLE, true) ? $sortBy : 'created_at';
         $direction = strtoupper($sortDir) === 'ASC' ? 'ASC' : 'DESC';
 
-        // customer_name and village live on the joined table.
+        // customer_name lives on the joined table.
         $orderExpression = match ($orderColumn) {
             'customer_name' => 'c.name',
-            'village'       => 'c.village',
             default         => 'la.`' . $orderColumn . '`',
         };
 
@@ -204,7 +203,7 @@ final class LoanAccount
     }
 
     /**
-     * Search across loan account number, name, village (LIKE) plus mobile and
+     * Search across loan account number, name, address (LIKE) plus mobile and
      * Aadhaar (exact, via HMAC because those columns are encrypted).
      *
      * @param array<string,mixed> $filters
@@ -265,12 +264,6 @@ final class LoanAccount
         if ($status !== '' && in_array($status, self::STATUSES, true)) {
             $where[] = 'la.current_status = ?';
             $params[] = $status;
-        }
-
-        $village = trim((string) ($filters['village'] ?? ''));
-        if ($village !== '') {
-            $where[] = 'c.village = ?';
-            $params[] = $village;
         }
 
         $loanType = trim((string) ($filters['loan_type'] ?? ''));

@@ -174,7 +174,7 @@ printHeader('PHASE 3: MANUAL OVERRIDE SIMULATION');
 $phase3Pass = false;
 
 try {
-    // Simulate admin manually mapping: force village to the ADRESS column, force loan_account_number to column 0
+    // Simulate admin manually mapping: force address to the ADRESS column, force loan_account_number to column 0
     $addressIndex = null;
     foreach ($headings as $i => $h) {
         if (stripos($h, 'ADRESS') !== false || stripos($h, 'ADDRESS') !== false) {
@@ -185,7 +185,7 @@ try {
 
     $overrides = ['loan_account_number' => 0];
     if ($addressIndex !== null) {
-        $overrides['village'] = $addressIndex;
+        $overrides['address'] = $addressIndex;
     }
 
     printSubHeader('Overrides Applied');
@@ -240,7 +240,7 @@ try {
     $simulatedPost = [
         'loan_account_number' => '0',
         'customer_name'       => '1',
-        'village'             => (string)($addressIndex ?? '3'),
+        'address'             => (string)($addressIndex ?? '3'),
         'outstanding_amount'  => '',    // empty = "detect automatically"
         'invalid_field_xyz'   => '5',   // invalid field (not in ColumnDetector::fields())
         'remarks'             => 'abc', // non-numeric index = invalid
@@ -284,7 +284,7 @@ try {
     printInfo('Invalid entries', implode(', ', $invalid));
 
     // Validation checks
-    $expectedValid = ['loan_account_number' => 0, 'customer_name' => 1, 'village' => ($addressIndex ?? 3)];
+    $expectedValid = ['loan_account_number' => 0, 'customer_name' => 1, 'address' => ($addressIndex ?? 3)];
     $phase4Pass = ($processedOverrides == $expectedValid) && !empty($invalid);
 
     if ($phase4Pass) {
@@ -309,7 +309,7 @@ $extractedRows = [];
 try {
     // Simulate the same logic as ImportService::extract()
     // For each field in the map, pull row[map[field]]
-    $fieldsToShow = ['loan_account_number', 'customer_name', 'npa_date', 'outstanding_amount', 'address', 'bc_code', 'village'];
+    $fieldsToShow = ['loan_account_number', 'customer_name', 'npa_date', 'outstanding_amount', 'address', 'bc_code'];
 
     printSubHeader('Extracting from first 3 data rows');
 
@@ -370,7 +370,6 @@ try {
             'customer_id'           => 501,
             'customer_name'         => $extracted['customer_name'],
             'father_husband_name'   => $extracted['father_husband_name'] ?: null,
-            'village'               => $extracted['village'] ?: null,
             'address'               => $extracted['address'] ?: null,
             'mobile_masked'         => null,
             'aadhaar_masked'        => null,
@@ -435,7 +434,7 @@ try {
 
         // Show which key fields have data
         printSubHeader('Key Fields Check');
-        $keyFields = ['loan_account_number', 'customer_name', 'outstanding_amount', 'village', 'address', 'npa_date', 'bc_code'];
+        $keyFields = ['loan_account_number', 'customer_name', 'outstanding_amount', 'address', 'npa_date', 'bc_code'];
         foreach ($keyFields as $kf) {
             $val = $simulatedLead[$kf] ?? null;
             if ($val !== null && $val !== '' && $val !== 0.0) {

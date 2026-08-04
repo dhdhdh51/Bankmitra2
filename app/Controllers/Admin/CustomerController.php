@@ -833,7 +833,6 @@ final class CustomerController extends Controller
             'branch_id'     => $this->branchFilter($request),
             'agent_id'      => $this->agentFilter($request),
             'status'        => $request->str('status'),
-            'village'       => $request->str('village'),
             'loan_type'     => $request->str('loan_type'),
             // Same enum the KCC/OD-2 renewal worklists filter on, so "show me only the
             // OD-2 accounts" means the same thing here as it does on that report.

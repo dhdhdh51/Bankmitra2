@@ -82,7 +82,6 @@ final class ColumnDetector
             'father_husband_name'   => ['label' => 'Father/Husband Name',   'required' => false, 'type' => 'name',    'example' => 'Shyam Lal'],
             'mobile'                => ['label' => 'Mobile',                'required' => false, 'type' => 'mobile',  'example' => '9876543210'],
             'aadhaar'               => ['label' => 'Aadhaar',               'required' => false, 'type' => 'aadhaar', 'example' => '234567890123'],
-            'village'               => ['label' => 'Village',               'required' => false, 'type' => 'text',    'example' => 'Kotri'],
             'address'               => ['label' => 'Address',               'required' => false, 'type' => 'text',    'example' => 'House 12, Kotri'],
             'loan_type'             => ['label' => 'Loan Type',             'required' => false, 'type' => 'text',    'example' => 'Crop Loan'],
             'outstanding_amount'    => ['label' => 'Outstanding Amount',    'required' => false, 'type' => 'amount',  'example' => '250000.00'],
@@ -187,15 +186,13 @@ final class ColumnDetector
                 'aadhar number', 'uid', 'uid no', 'uidai', 'aadhaar id',
                 'आधार', 'आधार संख्या', 'आधार नंबर',
             ],
-            'village' => [
-                'village', 'village name', 'place', 'city', 'town', 'gram', 'gram panchayat',
-                'locality', 'area',
-                'ग्राम', 'गाँव', 'गांव', 'शहर',
-            ],
             'address' => [
                 'address', 'full address', 'residential address', 'address line',
                 'permanent address', 'communication address', 'addr',
+                'village', 'village name', 'place', 'city', 'town', 'gram', 'gram panchayat',
+                'locality', 'area',
                 'पता', 'निवास स्थान',
+                'ग्राम', 'गाँव', 'गांव', 'शहर',
             ],
             'loan_type' => [
                 'loan type', 'product type', 'product', 'scheme name', 'scheme',
