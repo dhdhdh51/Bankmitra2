@@ -413,7 +413,7 @@ final class VisitReport
 
         return Paginator::fromQuery(
             "SELECT COUNT(*) FROM visit_reports vr WHERE {$clause}",
-            "SELECT vr.id, vr.report_type, vr.loan_account_id, vr.loan_account_number, vr.customer_name, vr.village,
+            "SELECT vr.id, vr.report_type, vr.loan_account_id, vr.loan_account_number, vr.customer_name, vr.village, vr.address,
                     vr.visit_date, vr.visit_time, vr.agent_name, vr.branch_name, vr.created_at,
                     vr.customer_met, vr.house_locked, vr.ready_to_pay, vr.not_ready,
                     vr.promise_amount, vr.promise_date, vr.outstanding_amount, vr.overdue_amount,
@@ -472,7 +472,7 @@ final class VisitReport
         $search = trim((string) ($filters['search'] ?? ''));
         if ($search !== '') {
             $like = '%' . $search . '%';
-            $where[] = '(vr.loan_account_number LIKE ? OR vr.customer_name LIKE ? OR vr.village LIKE ?)';
+            $where[] = '(vr.loan_account_number LIKE ? OR vr.customer_name LIKE ? OR vr.address LIKE ?)';
             array_push($params, $like, $like, $like);
         }
 

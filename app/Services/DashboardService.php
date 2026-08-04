@@ -259,7 +259,7 @@ final class DashboardService
 
         return Database::instance()->all(
             "SELECT vr.id, vr.loan_account_id, vr.loan_account_number, vr.customer_name,
-                    vr.village, vr.visit_date, vr.visit_time, vr.agent_name,
+                    vr.village, vr.address, vr.visit_date, vr.visit_time, vr.agent_name,
                     vr.customer_met, vr.house_locked, vr.promise_amount, vr.promise_date,
                     vr.created_at
                FROM visit_reports vr

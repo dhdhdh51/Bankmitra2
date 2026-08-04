@@ -14,7 +14,7 @@ final class Promise
     public static function find(int $id): ?array
     {
         return Database::instance()->first(
-            'SELECT p.*, la.loan_account_number, c.name AS customer_name, c.village,
+            'SELECT p.*, la.loan_account_number, c.name AS customer_name, c.village, c.address,
                     ag.name AS agent_name, b.name AS branch_name
                FROM promises p
                JOIN loan_accounts la ON la.id = p.loan_account_id
@@ -60,7 +60,7 @@ final class Promise
                JOIN customers c ON c.id = p.customer_id
               WHERE {$clause}",
             "SELECT p.*, la.loan_account_number, la.outstanding_amount, la.overdue_amount,
-                    c.name AS customer_name, c.village, c.mobile_masked,
+                    c.name AS customer_name, c.village, c.address, c.mobile_masked,
                     ag.name AS agent_name, b.name AS branch_name,
                     DATEDIFF(CURDATE(), p.promise_date) AS days_overdue
                FROM promises p
